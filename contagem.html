@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Contagem — AudiStock</title>
+<link rel="stylesheet" href="css/style.css"/>
+<style>
+/* Garante que a contagem use 100% da altura disponível */
+#pageBody { height: 100%; display: flex; flex-direction: column; }
+.count-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 16px; flex-wrap: wrap;
+}
+.count-header-info { flex: 1; min-width: 0; }
+.count-header-subtitle { font-size: 12px; color: var(--text3); }
+.count-header-title    { font-weight: 800; font-size: 18px; }
+
+/* Scanner de câmera */
+#scannerContainer {
+  position: relative; background: #000;
+  border-radius: 12px; overflow: hidden;
+  margin-bottom: 12px; display: none;
+}
+#scannerVideo { width: 100%; max-height: 220px; object-fit: cover; display: block; }
+#scannerOverlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+#scannerOverlay::before {
+  content: '';
+  width: 200px; height: 100px;
+  border: 2px solid rgba(26,107,255,.8);
+  border-radius: 6px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,.4);
+}
+#scannerLine {
+  position: absolute;
+  width: 200px; height: 2px;
+  background: var(--primary);
+  animation: scanLine 1.8s ease-in-out infinite;
+}
+@keyframes scanLine {
+  0%   { top: calc(50% - 49px); }
+  50%  { top: calc(50% + 49px); }
+  100% { top: calc(50% - 49px); }
+}
+#scannerStatus {
+  position: absolute; bottom: 8px; left: 0; right: 0;
+  text-align: center; font-size: 12px; color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,.8);
+}
+
+/* Indicador de auditores online */
+#auditoresOnline {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text2);
+  background: var(--bg3); padding: 4px 10px;
+  border-radius: 20px;
+}
+.auditor-dot { width:8px; height:8px; border-radius:50%; background:var(--green); }
+.auditor-dot.away { background: var(--yellow); }
+</style>
+</head>
+<body>
+
+<!-- MODAL CONFLITO -->
+<div class="modal-backdrop" id="conflictModal">
+  <div class="modal">
+    <div class="modal-title">⚠️ Produto já auditado</div>
+    <div class="modal-body" id="conflictMsg"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="resolverConflito('somar')">➕ Somar</button>
+      <button class="btn btn-primary" onclick="resolverConflito('sobrescrever')">🔄 Sobrescrever</button>
+    </div>
+  </div>
+</div>
+
+<div class="app-shell" id="appShell">
+  <div id="pageBody"></div>
+</div>
+
+<script type="module">
+import { requireAuth, getPerfil } from './js/auth.js';
+import {
+  initLayout, showToast, showLoading, hideLoading,
+  escapeHtml, fmtNum, debounce, fmConfirm
+} from './js/ui.js';
+import {
+  buscarProdutoUnificado,
+  buscarProdutoPorCodigo,
+  buscarProdutoPorBarras,
+} from './js/produtos.js';
+import {
+  buscarAuditoria,
+  finalizarAuditoria,
+  progresso,
+} from './js/auditorias.js';
+import {
+  registrarContagem,
+  registrarScannerLeitura,
+  buscarItemContado,
+  listarItensContados,
+} from './js/contagem.js';
+import {
+  initOfflineSync,
+  isOnline,
+  registrarOffline,
+} from './js/offline.js';
+import supabase from './js/supabaseClient.js';
+
+// ── Envolve tudo em async IIFE para permitir return ──
+(async () => {
+
+// ── Auth ──
+const auth = await requireAuth();
+if (!auth) throw new Error('não autenticado');
+const perfil = getPerfil();
+
+// ── Parâmetro: ?id=<auditoria_id> ──
+const params      = new URLSearchParams(location.search);
+const auditoriaId = params.get('id');
+if (!auditoriaId) {
+  window.location.href = 'auditorias.html';
+  throw new Error('sem id');
+}
+
+initLayout('Contagem de Estoque');
+initOfflineSync(({ online, pendentes }) => {
+  // Atualiza indicador no topbar
+  const dot = document.getElementById('statusDot');
+  if (dot) {
+    dot.style.background = !online ? 'var(--yellow)' : 'var(--green)';
+    dot.title = !online ? `Offline — ${pendentes} pendentes` : 'Online';
+  }
+});
+
+// ── Estado local da sessão ──
+let auditoria       = null;
+let empresaId       = null;
+let modo            = 'manual';   // 'manual' | 'scanner'
+let produtoAtivo    = null;       // produto selecionado
+let pendingConflito = null;       // aguardando resolução
+let sessMapa        = {};         // { produto_id: item } — cache da sessão
+
+// ── Carrega auditoria ──
+showLoading();
+try {
+  auditoria = await buscarAuditoria(auditoriaId);
+  if (!auditoria) throw new Error('Auditoria não encontrada.');
+  if (auditoria.status !== 'em_andamento') {
+    showToast('Esta auditoria não está em andamento.', 'warning');
+    setTimeout(() => window.location.href = 'auditorias.html', 2000);
+    return;
+  }
+  empresaId = auditoria.empresa_id;
+} catch (err) {
+  showToast(err.message, 'error');
+  hideLoading();
+  return;
+}
+
+// ── Renderiza a UI ──
+const pageBody = document.getElementById('pageBody');
+pageBody.innerHTML = `
+  <div class="count-header">
+    <div class="count-header-info">
+      <div class="count-header-subtitle">Auditoria</div>
+      <div class="count-header-title" id="audTitulo">
+        ${escapeHtml(auditoria.numero_auditoria)} — ${escapeHtml(auditoria.empresas?.nome ?? '')}
+      </div>
+    </div>
+    <div id="statusDot" style="width:10px;height:10px;border-radius:50%;background:var(--green);flex-shrink:0" title="Online"></div>
+    <div id="auditoresOnline" style="display:none">
+      <div class="auditor-dot"></div>
+      <span id="auditoresLabel">1 auditor online</span>
+    </div>
+    <span class="badge badge-yellow">🔄 Em andamento</span>
+    <button class="btn btn-ghost btn-sm" onclick="pausar()">⏸ Pausar</button>
+    <button class="btn btn-primary btn-sm" id="btnFinalizar" onclick="confirmarFinalizar()">✅ Finalizar</button>
+  </div>
+
+  <div class="count-layout">
+    <!-- PAINEL ESQUERDO: entrada -->
+    <div class="count-panel">
+      <div class="count-input-zone">
+
+        <!-- Modo tabs -->
+        <div class="mode-tabs">
+          <div class="mode-tab active" id="tabManual"  onclick="setModo('manual')">✏️ Manual</div>
+          <div class="mode-tab"        id="tabScanner" onclick="setModo('scanner')">📷 Leitor</div>
+          <div class="mode-tab"        id="tabCamera"  onclick="setModo('camera')">📱 Câmera</div>
+        </div>
+
+        <!-- Container da câmera -->
+        <div id="scannerContainer">
+          <video id="scannerVideo" autoplay playsinline muted></video>
+          <div id="scannerOverlay">
+            <div id="scannerLine"></div>
+          </div>
+          <div id="scannerStatus">Aponte para o código de barras</div>
+        </div>
+
+        <!-- Campo código -->
+        <div class="input-group">
+          <label class="input-label">Código / nome / cód. barras</label>
+          <input class="input-field" id="codigoInput"
+                 placeholder="Digite ou escaneie..."
+                 autocomplete="off" autocorrect="off" spellcheck="false"
+                 oninput="onCodigoInput(this.value)"
+                 onkeydown="onCodigoKey(event)"/>
+        </div>
+
+        <!-- Sugestões de busca -->
+        <div id="sugestoes" style="display:none;background:var(--bg3);border-radius:8px;margin-bottom:8px;overflow:hidden;max-height:160px;overflow-y:auto"></div>
+
+        <!-- Preview produto -->
+        <div class="product-preview" id="productPreview">
+          <div class="product-preview-code" id="previewCod"></div>
+          <div class="product-preview-name" id="previewNome"></div>
+          <div class="product-preview-unit" id="previewUnit"></div>
+          <div class="product-preview-stock" id="previewStock"></div>
+        </div>
+
+        <!-- Quantidade -->
+        <div class="input-group">
+          <label class="input-label">Quantidade contada</label>
+          <input class="input-field big" id="qtdInput"
+                 type="number" placeholder="0"
+                 min="0" step="0.001"
+                 onkeydown="onQtdKey(event)"/>
+        </div>
+
+        <button class="save-btn" id="saveBtn" onclick="salvarItem()">
+          ↵ Salvar contagem (Enter)
+        </button>
+      </div>
+
+      <!-- Stats -->
+      <div class="count-stats">
+        Contados: <strong id="totalContados">0</strong>
+        &nbsp;/&nbsp;
+        <strong id="totalProdutos">—</strong> produtos
+        &nbsp;·&nbsp;
+        <strong id="pctProgresso">0%</strong>
+      </div>
+
+      <!-- Lista rápida -->
+      <div class="count-list" id="countList">
+        <div class="empty-state">
+          <div class="empty-state-icon">📦</div>
+          <div class="empty-state-text">Nenhum item contado ainda.<br/>Digite um código para começar.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAINEL DIREITO: detalhe -->
+    <div style="display:flex;flex-direction:column;gap:16px;min-height:0">
+
+      <!-- Progresso -->
+      <div class="card" style="flex:0">
+        <div class="card-header"><span class="card-title">Progresso da auditoria</span></div>
+        <div style="padding:16px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px">
+            <span id="progressLabel">Carregando...</span>
+            <span id="progressPct" style="color:var(--primary);font-weight:700">0%</span>
+          </div>
+          <div class="progress"><div class="progress-fill" id="progressBar" style="width:0%"></div></div>
+          <div style="display:flex;gap:20px;margin-top:14px">
+            <div>
+              <div class="stat-label">Contados</div>
+              <div style="font-size:18px;font-weight:800;font-family:'JetBrains Mono'" id="statsContados">0</div>
+            </div>
+            <div>
+              <div class="stat-label">Pendentes</div>
+              <div style="font-size:18px;font-weight:800;font-family:'JetBrains Mono'" id="statsPendentes">—</div>
+            </div>
+            <div>
+              <div class="stat-label">Modo auditoria</div>
+              <div style="font-size:14px;font-weight:700;color:var(--yellow)" id="modoAuditoria">
+                ${auditoria.auditoria_cega ? '🙈 Cega' : '👁 Visível'}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabela detalhada -->
+      <div class="card" style="flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0">
+        <div class="card-header">
+          <span class="card-title">Itens contados (sessão atual)</span>
+          <input class="input-field" style="width:180px;padding:6px 10px;font-size:12px"
+                 placeholder="🔍 Filtrar lista..." oninput="filtrarLista(this.value)"/>
+        </div>
+        <div style="overflow-y:auto;flex:1">
+          <table>
+            <thead>
+              <tr>
+                <th>Código</th><th>Produto</th><th>UN</th>
+                <th>Qtd</th><th>Hora</th>
+              </tr>
+            </thead>
+            <tbody id="detailTable">
+              <tr><td colspan="5" style="text-align:center;color:var(--text3);padding:30px">
+                Aguardando contagens...
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+`;
+
+hideLoading();
+await atualizarProgresso();
+document.getElementById('codigoInput').focus();
+
+// ─────────────────────────────────────────────────────────────
+//  MODO (manual / scanner)
+// ─────────────────────────────────────────────────────────────
+window.setModo = function(m) {
+  modo = m;
+  document.getElementById('tabManual') .classList.toggle('active', m === 'manual');
+  document.getElementById('tabScanner').classList.toggle('active', m === 'scanner');
+  document.getElementById('tabCamera') .classList.toggle('active', m === 'camera');
+
+  const scannerContainer = document.getElementById('scannerContainer');
+
+  if (m === 'camera') {
+    document.getElementById('qtdInput').style.display  = 'none';
+    document.getElementById('saveBtn').textContent     = '📱 Câmera ativa — escaneando...';
+    document.getElementById('codigoInput').style.display = 'none';
+    document.querySelector('.input-label')?.parentElement && (document.querySelector('[for]')?.style && (document.getElementById('codigoInput').closest('.input-group').style.display = 'none'));
+    scannerContainer.style.display = 'block';
+    iniciarCamera();
+  } else {
+    pararCamera();
+    scannerContainer.style.display = 'none';
+    document.getElementById('codigoInput').style.display = '';
+    const ig = document.getElementById('codigoInput').closest?.('.input-group');
+    if (ig) ig.style.display = '';
+
+    if (m === 'scanner') {
+      document.getElementById('qtdInput').style.display = 'none';
+      document.getElementById('saveBtn').textContent = '📷 Escaneando — cada leitura soma +1';
+    } else {
+      document.getElementById('qtdInput').style.display = '';
+      document.getElementById('saveBtn').textContent = '↵ Salvar contagem (Enter)';
+    }
+    setTimeout(() => document.getElementById('codigoInput').focus(), 100);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+//  CÂMERA — Barcode Detection API (nativa nos navegadores modernos)
+// ─────────────────────────────────────────────────────────────
+let _cameraStream   = null;
+let _cameraLoop     = null;
+let _ultimoBarcode  = '';
+let _ultimoTs       = 0;
+
+async function iniciarCamera() {
+  const statusEl = document.getElementById('scannerStatus');
+
+  if (!('BarcodeDetector' in window)) {
+    statusEl.textContent = '❌ Câmera não suportada neste navegador. Use Chrome/Edge no Android.';
+    return;
+  }
+
+  try {
+    _cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 } }
+    });
+
+    const video = document.getElementById('scannerVideo');
+    video.srcObject = _cameraStream;
+    await video.play();
+
+    statusEl.textContent = '✅ Câmera ativa — aponte para o código';
+
+    const detector = new BarcodeDetector({ formats: ['ean_13','ean_8','code_128','code_39','qr_code','upc_a','upc_e'] });
+
+    _cameraLoop = setInterval(async () => {
+      if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+      try {
+        const barcodes = await detector.detect(video);
+        if (!barcodes.length) return;
+
+        const code = barcodes[0].rawValue;
+        const now  = Date.now();
+
+        // Evita processar o mesmo código em menos de 2 segundos
+        if (code === _ultimoBarcode && now - _ultimoTs < 2000) return;
+
+        _ultimoBarcode = code;
+        _ultimoTs      = now;
+
+        statusEl.textContent = `✅ Lido: ${code}`;
+        document.getElementById('scannerLine').style.background = 'var(--green)';
+        setTimeout(() => { document.getElementById('scannerLine').style.background = 'var(--primary)'; }, 600);
+
+        // Busca o produto pelo código lido
+        const p = await buscarProdutoPorBarras(empresaId, code)
+               ?? await buscarProdutoPorCodigo(empresaId, code);
+
+        if (p) {
+          selecionarProduto(p);
+          await _persistir(p, 1, 'somar');
+          showToast(`📱 ${p.nome_produto} → +1`, 'success');
+        } else {
+          statusEl.textContent = `⚠️ Produto não encontrado: ${code}`;
+          showToast(`Código não encontrado: ${code}`, 'warning');
+        }
+      } catch (err) {
+        // Erro pontual de detecção, ignora
+      }
+    }, 300);
+
+  } catch (err) {
+    statusEl.textContent = '❌ Sem permissão para câmera. Verifique as permissões do navegador.';
+    console.error('[camera]', err);
+  }
+}
+
+function pararCamera() {
+  if (_cameraLoop)   { clearInterval(_cameraLoop); _cameraLoop = null; }
+  if (_cameraStream) { _cameraStream.getTracks().forEach(t => t.stop()); _cameraStream = null; }
+  const video = document.getElementById('scannerVideo');
+  if (video) video.srcObject = null;
+}
+
+// Para a câmera ao sair da página
+window.addEventListener('beforeunload', pararCamera);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && modo === 'camera') pararCamera();
+});
+
+// ─────────────────────────────────────────────────────────────
+//  REALTIME — múltiplos auditores simultâneos
+// ─────────────────────────────────────────────────────────────
+let _realtimeChannel = null;
+const _auditoresAtivos = new Map(); // { userId: { nome, ts } }
+
+function iniciarRealtime() {
+  _realtimeChannel = supabase
+    .channel(`auditoria:${auditoriaId}`)
+
+    // Presence — rastreia quem está online
+    .on('presence', { event: 'sync' }, () => {
+      const state = _realtimeChannel.presenceState();
+      _auditoresAtivos.clear();
+      Object.values(state).forEach(presences => {
+        presences.forEach(p => {
+          if (p.user_id !== perfil.id) {
+            _auditoresAtivos.set(p.user_id, { nome: p.nome });
+          }
+        });
+      });
+      _atualizarIndicadorAuditores();
+    })
+
+    // Broadcast — recebe contagens de outros auditores em tempo real
+    .on('broadcast', { event: 'nova_contagem' }, ({ payload }) => {
+      if (payload.usuario_id === perfil.id) return; // ignora o próprio
+
+      // Atualiza a lista de sessão com a contagem recebida
+      const entry = {
+        codigo:  payload.codigo_produto,
+        nome:    payload.nome_produto,
+        unidade: payload.unidade_medida ?? '',
+        qtd:     payload.quantidade_contada,
+        ts:      new Date(payload.ts),
+        offline: false,
+        deOutro: payload.usuario_nome,
+      };
+      const idx = _sessList.findIndex(i => i.codigo === entry.codigo);
+      if (idx >= 0) _sessList.splice(idx, 1);
+      _sessList.unshift(entry);
+      renderCountList();
+      renderDetailTable();
+      atualizarProgresso();
+
+      showToast(`📡 ${payload.usuario_nome}: ${payload.nome_produto} → ${fmtNum(payload.quantidade_contada)}`, 'info');
+    })
+
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await _realtimeChannel.track({
+          user_id: perfil.id,
+          nome:    perfil.nome,
+          online_at: new Date().toISOString(),
+        });
+      }
+    });
+}
+
+function _atualizarIndicadorAuditores() {
+  const count = _auditoresAtivos.size;
+  const el    = document.getElementById('auditoresOnline');
+  const label = document.getElementById('auditoresLabel');
+  if (!el || !label) return;
+
+  if (count > 0) {
+    el.style.display = 'flex';
+    const nomes = [..._auditoresAtivos.values()].map(a => a.nome).join(', ');
+    label.textContent = count === 1
+      ? `+1 auditor: ${nomes}`
+      : `+${count} auditores: ${nomes}`;
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+// Broadcast quando salva uma contagem (para outros auditores verem)
+async function _broadcastContagem(produto, qtd) {
+  if (!_realtimeChannel) return;
+  await _realtimeChannel.send({
+    type:    'broadcast',
+    event:   'nova_contagem',
+    payload: {
+      usuario_id:       perfil.id,
+      usuario_nome:     perfil.nome,
+      codigo_produto:   produto.codigo_produto,
+      nome_produto:     produto.nome_produto,
+      unidade_medida:   produto.unidade_medida,
+      quantidade_contada: qtd,
+      ts:               new Date().toISOString(),
+    },
+  });
+}
+
+// Inicia o realtime
+iniciarRealtime();
+
+// Para o canal ao sair
+window.addEventListener('beforeunload', () => {
+  _realtimeChannel?.unsubscribe();
+});
+
+// ─────────────────────────────────────────────────────────────
+//  BUSCA DE PRODUTO (debounced)
+// ─────────────────────────────────────────────────────────────
+const buscarDebounced = debounce(async (termo) => {
+  if (!termo.trim() || termo.length < 2) {
+    ocultarSugestoes();
+    return;
+  }
+  try {
+    const produtos = await buscarProdutoUnificado(empresaId, termo);
+    if (produtos.length === 1) {
+      selecionarProduto(produtos[0]);
+      ocultarSugestoes();
+    } else if (produtos.length > 1) {
+      renderSugestoes(produtos);
+    } else {
+      ocultarSugestoes();
+      ocultarPreview();
+    }
+  } catch (err) {
+    console.error('[busca]', err);
+  }
+}, 250);
+
+window.onCodigoInput = function(val) {
+  produtoAtivo = null;
+  ocultarPreview();
+  buscarDebounced(val);
+};
+
+window.onCodigoKey = async function(e) {
+  if (e.key === 'Enter') {
+    // Se tem sugestões visíveis, seleciona a primeira
+    const primeiroItem = document.querySelector('.sug-item');
+    if (primeiroItem) { primeiroItem.click(); return; }
+
+    // Se há produto selecionado, vai para quantidade
+    if (produtoAtivo) {
+      if (modo === 'scanner') {
+        await salvarItem();
+      } else {
+        document.getElementById('qtdInput').focus();
+      }
+      return;
+    }
+
+    // Tenta busca exata pelo código digitado
+    const termo = document.getElementById('codigoInput').value.trim();
+    if (termo) {
+      const p = await buscarProdutoPorCodigo(empresaId, termo)
+             ?? await buscarProdutoPorBarras(empresaId, termo);
+      if (p) {
+        selecionarProduto(p);
+        if (modo === 'scanner') await salvarItem();
+        else document.getElementById('qtdInput').focus();
+      } else {
+        showToast('Produto não encontrado: ' + termo, 'warning');
+      }
+    }
+  }
+  if (e.key === 'Escape') {
+    ocultarSugestoes();
+    document.getElementById('codigoInput').value = '';
+    ocultarPreview();
+    produtoAtivo = null;
+  }
+};
+
+window.onQtdKey = function(e) {
+  if (e.key === 'Enter') salvarItem();
+};
+
+// ─────────────────────────────────────────────────────────────
+//  SUGESTÕES
+// ─────────────────────────────────────────────────────────────
+function renderSugestoes(produtos) {
+  const el = document.getElementById('sugestoes');
+  el.style.display = 'block';
+  el.innerHTML = produtos.map(p => `
+    <div class="sug-item"
+         style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border)"
+         onmouseover="this.style.background='var(--bg2)'"
+         onmouseout="this.style.background=''"
+         onclick="window._selecionarProdutoById('${p.id}', ${JSON.stringify(p).replace(/'/g,"&#39;")})">
+      <span class="mono" style="color:var(--text3);font-size:11px">${escapeHtml(p.codigo_produto)}</span>
+      &nbsp;${escapeHtml(p.nome_produto)}
+      <span style="color:var(--text3);font-size:11px;float:right">${escapeHtml(p.unidade_medida ?? '')}</span>
+    </div>`).join('');
+}
+
+window._selecionarProdutoById = function(id, p) {
+  selecionarProduto(p);
+  ocultarSugestoes();
+};
+
+function ocultarSugestoes() {
+  document.getElementById('sugestoes').style.display = 'none';
+  document.getElementById('sugestoes').innerHTML = '';
+}
+
+// ─────────────────────────────────────────────────────────────
+//  PREVIEW DO PRODUTO
+// ─────────────────────────────────────────────────────────────
+async function selecionarProduto(p) {
+  produtoAtivo = p;
+  document.getElementById('previewCod') .textContent = p.codigo_produto;
+  document.getElementById('previewNome').textContent = p.nome_produto;
+  document.getElementById('previewUnit').textContent = p.unidade_medida ?? '';
+
+  // Mostra estoque do sistema (se não for cega) ou aviso
+  if (!auditoria.auditoria_cega) {
+    // Busca item já contado para mostrar quantidade atual
+    const itemExistente = await buscarItemContado(auditoriaId, p.id);
+    document.getElementById('previewStock').textContent = itemExistente
+      ? `⚠️ Já contado: ${itemExistente.quantidade_contada} ${p.unidade_medida ?? ''}`
+      : 'Novo registro';
+  } else {
+    const itemExistente = sessMapa[p.id];
+    document.getElementById('previewStock').textContent = itemExistente
+      ? `⚠️ Já contado nesta sessão: ${itemExistente.quantidade_contada} ${p.unidade_medida ?? ''}`
+      : '🙈 Auditoria cega — estoque do sistema oculto';
+  }
+
+  document.getElementById('productPreview').classList.add('visible');
+}
+
+function ocultarPreview() {
+  document.getElementById('productPreview').classList.remove('visible');
+  produtoAtivo = null;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SALVAR ITEM
+// ─────────────────────────────────────────────────────────────
+window.salvarItem = async function() {
+  if (!produtoAtivo) {
+    showToast('Selecione um produto primeiro.', 'warning');
+    document.getElementById('codigoInput').focus();
+    return;
+  }
+
+  const qtdEl = document.getElementById('qtdInput');
+  const qtd   = modo === 'scanner' ? 1 : parseFloat(qtdEl.value);
+
+  if (modo !== 'scanner' && (isNaN(qtd) || qtd < 0)) {
+    showToast('Informe uma quantidade válida.', 'warning');
+    qtdEl.focus();
+    return;
+  }
+
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+
+  try {
+    // Verifica conflito (produto já contado)
+    const existente = await buscarItemContado(auditoriaId, produtoAtivo.id);
+
+    if (existente && modo !== 'scanner') {
+      // Pergunta o que fazer
+      pendingConflito = { produto: produtoAtivo, qtd, existente };
+      document.getElementById('conflictMsg').innerHTML =
+        `<strong>${escapeHtml(produtoAtivo.nome_produto)}</strong> já foi registrado com
+         <strong>${fmtNum(existente.quantidade_contada)} ${escapeHtml(produtoAtivo.unidade_medida ?? '')}</strong>.
+         O que deseja fazer?`;
+      document.getElementById('conflictModal').classList.add('active');
+      btn.disabled = false;
+      return;
+    }
+
+    // Salva
+    await _persistir(produtoAtivo, qtd, modo === 'scanner' ? 'somar' : 'novo');
+
+  } catch (err) {
+    showToast('Erro ao salvar: ' + err.message, 'error');
+    btn.disabled = false;
+  }
+};
+
+window.resolverConflito = async function(acao) {
+  document.getElementById('conflictModal').classList.remove('active');
+  if (!pendingConflito) return;
+  const { produto, qtd } = pendingConflito;
+  pendingConflito = null;
+  await _persistir(produto, qtd, acao);
+};
+
+async function _persistir(produto, qtd, acao) {
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+
+  try {
+    let item;
+
+    if (isOnline()) {
+      item = await registrarContagem({
+        auditoriaId,
+        produtoId:   produto.id,
+        quantidade:  qtd,
+        usuarioId:   getPerfil().id,
+        acao,
+      });
+    } else {
+      // Offline: salva no IndexedDB
+      await registrarOffline({
+        auditoriaId,
+        produtoId:   produto.id,
+        quantidade:  qtd,
+        usuarioId:   getPerfil().id,
+        acao,
+      });
+      item = { produtos: produto, quantidade_contada: qtd, data_registro: new Date().toISOString(), _offline: true };
+      showToast('Salvo offline — será sincronizado quando voltar.', 'warning');
+    }
+
+    // Atualiza cache da sessão
+    sessMapa[produto.id] = item;
+
+    // Broadcast para outros auditores (realtime)
+    if (isOnline()) await _broadcastContagem(produto, item.quantidade_contada);
+
+    // Feedback visual
+    btn.textContent = '✓ Salvo!';
+    btn.classList.add('saved');
+    setTimeout(() => {
+      btn.textContent = modo === 'scanner'
+        ? '📷 Escaneando — cada leitura soma +1'
+        : '↵ Salvar contagem (Enter)';
+      btn.classList.remove('saved');
+    }, 1000);
+
+    if (isOnline()) showToast(`${produto.nome_produto} → ${fmtNum(qtd)} ${produto.unidade_medida ?? ''}`, 'success');
+
+    // Reset campos
+    document.getElementById('codigoInput').value = '';
+    document.getElementById('qtdInput').value    = '';
+    ocultarPreview();
+    ocultarSugestoes();
+    document.getElementById('codigoInput').focus();
+
+    // Atualiza listas
+    adicionarAoHistoricoUI(produto, item);
+    await atualizarProgresso();
+
+  } catch (err) {
+    showToast('Erro: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  UI: lista de itens contados (sessão)
+// ─────────────────────────────────────────────────────────────
+const _sessList = [];   // ordem cronológica reversa para exibição
+
+function adicionarAoHistoricoUI(produto, item) {
+  const entry = {
+    codigo:    produto.codigo_produto,
+    nome:      produto.nome_produto,
+    unidade:   produto.unidade_medida ?? '',
+    qtd:       item.quantidade_contada,
+    ts:        new Date(),
+    offline:   item._offline ?? false,
+  };
+
+  // Atualiza se já existe na lista
+  const idx = _sessList.findIndex(i => i.codigo === entry.codigo);
+  if (idx >= 0) _sessList.splice(idx, 1);
+  _sessList.unshift(entry);
+
+  renderCountList();
+  renderDetailTable();
+}
+
+function renderCountList() {
+  const el = document.getElementById('countList');
+  if (!_sessList.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📦</div>
+      <div class="empty-state-text">Nenhum item contado ainda.</div></div>`;
+    return;
+  }
+  el.innerHTML = _sessList.map((item, i) => `
+    <div class="count-item ${i === 0 ? 'new-item' : ''}">
+      <div class="count-item-info">
+        <div class="count-item-code">
+          ${escapeHtml(item.codigo)} ${item.offline ? '⏳' : ''}
+          ${item.deOutro ? `<span style="font-size:10px;color:var(--primary);margin-left:4px">📡 ${escapeHtml(item.deOutro)}</span>` : ''}
+        </div>
+        <div class="count-item-name">${escapeHtml(item.nome)}</div>
+      </div>
+      <div class="count-item-qty">
+        ${fmtNum(item.qtd)} <span class="count-item-unit">${escapeHtml(item.unidade)}</span>
+      </div>
+    </div>`).join('');
+
+  setTimeout(() => el.querySelector('.new-item')?.classList.remove('new-item'), 400);
+}
+
+let _filtroLista = '';
+window.filtrarLista = function(q) {
+  _filtroLista = q.toLowerCase();
+  renderDetailTable();
+};
+
+function renderDetailTable() {
+  const tbody = document.getElementById('detailTable');
+  const lista = _filtroLista
+    ? _sessList.filter(i =>
+        i.codigo.toLowerCase().includes(_filtroLista) ||
+        i.nome.toLowerCase().includes(_filtroLista))
+    : _sessList;
+
+  if (!lista.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:20px">
+      ${_filtroLista ? 'Nenhum resultado.' : 'Aguardando contagens...'}
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = lista.map(item => `
+    <tr>
+      <td class="mono">${escapeHtml(item.codigo)}</td>
+      <td>${escapeHtml(item.nome)}</td>
+      <td>${escapeHtml(item.unidade)}</td>
+      <td class="mono" style="color:var(--primary);font-weight:700">${fmtNum(item.qtd)}</td>
+      <td style="font-size:11px;color:var(--text3)">
+        ${item.ts.toLocaleTimeString('pt-BR')} ${item.offline ? '⏳' : ''}
+      </td>
+    </tr>`).join('');
+}
+
+// ─────────────────────────────────────────────────────────────
+//  PROGRESSO
+// ─────────────────────────────────────────────────────────────
+async function atualizarProgresso() {
+  try {
+    const { contados, totalProdutos, pct } = await progresso(auditoriaId);
+
+    document.getElementById('totalContados') .textContent = contados.toLocaleString('pt-BR');
+    document.getElementById('totalProdutos') .textContent = totalProdutos.toLocaleString('pt-BR');
+    document.getElementById('statsContados') .textContent = contados.toLocaleString('pt-BR');
+    document.getElementById('statsPendentes').textContent = (totalProdutos - contados).toLocaleString('pt-BR');
+    document.getElementById('pctProgresso')  .textContent = pct + '%';
+    document.getElementById('progressBar')  .style.width  = pct + '%';
+    document.getElementById('progressLabel').textContent  =
+      `${contados.toLocaleString('pt-BR')} de ${totalProdutos.toLocaleString('pt-BR')} produtos`;
+  } catch (err) {
+    console.error('[progresso]', err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  FINALIZAR
+// ─────────────────────────────────────────────────────────────
+window.confirmarFinalizar = async function() {
+  const ok = await fmConfirm({
+    titulo: `Finalizar auditoria ${auditoria.numero_auditoria}?`,
+    msg: 'No próximo passo você informará o saldo do sistema para gerar o relatório de divergências.',
+    confirmTxt: 'Finalizar',
+    tipo: 'aviso',
+  });
+  if (!ok) return;
+  window.location.href = `estoque-sistema.html?id=${auditoriaId}`;
+};
+
+window.pausar = function() {
+  showToast('Auditoria pausada. Você pode continuar acessando a lista de auditorias.', 'warning');
+  setTimeout(() => window.location.href = 'auditorias.html', 1500);
+};
+
+})(); // fim async IIFE
+</script>
+</body>
+</html>

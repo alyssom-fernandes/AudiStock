@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Relatório — AudiStock</title>
+<link rel="stylesheet" href="css/style.css"/>
+</head>
+<body>
+
+<div class="app-shell" id="appShell">
+  <div id="pageBody"></div>
+</div>
+
+<!-- jsPDF para exportação PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+<script type="module">
+import { requireAuth } from './js/auth.js';
+import {
+  initLayout, showToast, showLoading, hideLoading,
+  escapeHtml, fmtNum, fmtDateTime, badgeStatus
+} from './js/ui.js';
+import {
+  gerarRelatorio,
+  produtosNaoAuditados,
+  resumoAuditoria,
+  exportarCSV,
+  triggerDownloadCSV,
+} from './js/relatorios.js';
+import { buscarAuditoria } from './js/auditorias.js';
+
+(async () => {
+
+// ── Auth ──
+const auth = await requireAuth();
+if (!auth) throw new Error('não autenticado');
+
+const params      = new URLSearchParams(location.search);
+const auditoriaId = params.get('id');
+if (!auditoriaId) {
+  window.location.href = 'app.html?tela=auditorias';
+  throw new Error('sem id');
+}
+
+initLayout('Relatório de Divergências');
+
+// ── Estado ──
+let filtroAtivo  = 'todos';
+let ordemAtiva   = 'diferenca';
+let direcaoAtiva = 'asc';    // menor diferença (mais negativa) primeiro
+let auditoria    = null;
+let resumo       = null;
+let todosItens   = [];
+
+const pageBody = document.getElementById('pageBody');
+
+// ── Carrega dados iniciais ──
+showLoading();
+try {
+  auditoria = await buscarAuditoria(auditoriaId);
+  if (!auditoria) throw new Error('Auditoria não encontrada.');
+} catch (err) {
+  showToast(err.message, 'error');
+  hideLoading();
+  return;
+}
+
+// ── Renderiza shell da página ──
+pageBody.innerHTML = `
+  <!-- Header -->
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+    <div>
+      <div style="font-size:12px;color:var(--text3)">Relatório de divergências</div>
+      <div style="font-weight:800;font-size:18px">
+        ${escapeHtml(auditoria.numero_auditoria)} — ${escapeHtml(auditoria.empresas?.nome ?? '')}
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px" id="subHeader"></div>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+      ${auditoria.status === 'em_andamento'
+        ? `<a href="contagem.html?id=${auditoriaId}" class="btn btn-primary btn-sm">🔢 Continuar contagem</a>`
+        : ''
+      }
+      <a href="app.html?tela=historico&id=${auditoriaId}" class="btn btn-ghost btn-sm">Histórico</a>
+      <button class="btn btn-ghost btn-sm" onclick="window._exportarCSV()">📊 CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="window._exportarPDF()">📄 PDF</button>
+    </div>
+  </div>
+
+  <!-- Cards resumo -->
+  <div class="relatorio-resumo" id="resumoCards">
+    ${Array(5).fill('<div class="rel-card" style="opacity:.3"><div style="height:28px;background:var(--bg3);border-radius:4px"></div></div>').join('')}
+  </div>
+
+  <!-- Tabs: Divergências / Não auditados -->
+  <div style="display:flex;gap:4px;margin-bottom:16px;background:var(--bg3);padding:4px;border-radius:8px;width:fit-content">
+    <div class="mode-tab active" id="tabDiverg"  onclick="setTab('divergencias')">📊 Divergências</div>
+    <div class="mode-tab"        id="tabNaoAud"  onclick="setTab('nao_auditados')">⚪ Não auditados</div>
+  </div>
+
+  <!-- Filtros -->
+  <div class="filters-bar" id="filtersBar">
+    <button class="filter-btn active-all" data-filtro="todos"         onclick="setFiltro('todos',this)">Todos</button>
+    <button class="filter-btn"           data-filtro="divergencias"   onclick="setFiltro('divergencias',this)">Divergências</button>
+    <button class="filter-btn"           data-filtro="sobras"         onclick="setFiltro('sobras',this)">🟢 Sobras</button>
+    <button class="filter-btn"           data-filtro="faltas"         onclick="setFiltro('faltas',this)">🔴 Faltas</button>
+
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <span style="font-size:12px;color:var(--text3)">Ordenar:</span>
+      <select style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);
+                     border-radius:6px;padding:5px 10px;font-size:12px;font-family:inherit"
+              onchange="setOrdem(this.value)">
+        <option value="diferenca">Maior divergência</option>
+        <option value="codigo">Código</option>
+        <option value="nome">Nome do produto</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Tabela divergências -->
+  <div class="card" id="cardDiverg">
+    <table>
+      <thead>
+        <tr>
+          <th>Código</th><th>Produto</th><th>UN</th>
+          <th>Estoque sistema</th><th>Qtd contada</th>
+          <th>Diferença</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="relTable">
+        <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">
+          <div class="spinner" style="margin:auto"></div>
+        </td></tr>
+      </tbody>
+    </table>
+    <div id="paginacao" style="padding:12px 16px;border-top:1px solid var(--border);display:none;
+                                align-items:center;justify-content:space-between;font-size:12px;color:var(--text2)">
+    </div>
+  </div>
+
+  <!-- Tabela não auditados (oculta por padrão) -->
+  <div class="card" id="cardNaoAud" style="display:none">
+    <div class="card-header">
+      <span class="card-title">Produtos não auditados</span>
+      <span class="badge badge-yellow" id="badgeNaoAud"></span>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Código</th><th>Produto</th><th>UN</th></tr>
+      </thead>
+      <tbody id="naoAudTable">
+        <tr><td colspan="3" style="text-align:center;padding:30px;color:var(--text3)">
+          <div class="spinner" style="margin:auto"></div>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+`;
+
+// ── Atualiza sub-header ──
+document.getElementById('subHeader').textContent =
+  `${fmtDateTime(auditoria.data_inicio)} → ${fmtDateTime(auditoria.data_fim) || 'em andamento'} · ${badgeStatus(auditoria.status).replace(/<[^>]*>/g,'')}`;
+
+// ── Carrega dados ──
+await Promise.all([carregarResumo(), carregarRelatorio()]);
+hideLoading();
+
+// ─────────────────────────────────────────────────────────────
+async function carregarResumo() {
+  try {
+    resumo = await resumoAuditoria(auditoriaId);
+    document.getElementById('resumoCards').innerHTML = `
+      <div class="rel-card">
+        <div class="rel-card-val">${resumo.total_produtos.toLocaleString('pt-BR')}</div>
+        <div class="rel-card-lbl">Total produtos</div>
+      </div>
+      <div class="rel-card">
+        <div class="rel-card-val" style="color:var(--primary)">${resumo.auditados.toLocaleString('pt-BR')}</div>
+        <div class="rel-card-lbl">Auditados</div>
+      </div>
+      <div class="rel-card">
+        <div class="rel-card-val" style="color:var(--yellow)">${resumo.nao_auditados.toLocaleString('pt-BR')}</div>
+        <div class="rel-card-lbl">Não auditados</div>
+      </div>
+      <div class="rel-card">
+        <div class="rel-card-val" style="color:var(--green)">${resumo.sobras.toLocaleString('pt-BR')}</div>
+        <div class="rel-card-lbl">Sobras</div>
+      </div>
+      <div class="rel-card">
+        <div class="rel-card-val" style="color:var(--red)">${resumo.faltas.toLocaleString('pt-BR')}</div>
+        <div class="rel-card-lbl">Faltas</div>
+      </div>`;
+
+    // Atualiza labels dos filtros
+    document.querySelector('[data-filtro="todos"]').textContent         = `Todos (${resumo.auditados})`;
+    document.querySelector('[data-filtro="divergencias"]').textContent  = `Divergências (${resumo.divergencias})`;
+    document.querySelector('[data-filtro="sobras"]').textContent        = `🟢 Sobras (${resumo.sobras})`;
+    document.querySelector('[data-filtro="faltas"]').textContent        = `🔴 Faltas (${resumo.faltas})`;
+    document.getElementById('badgeNaoAud').textContent                  = resumo.nao_auditados + ' produtos';
+  } catch (err) {
+    showToast('Erro ao carregar resumo: ' + err.message, 'error');
+  }
+}
+
+async function carregarRelatorio() {
+  const tbody = document.getElementById('relTable');
+  try {
+    const { itens, count } = await gerarRelatorio(auditoriaId, {
+      filtro:  filtroAtivo,
+      ordem:   ordemAtiva,
+      direcao: direcaoAtiva,
+      limit:   500,
+    });
+    todosItens = itens;
+    renderTabelaDivergencias(itens, count);
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--red);padding:20px">${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+async function carregarNaoAuditados() {
+  const tbody = document.getElementById('naoAudTable');
+  try {
+    const { data, count } = await produtosNaoAuditados(auditoriaId, { limit: 500 });
+    if (!data.length) {
+      tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--green);padding:20px">✓ Todos os produtos foram auditados!</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = data.map(p => `
+      <tr>
+        <td class="mono">${escapeHtml(p.codigo_produto)}</td>
+        <td>${escapeHtml(p.nome_produto)}</td>
+        <td>${escapeHtml(p.unidade_medida ?? '—')}</td>
+      </tr>`).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="3" style="color:var(--red);padding:20px">${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+function renderTabelaDivergencias(itens, count) {
+  const tbody = document.getElementById('relTable');
+  if (!itens.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:40px">
+      Nenhum item encontrado para este filtro.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = itens.map(r => {
+    const diff     = Number(r.diferenca ?? 0);
+    const diffCls  = diff > 0 ? 'diff-positive' : diff < 0 ? 'diff-negative' : 'diff-zero';
+    const diffStr  = diff > 0 ? `+${fmtNum(diff)}` : fmtNum(diff);
+    const badge    = diff > 0
+      ? '<span class="badge badge-green">Sobra</span>'
+      : diff < 0
+      ? '<span class="badge badge-red">Falta</span>'
+      : '<span class="badge badge-gray">OK</span>';
+
+    return `<tr>
+      <td class="mono">${escapeHtml(r.codigo_produto)}</td>
+      <td>${escapeHtml(r.nome_produto)}</td>
+      <td>${escapeHtml(r.unidade_medida ?? '—')}</td>
+      <td class="mono">${r.estoque_sistema != null ? fmtNum(r.estoque_sistema) : '—'}</td>
+      <td class="mono">${fmtNum(r.quantidade_contada)}</td>
+      <td class="mono ${diffCls}">${diffStr}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CONTROLES
+// ─────────────────────────────────────────────────────────────
+let _tabAtiva = 'divergencias';
+
+window.setTab = async function(tab) {
+  _tabAtiva = tab;
+  document.getElementById('tabDiverg') .classList.toggle('active', tab === 'divergencias');
+  document.getElementById('tabNaoAud') .classList.toggle('active', tab === 'nao_auditados');
+  document.getElementById('cardDiverg').style.display = tab === 'divergencias' ? '' : 'none';
+  document.getElementById('cardNaoAud').style.display = tab === 'nao_auditados' ? '' : 'none';
+  document.getElementById('filtersBar').style.display = tab === 'divergencias' ? '' : 'none';
+
+  if (tab === 'nao_auditados') {
+    await carregarNaoAuditados();
+  }
+};
+
+window.setFiltro = async function(filtro, btn) {
+  filtroAtivo = filtro;
+  document.querySelectorAll('[data-filtro]').forEach(b => {
+    b.className = 'filter-btn';
+  });
+  const cls = filtro === 'sobras' ? 'active-sobra'
+            : filtro === 'faltas' ? 'active-falta'
+            : 'active-all';
+  btn.classList.add(cls);
+  await carregarRelatorio();
+};
+
+window.setOrdem = async function(valor) {
+  ordemAtiva = valor;
+  await carregarRelatorio();
+};
+
+window._exportarPDF = async function() {
+  try {
+    showLoading();
+    const { itens } = await gerarRelatorio(auditoriaId, { filtro: filtroAtivo, limit: 99999 });
+    const res       = resumo ?? await resumoAuditoria(auditoriaId);
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+    // ── Cabeçalho ──
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('AudiStock — Relatório de Divergências', 14, 16);
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Auditoria: ${auditoria.numero_auditoria}`, 14, 24);
+    doc.text(`Empresa: ${auditoria.empresas?.nome ?? '—'}`, 14, 30);
+    doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 36);
+    doc.text(`Filtro: ${filtroAtivo}`, 14, 42);
+
+    // ── Cards resumo ──
+    doc.setFontSize(9);
+    const cards = [
+      ['Total', res.total_produtos],
+      ['Auditados', res.auditados],
+      ['Não auditados', res.nao_auditados],
+      ['Sobras', res.sobras],
+      ['Faltas', res.faltas],
+    ];
+    cards.forEach(([label, val], i) => {
+      const x = 14 + i * 54;
+      doc.setFillColor(33, 38, 45);
+      doc.roundedRect(x, 47, 50, 14, 2, 2, 'F');
+      doc.setTextColor(139, 148, 158);
+      doc.text(label, x + 4, 53);
+      doc.setTextColor(230, 237, 243);
+      doc.setFont('helvetica', 'bold');
+      doc.text(String(val), x + 4, 58);
+      doc.setFont('helvetica', 'normal');
+    });
+    doc.setTextColor(0, 0, 0);
+
+    // ── Tabela ──
+    const rows = itens.map(r => {
+      const diff    = Number(r.diferenca ?? 0);
+      const diffStr = diff > 0 ? `+${diff}` : String(diff);
+      const status  = diff > 0 ? 'Sobra' : diff < 0 ? 'Falta' : 'OK';
+      return [
+        r.codigo_produto,
+        r.nome_produto,
+        r.unidade_medida ?? '—',
+        r.estoque_sistema != null ? String(r.estoque_sistema) : '—',
+        String(r.quantidade_contada),
+        diffStr,
+        status,
+      ];
+    });
+
+    doc.autoTable({
+      startY: 66,
+      head: [['Código', 'Produto', 'UN', 'Sistema', 'Contado', 'Diferença', 'Status']],
+      body: rows,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [26, 107, 255], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      didParseCell: (data) => {
+        if (data.column.index === 5 && data.section === 'body') {
+          const val = parseFloat(data.cell.raw);
+          if (val > 0) data.cell.styles.textColor = [63, 185, 80];
+          if (val < 0) data.cell.styles.textColor = [248, 81, 73];
+        }
+      },
+    });
+
+    doc.save(`${auditoria.numero_auditoria}_divergencias.pdf`);
+    showToast('PDF gerado!', 'success');
+  } catch (err) {
+    showToast('Erro ao gerar PDF: ' + err.message, 'error');
+  } finally {
+    hideLoading();
+  }
+};
+
+window._exportarCSV = async function() {
+  try {
+    showLoading();
+    const csv = await exportarCSV(auditoriaId, filtroAtivo);
+    triggerDownloadCSV(csv, `${auditoria.numero_auditoria}_divergencias.csv`);
+    showToast('CSV gerado com sucesso!', 'success');
+  } catch (err) {
+    showToast('Erro ao exportar: ' + err.message, 'error');
+  } finally {
+    hideLoading();
+  }
+};
+
+})(); // fim async IIFE
+</script>
+</body>
+</html>

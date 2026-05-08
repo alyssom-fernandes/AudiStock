@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AudiStock — Login</title>
+<link rel="stylesheet" href="css/style.css"/>
+<style>
+body {
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+    background: var(--bg);
+}
+
+.login-wrap {
+    width: 100%;
+    max-width: 420px;
+    padding: 20px;
+    animation: fade-in .35s ease;
+}
+
+.login-box {
+    background: var(--surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-xl);
+    padding: 40px 36px 36px;
+    box-shadow: var(--shadow-md);
+}
+
+/* Cabeçalho com ícone + nome */
+.login-brand {
+    text-align: center;
+    margin-bottom: 32px;
+}
+.login-brand-icon {
+    width: 56px; height: 56px;
+    background: var(--primary);
+    border-radius: var(--radius-md);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 18px;
+    box-shadow: 0 6px 20px var(--primary-glow);
+}
+.login-brand-icon svg {
+    width: 26px; height: 26px;
+    stroke: #fff; fill: none;
+}
+.login-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.6rem; font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--text);
+}
+.login-title span { color: var(--primary); }
+.login-sub {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-top: 5px;
+}
+
+/* Campos */
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+/* Botão principal */
+.login-btn {
+    width: 100%; padding: 13px;
+    background: var(--primary);
+    color: white; border: none;
+    border-radius: var(--radius);
+    font-family: 'DM Sans', inherit;
+    font-weight: 700; font-size: 0.95rem;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 2px 10px var(--primary-glow);
+    letter-spacing: 0.01em;
+}
+.login-btn:hover:not(:disabled) {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 18px var(--primary-glow);
+}
+.login-btn:active { transform: translateY(0); }
+.login-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+/* Mensagem de erro */
+.login-error {
+    background: var(--danger-light);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-size: 0.82rem; color: var(--danger);
+    margin-bottom: 16px;
+    display: none;
+    line-height: 1.5;
+}
+.login-error.visible { display: block; }
+
+/* Rodapé */
+.login-footer {
+    text-align: center;
+    font-size: 0.72rem;
+    color: var(--text-light);
+    margin-top: 22px;
+    letter-spacing: 0.03em;
+}
+</style>
+</head>
+<body>
+
+<div class="login-wrap">
+    <div class="login-box">
+        <div class="login-brand">
+            <div class="login-brand-icon">
+                <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                    <polyline points="3.27,6.96 12,12.01 20.73,6.96"/>
+                    <line x1="12" y1="22.08" x2="12" y2="12"/>
+                </svg>
+            </div>
+            <div class="login-title">Audi<span>Stock</span></div>
+            <div class="login-sub">Auditoria de Estoque Empresarial</div>
+        </div>
+
+        <div class="login-error" id="loginError"></div>
+
+        <div class="login-form">
+            <div class="form-group" style="margin-bottom:0">
+                <label class="form-label">E-mail</label>
+                <input class="form-input" type="email" id="email"
+                       placeholder="seu@email.com" autocomplete="email"/>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+                <label class="form-label">Senha</label>
+                <input class="form-input" type="password" id="senha"
+                       placeholder="••••••••" autocomplete="current-password"/>
+            </div>
+        </div>
+
+        <button class="login-btn" id="loginBtn" onclick="fazerLogin()">
+            Entrar no sistema
+        </button>
+    </div>
+
+    <div class="login-footer">AudiStock v1.0 &nbsp;·&nbsp; Supabase Edition</div>
+</div>
+
+<script type="module">
+import { login } from './js/auth.js';
+import { initTheme } from './js/ui.js';
+
+initTheme();
+
+// Verifica erro de conta inativa vindo de redirect
+const params = new URLSearchParams(location.search);
+if (params.get('erro') === 'inativo') {
+    mostrarErro('Sua conta está desativada. Contate o administrador.');
+}
+
+// Login ao pressionar Enter
+document.getElementById('senha').addEventListener('keydown', e => {
+    if (e.key === 'Enter') fazerLogin();
+});
+
+window.fazerLogin = async function() {
+    const email = document.getElementById('email').value.trim();
+    const senha = document.getElementById('senha').value;
+    const btn   = document.getElementById('loginBtn');
+
+    if (!email || !senha) {
+        mostrarErro('Preencha e-mail e senha.');
+        return;
+    }
+
+    btn.disabled    = true;
+    btn.textContent = 'Entrando...';
+    esconderErro();
+
+    try {
+        await login(email, senha);
+        window.location.href = 'app.html';
+    } catch (err) {
+        mostrarErro(err.message);
+        btn.disabled    = false;
+        btn.textContent = 'Entrar no sistema';
+    }
+};
+
+function mostrarErro(msg) {
+    const el = document.getElementById('loginError');
+    el.textContent = msg;
+    el.classList.add('visible');
+}
+function esconderErro() {
+    document.getElementById('loginError').classList.remove('visible');
+}
+</script>
+</body>
+</html>

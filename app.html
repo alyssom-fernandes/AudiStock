@@ -8,1381 +8,458 @@
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════════════════════════
-     MODAIS GLOBAIS
-     Ficam no body para não conflitar com o appShell
-════════════════════════════════════════════════════════════ -->
-
-<!-- Modal: Nova / Editar Auditoria -->
+<!-- MODAIS GLOBAIS -->
 <div class="modal-backdrop" id="modalAuditoria">
   <div class="modal">
-    <div class="modal-title" id="modalAudTitulo">Nova Auditoria</div>
-    <div class="modal-body">Selecione a empresa e configure as opções.</div>
-    <div class="form-group">
-      <label class="form-label">Empresa *</label>
-      <select class="form-input" id="audEmpresa"><option value="">Carregando...</option></select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Modo auditoria</label>
-      <select class="form-input" id="audModo">
-        <option value="true">Cega — estoque oculto durante contagem</option>
-        <option value="false">Visível — auditor vê o estoque do sistema</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Observações</label>
-      <input class="form-input" type="text" id="audObs" placeholder="Ex: Auditoria quinzenal de novembro"/>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="fecharModalAud()">Cancelar</button>
-      <button class="btn btn-primary" id="btnCriarAud" onclick="criarAuditoria()">Iniciar auditoria</button>
-    </div>
+    <div class="modal-title">Nova Auditoria</div>
+    <div class="form-group"><label class="form-label">Empresa *</label><select class="form-input" id="audEmpresa"><option value="">Carregando...</option></select></div>
+    <div class="form-group"><label class="form-label">Modo auditoria</label><select class="form-input" id="audModo"><option value="true">Cega — estoque oculto</option><option value="false">Visível — vê estoque</option></select></div>
+    <div class="form-group"><label class="form-label">Observações</label><input class="form-input" type="text" id="audObs" placeholder="Ex: Auditoria quinzenal"/></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="fecharModalAud()">Cancelar</button><button class="btn btn-primary" id="btnCriarAud" onclick="criarAuditoria()">Iniciar</button></div>
   </div>
 </div>
 
-<!-- Modal: Nova / Editar Empresa -->
 <div class="modal-backdrop" id="modalEmpresa">
   <div class="modal" style="width:480px">
     <div class="modal-title" id="modalEmpTitulo">Nova Empresa</div>
     <div style="margin-bottom:20px">
-      <div class="form-group">
-        <label class="form-label">Nome *</label>
-        <input class="form-input" id="empNome" placeholder="Razão social ou nome fantasia"/>
-      </div>
+      <div class="form-group"><label class="form-label">Nome *</label><input class="form-input" id="empNome"/></div>
       <div class="two-col">
-        <div class="form-group">
-          <label class="form-label">CNPJ</label>
-          <input class="form-input" id="empCnpj" placeholder="00.000.000/0000-00"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">UF</label>
-          <input class="form-input" id="empEstado" placeholder="TO" maxlength="2" style="text-transform:uppercase"/>
-        </div>
+        <div class="form-group"><label class="form-label">CNPJ</label><input class="form-input" id="empCnpj"/></div>
+        <div class="form-group"><label class="form-label">UF</label><input class="form-input" id="empEstado" maxlength="2" style="text-transform:uppercase"/></div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Cidade</label>
-        <input class="form-input" id="empCidade" placeholder="Palmas"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Endereço</label>
-        <input class="form-input" id="empEndereco" placeholder="Rua, número, bairro"/>
-      </div>
-      <div class="form-group" style="margin-bottom:0">
-        <label class="form-label">Observações</label>
-        <input class="form-input" id="empObs" placeholder="Opcional"/>
-      </div>
+      <div class="form-group"><label class="form-label">Cidade</label><input class="form-input" id="empCidade"/></div>
+      <div class="form-group"><label class="form-label">Endereço</label><input class="form-input" id="empEndereco"/></div>
+      <div class="form-group" style="margin-bottom:0"><label class="form-label">Observações</label><input class="form-input" id="empObs"/></div>
     </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="fecharModalEmp()">Cancelar</button>
-      <button class="btn btn-primary" id="btnSalvarEmp" onclick="salvarEmpresa()">Salvar empresa</button>
-    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="fecharModalEmp()">Cancelar</button><button class="btn btn-primary" id="btnSalvarEmp" onclick="salvarEmpresa()">Salvar</button></div>
   </div>
 </div>
 
-<!-- Modal: Novo / Editar Produto -->
 <div class="modal-backdrop" id="modalProduto">
   <div class="modal" style="width:480px">
     <div class="modal-title" id="modalProdTitulo">Novo Produto</div>
     <div style="margin-bottom:20px">
-      <div class="form-group">
-        <label class="form-label">Empresa *</label>
-        <select class="form-input" id="prodEmpresa"></select>
-      </div>
+      <div class="form-group"><label class="form-label">Empresa *</label><select class="form-input" id="prodEmpresa"></select></div>
       <div class="two-col">
-        <div class="form-group">
-          <label class="form-label">Código *</label>
-          <input class="form-input" id="prodCodigo" placeholder="00123" style="text-transform:uppercase" autocomplete="off"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Unidade</label>
-          <input class="form-input" id="prodUnidade" placeholder="UN / LT / KG" style="text-transform:uppercase" maxlength="10"/>
-        </div>
+        <div class="form-group"><label class="form-label">Código *</label><input class="form-input" id="prodCodigo" style="text-transform:uppercase"/></div>
+        <div class="form-group"><label class="form-label">Unidade</label><input class="form-input" id="prodUnidade" style="text-transform:uppercase" maxlength="10"/></div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Nome do produto *</label>
-        <input class="form-input" id="prodNome" placeholder="Descrição completa do produto"/>
-      </div>
-      <div class="form-group" style="margin-bottom:0">
-        <label class="form-label">Código de barras</label>
-        <input class="form-input" id="prodBarras" placeholder="EAN / código de barras (opcional)" autocomplete="off"/>
-      </div>
+      <div class="form-group"><label class="form-label">Nome do Produto *</label><input class="form-input" id="prodNome"/></div>
+      <div class="form-group" style="margin-bottom:0"><label class="form-label">Cód. Barras</label><input class="form-input" id="prodBarras"/></div>
     </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="fecharModalProd()">Cancelar</button>
-      <button class="btn btn-primary" id="btnSalvarProd" onclick="salvarProduto()">Salvar produto</button>
-    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="fecharModalProd()">Cancelar</button><button class="btn btn-primary" id="btnSalvarProd" onclick="salvarProduto()">Salvar</button></div>
   </div>
 </div>
 
-<!-- Modal: Importar Excel (Produtos) -->
 <div class="modal-backdrop" id="modalImport">
   <div class="modal" style="width:500px">
-    <div class="modal-title">Importar produtos via Excel</div>
-    <div class="modal-body">
-      O arquivo deve ter as colunas: <strong>codigo, nome, unidade, codigo_barras</strong> (primeira linha = cabeçalho).
-    </div>
-    <div class="form-group">
-      <label class="form-label">Empresa *</label>
-      <select class="form-input" id="importEmpresa"></select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Arquivo Excel (.xlsx)</label>
-      <input type="file" id="importArquivo" accept=".xlsx,.xls" class="form-input"/>
-    </div>
-    <div id="importPreview" style="display:none;margin-bottom:14px">
-      <div style="background:var(--surface-alt);border-radius:8px;padding:12px;font-size:13px" id="importPreviewText"></div>
-    </div>
+    <div class="modal-title">Importar Excel</div>
+    <div class="modal-body">Colunas: <strong>codigo, nome, unidade, codigo_barras</strong>.</div>
+    <div class="form-group"><label class="form-label">Empresa *</label><select class="form-input" id="importEmpresa"></select></div>
+    <div class="form-group"><label class="form-label">Arquivo</label><input type="file" id="importArquivo" accept=".xlsx,.xls" class="form-input"/></div>
+    <div id="importPreview" style="display:none;margin-bottom:14px"><div style="background:var(--surface-alt);border-radius:8px;padding:12px;font-size:13px" id="importPreviewText"></div></div>
     <div id="importResultado" style="display:none;margin-bottom:14px"></div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="fecharModalImport()">Fechar</button>
-      <button class="btn btn-primary" id="btnImportar" onclick="executarImportacao()">Importar</button>
-    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="fecharModalImport()">Fechar</button><button class="btn btn-primary" id="btnImportar" onclick="executarImportacao()">Importar</button></div>
   </div>
 </div>
 
-<!-- Modal: Clonar Produtos -->
 <div class="modal-backdrop" id="modalClonar">
   <div class="modal" style="width:480px">
-    <div class="modal-title">Clonar produtos entre empresas</div>
-    <div class="modal-body">Copia todos os produtos ativos de uma empresa para outra. Produtos com código duplicado são ignorados.</div>
-    <div class="form-group">
-      <label class="form-label">Empresa de origem *</label>
-      <select class="form-input" id="clonarOrigem"></select>
-    </div>
-    <div class="form-group" style="margin-bottom:0">
-      <label class="form-label">Empresa de destino *</label>
-      <select class="form-input" id="clonarDestino"></select>
-    </div>
-    <div class="modal-actions" style="margin-top:20px">
-      <button class="btn btn-ghost" onclick="fecharModalClonar()">Cancelar</button>
-      <button class="btn btn-primary" id="btnClonar" onclick="executarClone()">Clonar produtos</button>
-    </div>
+    <div class="modal-title">Clonar Produtos</div>
+    <div class="form-group"><label class="form-label">Origem *</label><select class="form-input" id="clonarOrigem"></select></div>
+    <div class="form-group" style="margin-bottom:0"><label class="form-label">Destino *</label><select class="form-input" id="clonarDestino"></select></div>
+    <div class="modal-actions" style="margin-top:20px"><button class="btn btn-ghost" onclick="fecharModalClonar()">Cancelar</button><button class="btn btn-primary" id="btnClonar" onclick="executarClone()">Clonar</button></div>
   </div>
 </div>
 
-<!-- Modal: Novo / Editar Usuário -->
 <div class="modal-backdrop" id="modalUsuario">
   <div class="modal" style="width:480px">
     <div class="modal-title" id="modalUsrTitulo">Novo Usuário</div>
     <div style="margin-bottom:20px">
-      <div class="form-group">
-        <label class="form-label">Nome completo *</label>
-        <input class="form-input" id="usrNome" placeholder="Nome do usuário"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">E-mail *</label>
-        <input class="form-input" id="usrEmail" type="email" placeholder="email@empresa.com" autocomplete="off"/>
-        <span style="font-size:11px;color:var(--text-light)" id="usrEmailHint">Será usado para login no sistema.</span>
-      </div>
-      <div class="form-group" id="usrGrupoSenha">
-        <label class="form-label">Senha *</label>
-        <input class="form-input" id="usrSenha" type="password" placeholder="Mínimo 6 caracteres" autocomplete="new-password"/>
-      </div>
+      <div class="form-group"><label class="form-label">Nome *</label><input class="form-input" id="usrNome"/></div>
+      <div class="form-group"><label class="form-label">E-mail *</label><input class="form-input" id="usrEmail" type="email"/></div>
+      <div class="form-group" id="usrGrupoSenha"><label class="form-label">Senha *</label><input class="form-input" id="usrSenha" type="password" placeholder="Mínimo 6 caracteres"/></div>
       <div class="two-col">
-        <div class="form-group">
-          <label class="form-label">Perfil (role) *</label>
-          <select class="form-input" id="usrRole"><option value="">Selecione...</option></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Empresa</label>
-          <select class="form-input" id="usrEmpresa"><option value="">Nenhuma (acesso geral)</option></select>
-        </div>
+        <div class="form-group"><label class="form-label">Perfil *</label><select class="form-input" id="usrRole"></select></div>
+        <div class="form-group"><label class="form-label">Empresa</label><select class="form-input" id="usrEmpresa"><option value="">Acesso geral</option></select></div>
       </div>
     </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="fecharModalUsr()">Cancelar</button>
-      <button class="btn btn-primary" id="btnSalvarUsr" onclick="salvarUsuario()">Criar usuário</button>
-    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="fecharModalUsr()">Cancelar</button><button class="btn btn-primary" id="btnSalvarUsr" onclick="salvarUsuario()">Salvar</button></div>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════
-     APP SHELL
-════════════════════════════════════════════════════════════ -->
+<!-- APP SHELL -->
 <div class="app-shell" id="appShell">
   <div id="pageBody"></div>
 </div>
 
-<!-- SheetJS para leitura de Excel -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <script type="module">
-// ═══════════════════════════════════════════════════════════
-//  IMPORTS
-// ═══════════════════════════════════════════════════════════
 import { requireAuth, getPerfil, hasRole, isSupremo } from './js/auth.js';
-import {
-  initLayout, showToast, showLoading, hideLoading,
-  fmConfirm, fmAlert, escapeHtml, fmtDate, fmtDateTime,
-  fmtNum, badgeStatus, badgeRole, badgeAtivo, debounce,
-} from './js/ui.js';
+import { initLayout, showToast, showLoading, hideLoading, fmConfirm, escapeHtml, fmtDate, fmtDateTime, fmtNum, badgeStatus, badgeRole, badgeAtivo, debounce } from './js/ui.js';
 import supabase from './js/supabaseClient.js';
-import {
-  listarAuditorias, buscarAuditoria,
-  iniciarAuditoria, cancelarAuditoria,
-  auditoriaEmAndamentoPorEmpresa,
-} from './js/auditorias.js';
-import {
-  listarEmpresas, buscarEmpresa, criarEmpresa,
-  atualizarEmpresa, alternarStatusEmpresa, contarProdutosPorEmpresa,
-} from './js/empresas.js';
-import {
-  listarProdutos, buscarProdutoPorId, criarProduto,
-  atualizarProduto, importarProdutosExcel, clonarProdutos,
-} from './js/produtos.js';
+import { listarAuditorias, buscarAuditoria, iniciarAuditoria, cancelarAuditoria, auditoriaEmAndamentoPorEmpresa, excluirAuditoria } from './js/auditorias.js';
+import { listarEmpresas, buscarEmpresa, criarEmpresa, atualizarEmpresa, alternarStatusEmpresa, contarProdutosPorEmpresa } from './js/empresas.js';
+import { listarProdutos, buscarProdutoPorId, criarProduto, atualizarProduto, importarProdutosExcel, clonarProdutos } from './js/produtos.js';
 import { listarItensContados, historicoItem } from './js/contagem.js';
 
-// ═══════════════════════════════════════════════════════════
-//  AUTH + LAYOUT
-// ═══════════════════════════════════════════════════════════
 const auth = await requireAuth();
-if (!auth) throw new Error('não autenticado');
+if (!auth) throw new Error('Não autenticado');
 
 initLayout('Dashboard');
-
-const perfil   = getPerfil();
+const perfil = getPerfil();
 const pageBody = document.getElementById('pageBody');
 
-// ═══════════════════════════════════════════════════════════
-//  ROTEAMENTO — lê ?tela= e ?id= da URL
-// ═══════════════════════════════════════════════════════════
 function _params() { return new URLSearchParams(location.search); }
-
 function irPara(tela, id = null) {
   const url = new URL(location.href);
   url.searchParams.set('tela', tela);
-  if (id) url.searchParams.set('id', id);
-  else    url.searchParams.delete('id');
-  history.pushState({}, '', url);
-  _rotear();
+  if (id) url.searchParams.set('id', id); else url.searchParams.delete('id');
+  history.pushState({}, '', url); _rotear();
 }
 
 async function _rotear() {
   const tela = _params().get('tela') || 'dashboard';
-  const id   = _params().get('id');
+  const id = _params().get('id');
 
-  // Atualiza título do topbar
-  const titulos = {
-    dashboard:  'Dashboard',
-    auditorias: 'Auditorias',
-    historico:  'Histórico de Contagem',
-    empresas:   'Empresas',
-    produtos:   'Produtos',
-    usuarios:   'Usuários',
-    relatorios: 'Relatórios',
-    config:     'Configurações',
-  };
+  const titulos = { dashboard: 'Dashboard', auditorias: 'Auditorias', historico: 'Histórico da Auditoria', empresas: 'Empresas', produtos: 'Produtos', usuarios: 'Usuários', relatorios: 'Relatórios', config: 'Configurações' };
   document.getElementById('topbarTitle').textContent = titulos[tela] ?? tela;
-
-  // Atualiza item ativo na sidebar
-  document.querySelectorAll('.nav-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.page === 'app.html' && el.dataset.tela === tela);
-  });
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.tela === tela));
 
   pageBody.innerHTML = '';
-
   switch (tela) {
-    case 'dashboard':  await renderDashboard();  break;
+    case 'dashboard': await renderDashboard(); break;
     case 'auditorias': await renderAuditorias(); break;
-    case 'historico':  await renderHistorico(id); break;
-    case 'empresas':   await renderEmpresas();   break;
-    case 'produtos':   await renderProdutos();   break;
-    case 'usuarios':   await renderUsuarios();   break;
+    case 'historico': await renderHistorico(id); break;
+    case 'empresas': await renderEmpresas(); break;
+    case 'produtos': await renderProdutos(); break;
+    case 'usuarios': await renderUsuarios(); break;
     case 'relatorios': await renderRelatorios(); break;
-    case 'config':     await renderConfig();     break;
-    default:           await renderDashboard();
+    case 'config': await renderConfig(); break;
+    default: await renderDashboard();
   }
 }
-
 window.addEventListener('popstate', _rotear);
+document.addEventListener('click', e => { const item = e.target.closest('.nav-item[data-tela]'); if (item) { e.preventDefault(); irPara(item.dataset.tela); } });
 
-// Intercepta cliques nos nav-items para usar o router interno
-document.addEventListener('click', e => {
-  const item = e.target.closest('.nav-item[data-tela]');
-  if (item) {
-    e.preventDefault();
-    irPara(item.dataset.tela);
-  }
-});
-
-// ═══════════════════════════════════════════════════════════
-//  DASHBOARD
-// ═══════════════════════════════════════════════════════════
+// DASHBOARD
 async function renderDashboard() {
   pageBody.innerHTML = `
-    <div class="stat-grid" id="statGrid">
-      ${_skelCards(4)}
-    </div>
-
+    <div class="stat-grid" id="statGrid"></div>
     <div class="two-col" style="margin-bottom:16px">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Em andamento</span>
-          <button class="btn btn-ghost btn-sm" onclick="irPara('auditorias')">Ver todas</button>
-        </div>
-        <div id="andamentoTable"><div class="empty-state"><div class="spinner" style="margin:auto"></div></div></div>
-      </div>
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Divergências — última auditoria</span>
-          <span style="font-size:11px;color:var(--text-light)" id="labelUltimaAud"></span>
-        </div>
-        <div style="padding:20px" id="graficoDiverg">
-          <div class="empty-state"><div class="spinner" style="margin:auto"></div></div>
-        </div>
-      </div>
+      <div class="card"><div class="card-header"><span class="card-title">Em andamento</span><button class="btn btn-ghost btn-sm" onclick="irPara('auditorias')">Ver todas</button></div><div class="tabela-container" id="andamentoTable"><div class="empty-state"><div class="spinner" style="margin:auto"></div></div></div></div>
+      <div class="card"><div class="card-header"><span class="card-title">Últimas Divergências</span><span class="label-tech" id="labelUltimaAud"></span></div><div class="card-body" id="graficoDiverg"><div class="spinner" style="margin:auto"></div></div></div>
     </div>
-
     <div class="two-col" style="margin-bottom:16px">
-      <div class="card">
-        <div class="card-header"><span class="card-title">Maiores faltas recentes</span></div>
-        <div id="topFaltasTable"><div class="empty-state"><div class="spinner" style="margin:auto"></div></div></div>
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">Maiores sobras recentes</span></div>
-        <div id="topSobrasTable"><div class="empty-state"><div class="spinner" style="margin:auto"></div></div></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">Histórico de auditorias</span>
-        <select class="form-input" style="width:160px;padding:5px 10px;font-size:12px"
-                onchange="_filtrarHistDash(this.value)">
-          <option value="">Todos os status</option>
-          <option value="em_andamento">Em andamento</option>
-          <option value="finalizada">Finalizadas</option>
-          <option value="cancelada">Canceladas</option>
-        </select>
-      </div>
-      <div id="histDashTable"><div class="empty-state"><div class="spinner" style="margin:auto"></div></div></div>
+      <div class="card"><div class="card-header"><span class="card-title">Maiores faltas recentes</span></div><div class="tabela-container" id="topFaltasTable"><div class="spinner" style="margin:auto"></div></div></div>
+      <div class="card"><div class="card-header"><span class="card-title">Maiores sobras recentes</span></div><div class="tabela-container" id="topSobrasTable"><div class="spinner" style="margin:auto"></div></div></div>
     </div>`;
-
-  await Promise.all([
-    _dashStats(),
-    _dashAndamento(),
-    _dashDivergencias(),
-    _dashHistorico(),
-  ]);
-
-  window._filtrarHistDash = (val) => _dashHistorico(val);
+  await Promise.all([_dashStats(), _dashAndamento(), _dashDivergencias()]);
 }
 
 async function _dashStats() {
-  const [
-    { count: totalEmpresas },
-    { count: totalProdutos },
-    { count: emAndamento },
-    { count: finalizadas },
-  ] = await Promise.all([
+  const [{ count: tEmp }, { count: tProd }, { count: eAnd }, { count: fin }] = await Promise.all([
     supabase.from('empresas').select('id',{count:'exact',head:true}).eq('ativo',true),
     supabase.from('produtos').select('id',{count:'exact',head:true}).eq('ativo',true),
     supabase.from('auditorias').select('id',{count:'exact',head:true}).eq('status','em_andamento'),
-    supabase.from('auditorias').select('id',{count:'exact',head:true}).eq('status','finalizada'),
+    supabase.from('auditorias').select('id',{count:'exact',head:true}).eq('status','finalizada')
   ]);
-
-  const svgEmp   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>`;
-  const svgProd  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`;
-  const svgAnd   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`;
-  const svgOk    = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>`;
-
+  const svgEmp = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>`;
+  const svgProd = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4l7-4A2 2 0 0 0 21 16z"/></svg>`;
+  const svgAnd = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`;
+  const svgOk = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>`;
   document.getElementById('statGrid').innerHTML = `
-    <div class="stat-card">
-      <div class="stat-icon">${svgEmp}</div>
-      <div class="stat-label">Empresas ativas</div>
-      <div class="stat-value" style="color:var(--primary)">${totalEmpresas ?? 0}</div>
-      <div class="stat-sub"><a href="#" onclick="irPara('empresas');return false" style="color:var(--primary);text-decoration:none">Gerenciar</a></div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-icon">${svgProd}</div>
-      <div class="stat-label">Total de produtos</div>
-      <div class="stat-value">${(totalProdutos ?? 0).toLocaleString('pt-BR')}</div>
-      <div class="stat-sub"><a href="#" onclick="irPara('produtos');return false" style="color:var(--primary);text-decoration:none">Ver produtos</a></div>
-    </div>
-    <div class="stat-card amarelo">
-      <div class="stat-icon amarelo">${svgAnd}</div>
-      <div class="stat-label">Em andamento</div>
-      <div class="stat-value" style="color:var(--warning)">${emAndamento ?? 0}</div>
-      <div class="stat-sub"><a href="#" onclick="irPara('auditorias');return false" style="color:var(--primary);text-decoration:none">Ver auditorias</a></div>
-    </div>
-    <div class="stat-card verde">
-      <div class="stat-icon verde">${svgOk}</div>
-      <div class="stat-label">Finalizadas</div>
-      <div class="stat-value" style="color:var(--success)">${finalizadas ?? 0}</div>
-      <div class="stat-sub">Total acumulado</div>
-    </div>`;
+    <div class="stat-card"><div class="stat-icon">${svgEmp}</div><div class="stat-label">Empresas</div><div class="stat-value">${tEmp??0}</div></div>
+    <div class="stat-card"><div class="stat-icon">${svgProd}</div><div class="stat-label">Produtos</div><div class="stat-value">${(tProd??0).toLocaleString()}</div></div>
+    <div class="stat-card"><div class="stat-icon" style="color:var(--warning);background:var(--warning-light);border-color:rgba(234,179,8,0.3)">${svgAnd}</div><div class="stat-label">Em andamento</div><div class="stat-value">${eAnd??0}</div></div>
+    <div class="stat-card"><div class="stat-icon" style="color:var(--success);background:var(--success-light);border-color:rgba(16,185,129,0.3)">${svgOk}</div><div class="stat-label">Finalizadas</div><div class="stat-value">${fin??0}</div></div>`;
 }
 
 async function _dashAndamento() {
-  const { data } = await supabase
-    .from('auditorias')
-    .select('id,numero_auditoria,data_inicio,empresas(nome),usuarios!auditorias_criado_por_fkey(nome)')
-    .eq('status','em_andamento')
-    .order('data_inicio',{ascending:false})
-    .limit(5);
-
+  const { data } = await supabase.from('auditorias').select('id,numero_auditoria,data_inicio,empresas(nome)').eq('status','em_andamento').order('data_inicio',{ascending:false}).limit(5);
   const el = document.getElementById('andamentoTable');
-  if (!data?.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-state-text">Nenhuma auditoria em andamento.<br>
-      <a href="#" onclick="irPara('auditorias');return false" style="color:var(--primary)">Criar nova</a></div></div>`;
-    return;
-  }
-  el.innerHTML = `<table><thead><tr><th>Nº</th><th>Empresa</th><th>Início</th><th></th></tr></thead><tbody>
-    ${data.map(a=>`<tr>
-      <td class="mono" style="color:var(--primary)">${escapeHtml(a.numero_auditoria)}</td>
-      <td style="font-weight:500">${escapeHtml(a.empresas?.nome??'—')}</td>
-      <td style="font-size:12px">${fmtDate(a.data_inicio)}</td>
-      <td><a href="contagem.html?id=${a.id}" class="btn btn-primary btn-sm">Abrir</a></td>
-    </tr>`).join('')}</tbody></table>`;
+  if (!data?.length) { el.innerHTML = `<div class="empty-state">Nenhuma auditoria ativa.</div>`; return; }
+  el.innerHTML = `<table><thead><tr><th>Nº</th><th>Empresa</th><th></th></tr></thead><tbody>${data.map(a=>`<tr><td class="mono">${escapeHtml(a.numero_auditoria)}</td><td>${escapeHtml(a.empresas?.nome)}</td><td><a class="btn btn-primary btn-sm" href="contagem.html?id=${a.id}">Abrir</a></td></tr>`).join('')}</tbody></table>`;
 }
 
 async function _dashDivergencias() {
-  const { data: aud } = await supabase
-    .from('auditorias').select('id,numero_auditoria,empresas(nome)')
-    .eq('status','finalizada').order('data_fim',{ascending:false}).limit(1).maybeSingle();
-
+  const { data: aud } = await supabase.from('auditorias').select('id,numero_auditoria,empresas(nome)').eq('status','finalizada').order('data_fim',{ascending:false}).limit(1).maybeSingle();
   const el = document.getElementById('graficoDiverg');
-  if (!aud) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-state-text">Nenhuma auditoria finalizada ainda.</div></div>`;
-    document.getElementById('topFaltasTable').innerHTML =
-    document.getElementById('topSobrasTable').innerHTML =
-      `<div class="empty-state"><div class="empty-state-text">Sem dados.</div></div>`;
-    return;
-  }
-
-  document.getElementById('labelUltimaAud').textContent =
-    `${aud.numero_auditoria} — ${aud.empresas?.nome??''}`;
-
-  const { data: itens } = await supabase
-    .from('vw_relatorio_divergencias')
-    .select('status_divergencia,diferenca,codigo_produto,nome_produto,unidade_medida,quantidade_contada,estoque_sistema')
-    .eq('auditoria_id', aud.id);
-
-  const sobras = itens?.filter(i=>i.status_divergencia==='sobra')??[];
-  const faltas = itens?.filter(i=>i.status_divergencia==='falta')??[];
-  const ok     = itens?.filter(i=>i.status_divergencia==='ok')??[];
-  const total  = (sobras.length+faltas.length+ok.length)||1;
-  const pS = Math.round(sobras.length/total*100);
-  const pF = Math.round(faltas.length/total*100);
-  const pO = Math.round(ok.length/total*100);
-
-  const barra = (lbl,qtd,pct,cor) => `<div>
-    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px">
-      <span style="color:${cor};font-weight:600">${lbl}</span>
-      <span class="mono">${qtd} produtos (${pct}%)</span>
-    </div>
-    <div class="progress"><div class="progress-fill" style="width:${pct}%;background:${cor}"></div></div>
-  </div>`;
-
-  el.innerHTML = `<div style="display:flex;flex-direction:column;gap:14px">
-    ${barra('Sobras',sobras.length,pS,'var(--success)')}
-    ${barra('Faltas',faltas.length,pF,'var(--danger)')}
-    ${barra('Sem divergência',ok.length,pO,'var(--text-light)')}
-    <div style="text-align:right;margin-top:4px">
-      <a href="relatorios.html?id=${aud.id}" class="btn btn-ghost btn-sm">Ver relatório completo</a>
-    </div></div>`;
-
+  if (!aud) { el.innerHTML = `<div class="empty-state">Sem dados.</div>`; document.getElementById('topFaltasTable').innerHTML = `<div class="empty-state">Sem dados.</div>`; document.getElementById('topSobrasTable').innerHTML = `<div class="empty-state">Sem dados.</div>`; return; }
+  document.getElementById('labelUltimaAud').textContent = aud.numero_auditoria;
+  const { data: itens } = await supabase.from('vw_relatorio_divergencias').select('*').eq('auditoria_id', aud.id);
+  const sobras = itens?.filter(i=>i.status_divergencia==='sobra')??[], faltas = itens?.filter(i=>i.status_divergencia==='falta')??[], ok = itens?.filter(i=>i.status_divergencia==='ok')??[];
+  const total = (sobras.length+faltas.length+ok.length)||1;
+  const barra = (l,q,p,c) => `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;font-weight:600;color:${c}"><span>${l}</span><span class="mono">${q} (${Math.round(q/total*100)}%)</span></div><div class="progress"><div class="progress-fill" style="width:${Math.round(q/total*100)}%;background:${c}"></div></div></div>`;
+  el.innerHTML = `${barra('Sobras',sobras.length,0,'var(--success)')}${barra('Faltas',faltas.length,0,'var(--danger)')}${barra('OK',ok.length,0,'var(--text-muted)')}<div style="text-align:right;margin-top:16px"><a href="relatorios.html?id=${aud.id}" class="btn btn-ghost btn-sm">Ver Relatório</a></div>`;
   _dashTopTabela('topFaltasTable', faltas.sort((a,b)=>Number(a.diferenca)-Number(b.diferenca)).slice(0,5), 'falta');
   _dashTopTabela('topSobrasTable', sobras.sort((a,b)=>Number(b.diferenca)-Number(a.diferenca)).slice(0,5), 'sobra');
 }
 
 function _dashTopTabela(elId, lista, tipo) {
   const el = document.getElementById(elId);
-  if (!lista.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-state-text">Nenhuma ${tipo} encontrada.</div></div>`;
-    return;
-  }
-  el.innerHTML = `<table><thead><tr><th>Produto</th><th>Contado</th><th>Sistema</th><th>Diferença</th></tr></thead><tbody>
-    ${lista.map(r=>{
-      const d=Number(r.diferenca);
-      return `<tr>
-        <td>
-          <div style="font-weight:500;font-size:13px">${escapeHtml(r.nome_produto)}</div>
-          <div class="mono" style="font-size:11px;color:var(--text-light)">${escapeHtml(r.codigo_produto)}</div>
-        </td>
-        <td class="mono">${fmtNum(r.quantidade_contada)}</td>
-        <td class="mono">${r.estoque_sistema!=null?fmtNum(r.estoque_sistema):'—'}</td>
-        <td class="mono ${d>0?'diff-positive':'diff-negative'}" style="font-weight:700">
-          ${d>0?'+':''}${fmtNum(d)} ${escapeHtml(r.unidade_medida??'')}
-        </td>
-      </tr>`;
-    }).join('')}</tbody></table>`;
+  if (!lista.length) { el.innerHTML = `<div class="empty-state">Nenhuma ${tipo}.</div>`; return; }
+  el.innerHTML = `<table><thead><tr><th>Produto</th><th>Diff</th></tr></thead><tbody>${lista.map(r=>`<tr><td><div style="font-weight:600">${escapeHtml(r.nome_produto)}</div><div class="mono">${escapeHtml(r.codigo_produto)}</div></td><td class="mono ${Number(r.diferenca)>0?'badge-green':'badge-red'}" style="background:transparent;border:none;">${Number(r.diferenca)>0?'+':''}${fmtNum(r.diferenca)}</td></tr>`).join('')}</tbody></table>`;
 }
 
-async function _dashHistorico(filtro='') {
-  const el = document.getElementById('histDashTable');
-  if (!el) return;
-  el.innerHTML = `<div class="empty-state"><div class="spinner" style="margin:auto"></div></div>`;
-
-  let q = supabase.from('auditorias')
-    .select('id,numero_auditoria,status,data_inicio,data_fim,empresas(nome),usuarios!auditorias_criado_por_fkey(nome)')
-    .order('data_inicio',{ascending:false}).limit(20);
-  if (filtro) q = q.eq('status', filtro);
-
-  const { data } = await q;
-  if (!data?.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-state-text">Nenhuma auditoria encontrada.</div></div>`;
-    return;
-  }
-
-  el.innerHTML = `<table><thead><tr>
-    <th>Nº Auditoria</th><th>Empresa</th><th>Criada por</th><th>Início</th><th>Fim</th><th>Status</th><th></th>
-  </tr></thead><tbody>
-    ${data.map(a=>`<tr>
-      <td class="mono" style="color:var(--primary)">${escapeHtml(a.numero_auditoria)}</td>
-      <td style="font-weight:500">${escapeHtml(a.empresas?.nome??'—')}</td>
-      <td style="font-size:12px;color:var(--text-muted)">${escapeHtml(a.usuarios?.nome??'—')}</td>
-      <td style="font-size:12px">${fmtDate(a.data_inicio)}</td>
-      <td style="font-size:12px">${fmtDate(a.data_fim)}</td>
-      <td>${badgeStatus(a.status)}</td>
-      <td><div style="display:flex;gap:6px">
-        ${a.status==='finalizada'
-          ?`<a href="relatorios.html?id=${a.id}" class="btn btn-ghost btn-sm">Relatório</a>
-            <a href="#" class="btn btn-ghost btn-sm" onclick="irPara('historico','${a.id}');return false">Histórico</a>`
-          :a.status==='em_andamento'
-          ?`<a href="contagem.html?id=${a.id}" class="btn btn-primary btn-sm">Continuar</a>`
-          :'—'}
-      </div></td>
-    </tr>`).join('')}
-  </tbody></table>`;
-}
-
-// ═══════════════════════════════════════════════════════════
-//  AUDITORIAS
-// ═══════════════════════════════════════════════════════════
+// AUDITORIAS
 let _audFiltro = null;
-
 async function renderAuditorias() {
   pageBody.innerHTML = `
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
-      <div class="filters-bar" style="margin-bottom:0">
-        <button class="filter-btn active-all" onclick="_setFiltroAud(null,this)">Todas</button>
-        <button class="filter-btn" onclick="_setFiltroAud('em_andamento',this)">Em andamento</button>
-        <button class="filter-btn" onclick="_setFiltroAud('finalizada',this)">Finalizadas</button>
-        <button class="filter-btn" onclick="_setFiltroAud('cancelada',this)">Canceladas</button>
-      </div>
-      ${hasRole('administrador')
-        ?`<button class="btn btn-primary" style="margin-left:auto" onclick="abrirModalNovaAud()">+ Nova Auditoria</button>`
-        :''}
+    <div class="filters-bar">
+      <button class="filter-btn active-all" onclick="_setFiltroAud(null,this)">Todas</button>
+      <button class="filter-btn" onclick="_setFiltroAud('em_andamento',this)">Ativas</button>
+      <button class="filter-btn" onclick="_setFiltroAud('finalizada',this)">Finalizadas</button>
+      ${hasRole('administrador') ? `<button class="btn btn-primary" style="margin-left:auto" onclick="abrirModalNovaAud()">+ Nova Auditoria</button>` : ''}
     </div>
-    <div class="card">
-      <table><thead><tr>
-        <th>Nº Auditoria</th><th>Empresa</th><th>Criado por</th><th>Início</th><th>Modo</th><th>Status</th><th></th>
-      </tr></thead>
-      <tbody id="audTbody">
-        <tr><td colspan="7" style="text-align:center;padding:40px"><div class="spinner" style="margin:auto"></div></td></tr>
-      </tbody></table>
-    </div>`;
-
+    <div class="card"><div class="tabela-container"><table><thead><tr><th>Nº</th><th>Empresa</th><th>Início</th><th>Status</th><th>Ações</th></tr></thead><tbody id="audTbody"><tr><td colspan="5" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr></tbody></table></div></div>`;
   await _carregarAuds();
-
-  window._setFiltroAud = async (status, btn) => {
-    _audFiltro = status;
-    document.querySelectorAll('.filter-btn').forEach(b=>b.className='filter-btn');
-    btn.classList.add('active-all');
-    await _carregarAuds();
-  };
+  window._setFiltroAud = async (st, btn) => { _audFiltro = st; document.querySelectorAll('.filter-btn').forEach(b=>b.className='filter-btn'); btn.classList.add('active-all'); await _carregarAuds(); };
 }
 
 async function _carregarAuds() {
-  const tbody = document.getElementById('audTbody');
-  if (!tbody) return;
+  const tbody = document.getElementById('audTbody'); if (!tbody) return;
   try {
-    const { data } = await listarAuditorias({ status: _audFiltro, limit: 50 });
-    if (!data.length) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px">Nenhuma auditoria encontrada.</td></tr>`;
-      return;
-    }
+    const { data } = await listarAuditorias({ status: _audFiltro, limit: 100 });
+    if (!data.length) { tbody.innerHTML = `<tr class="tr-empty"><td colspan="5">Nenhuma auditoria encontrada.</td></tr>`; return; }
     tbody.innerHTML = data.map(a=>`<tr>
-      <td class="mono" style="color:var(--primary)">${escapeHtml(a.numero_auditoria)}</td>
-      <td>${escapeHtml(a.empresas?.nome??'—')}</td>
-      <td>${escapeHtml(a.usuarios?.nome??'—')}</td>
-      <td>${fmtDate(a.data_inicio)}</td>
-      <td style="font-size:12px">${a.auditoria_cega?'Cega':'Visível'}</td>
+      <td class="mono" style="color:var(--primary); font-weight:700;">${escapeHtml(a.numero_auditoria)}</td>
+      <td style="font-weight:600;">${escapeHtml(a.empresas?.nome)}</td>
+      <td class="mono">${fmtDate(a.data_inicio)}</td>
       <td>${badgeStatus(a.status)}</td>
       <td><div style="display:flex;gap:6px">
-        ${a.status==='em_andamento'
-          ?`<a href="contagem.html?id=${a.id}" class="btn btn-ghost btn-sm">Continuar</a>
-            ${hasRole('administrador')
-              ?`<button class="btn btn-ghost btn-sm" onclick="_cancelarAud('${a.id}','${escapeHtml(a.numero_auditoria)}')">Cancelar</button>`
-              :''}`
-          :a.status==='finalizada'
-          ?`<a href="relatorios.html?id=${a.id}" class="btn btn-ghost btn-sm">Relatório</a>`
-          :'—'}
+        ${a.status==='em_andamento' ? `<a href="contagem.html?id=${a.id}" class="btn btn-primary btn-sm">Continuar</a>` : `<a href="relatorios.html?id=${a.id}" class="btn btn-ghost btn-sm">Relatório</a>`}
+        <a href="#" class="btn btn-ghost btn-sm" onclick="irPara('historico','${a.id}')">Histórico</a>
+        ${isSupremo() ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger); border-color:var(--danger-light);" onclick="_excluirAud('${a.id}','${a.numero_auditoria}')">Excluir</button>` : ''}
       </div></td>
     </tr>`).join('');
-  } catch(err) {
-    tbody.innerHTML = `<tr><td colspan="7" style="color:var(--danger);padding:20px">Erro: ${escapeHtml(err.message)}</td></tr>`;
-  }
+  } catch(err) { tbody.innerHTML = `<tr class="tr-empty"><td colspan="5">${err.message}</td></tr>`; }
 }
 
-// Modal nova auditoria
-let _audEmpresas = [];
-window.abrirModalNovaAud = async function() {
-  const sel = document.getElementById('audEmpresa');
-  sel.innerHTML = '<option value="">Carregando...</option>';
-  document.getElementById('modalAuditoria').classList.add('active');
-  try {
-    _audEmpresas = await listarEmpresas({ apenasAtivas: true });
-    sel.innerHTML = _audEmpresas.length
-      ? _audEmpresas.map(e=>`<option value="${e.id}">${escapeHtml(e.nome)}</option>`).join('')
-      : '<option value="">Nenhuma empresa ativa</option>';
-  } catch(err) { sel.innerHTML = '<option value="">Erro ao carregar</option>'; }
+window._excluirAud = async function(id, numero) {
+  const ok = await fmConfirm({titulo: 'Atenção, Supremo!', msg: `Deseja APAGAR DEFINITIVAMENTE a auditoria ${numero}? Essa ação é irreversível.`, confirmTxt: 'Excluir', tipo: 'perigo'});
+  if(!ok) return;
+  showLoading();
+  try { await excluirAuditoria(id, perfil.id); showToast('Auditoria Excluída!', 'success'); await _carregarAuds(); } 
+  catch(err) { showToast('Erro: ' + err.message, 'error'); } finally { hideLoading(); }
 };
+
+window.abrirModalNovaAud = async () => { document.getElementById('modalAuditoria').classList.add('active'); const sel = document.getElementById('audEmpresa'); sel.innerHTML = '<option value="">Carregando...</option>'; try { const emps = await listarEmpresas({ apenasAtivas: true }); sel.innerHTML = emps.length ? emps.map(e=>`<option value="${e.id}">${escapeHtml(e.nome)}</option>`).join('') : '<option value="">Sem empresas</option>'; } catch(e){} };
 window.fecharModalAud = () => document.getElementById('modalAuditoria').classList.remove('active');
-
-window.criarAuditoria = async function() {
+window.criarAuditoria = async () => {
   const empresaId = document.getElementById('audEmpresa').value;
-  const cega      = document.getElementById('audModo').value === 'true';
-  const obs       = document.getElementById('audObs').value;
-  const btn       = document.getElementById('btnCriarAud');
-
-  if (!empresaId) { showToast('Selecione uma empresa.','warning'); return; }
-
-  const emAnd = await auditoriaEmAndamentoPorEmpresa(empresaId);
-  if (emAnd) {
-    const ir = await fmConfirm({
-      titulo: 'Auditoria já em andamento',
-      msg: `Já existe a auditoria ${emAnd.numero_auditoria} em andamento para esta empresa.\nDeseja ir para ela?`,
-      confirmTxt: 'Ir para ela', cancelTxt: 'Cancelar', tipo: 'info',
-    });
-    if (ir) window.location.href = `contagem.html?id=${emAnd.id}`;
-    return;
-  }
-
-  btn.disabled = true; btn.textContent = 'Criando...';
+  const cega = document.getElementById('audModo').value === 'true';
+  const obs = document.getElementById('audObs').value;
+  
+  if (!empresaId) return showToast('Selecione uma empresa', 'warning');
   showLoading();
+  
   try {
+    const emAnd = await auditoriaEmAndamentoPorEmpresa(empresaId);
+    if (emAnd) { 
+        hideLoading(); 
+        const ir = await fmConfirm({titulo:'Aviso', msg:`A auditoria ${emAnd.numero_auditoria} já está ativa. Ir para ela?`, confirmTxt:'Ir', tipo:'info'}); 
+        if(ir) window.location.href=`contagem.html?id=${emAnd.id}`; 
+        return; 
+    }
     const nova = await iniciarAuditoria({ empresaId, usuarioId: perfil.id, auditoriaCega: cega, observacoes: obs });
-    fecharModalAud();
-    showToast(`Auditoria ${nova.numero_auditoria} iniciada!`,'success');
     window.location.href = `contagem.html?id=${nova.id}`;
-  } catch(err) {
-    showToast('Erro: '+err.message,'error');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Iniciar auditoria';
-    hideLoading();
-  }
+  } catch(err) { showToast(err.message, 'error'); hideLoading(); }
 };
 
-window._cancelarAud = async function(id, numero) {
-  const motivo = await _promptMotivo(`Motivo do cancelamento da auditoria ${numero}:`, 'Cancelar auditoria');
-  if (motivo === null) return;
-  showLoading();
-  try {
-    await cancelarAuditoria(id, perfil.id, motivo);
-    showToast('Auditoria cancelada.','success');
-    await _carregarAuds();
-  } catch(err) {
-    showToast('Erro: '+err.message,'error');
-  } finally { hideLoading(); }
-};
-
-// ═══════════════════════════════════════════════════════════
-//  HISTÓRICO DE CONTAGEM (?id=auditoria_id)
-// ═══════════════════════════════════════════════════════════
+// HISTÓRICO
 async function renderHistorico(auditoriaId) {
   if (!auditoriaId) { irPara('auditorias'); return; }
-
   showLoading();
-  let auditoria;
   try {
-    auditoria = await buscarAuditoria(auditoriaId);
-    if (!auditoria) throw new Error('Auditoria não encontrada.');
-  } catch(err) {
-    showToast(err.message,'error'); hideLoading(); irPara('auditorias'); return;
-  }
-
-  pageBody.innerHTML = `
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-      <div>
-        <div style="font-size:12px;color:var(--text-light)">Histórico de contagem</div>
-        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:1.2rem">
-          ${escapeHtml(auditoria.numero_auditoria)} — ${escapeHtml(auditoria.empresas?.nome??'')}
+    const auditoria = await buscarAuditoria(auditoriaId);
+    pageBody.innerHTML = `
+      <div style="display:flex; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+        <div><div class="label-tech">Histórico da Auditoria</div><div class="topbar-title">${escapeHtml(auditoria.numero_auditoria)}</div></div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-ghost" onclick="irPara('auditorias')">← Voltar</button>
+          ${auditoria.status === 'em_andamento' ? `<a href="contagem.html?id=${auditoriaId}" class="btn btn-primary">Continuar Contagem</a>` : `<a href="relatorios.html?id=${auditoriaId}" class="btn btn-primary">Ver Relatório</a>`}
         </div>
       </div>
-      <div style="margin-left:auto;display:flex;gap:8px">
-        <a href="relatorios.html?id=${auditoriaId}" class="btn btn-ghost btn-sm">Ver relatório</a>
-        ${auditoria.status==='em_andamento'
-          ?`<a href="contagem.html?id=${auditoriaId}" class="btn btn-primary btn-sm">Continuar contagem</a>`:''}
-      </div>
-    </div>
-
-    <div class="mode-tabs" style="width:fit-content;margin-bottom:16px">
-      <div class="mode-tab active" id="tabItens"   onclick="_setTabHist('itens')">Todos os itens</div>
-      <div class="mode-tab"        id="tabEdicoes" onclick="_setTabHist('edicoes')">Edições registradas</div>
-    </div>
-    <div id="histConteudo"></div>`;
-
-  hideLoading();
-
-  await _histItens(auditoriaId);
-
-  window._setTabHist = async (tab) => {
-    document.getElementById('tabItens').classList.toggle('active', tab==='itens');
-    document.getElementById('tabEdicoes').classList.toggle('active', tab==='edicoes');
-    showLoading();
-    if (tab==='itens') await _histItens(auditoriaId);
-    else               await _histEdicoes(auditoriaId);
-    hideLoading();
-  };
-}
-
-async function _histItens(auditoriaId) {
-  const el = document.getElementById('histConteudo');
-  el.innerHTML = `<div class="card"><table><thead><tr>
-    <th>Código</th><th>Produto</th><th>UN</th><th>Qtd contada</th><th>Estoque sistema</th><th>Diferença</th><th>Registrado em</th><th></th>
-  </tr></thead><tbody id="histItensTbody">
-    <tr><td colspan="8" style="text-align:center;padding:30px"><div class="spinner" style="margin:auto"></div></td></tr>
-  </tbody></table></div>`;
-
-  try {
+      <div class="card"><div class="card-header"><span class="card-title">Itens Contados</span></div><div class="tabela-container"><table><thead><tr><th>Código</th><th>Produto</th><th>Qtd</th><th>Data</th></tr></thead><tbody id="histItensTbody"><tr><td colspan="4" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr></tbody></table></div></div>
+    `;
     const { data } = await listarItensContados(auditoriaId, { limit: 5000 });
     const tbody = document.getElementById('histItensTbody');
-    if (!data.length) {
-      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px">Nenhum item contado.</td></tr>`;
-      return;
-    }
-    tbody.innerHTML = data.map(item=>{
-      const diff = item.diferenca!=null ? Number(item.diferenca) : null;
-      const cls  = diff==null?'':diff>0?'diff-positive':diff<0?'diff-negative':'diff-zero';
-      const str  = diff==null?'—':diff>0?`+${fmtNum(diff)}`:fmtNum(diff);
-      return `<tr>
-        <td class="mono">${escapeHtml(item.produtos?.codigo_produto??'—')}</td>
-        <td>${escapeHtml(item.produtos?.nome_produto??'—')}</td>
-        <td>${escapeHtml(item.produtos?.unidade_medida??'—')}</td>
-        <td class="mono" style="color:var(--primary);font-weight:700">${fmtNum(item.quantidade_contada)}</td>
-        <td class="mono">${item.estoque_sistema!=null?fmtNum(item.estoque_sistema):'—'}</td>
-        <td class="mono ${cls}">${str}</td>
-        <td style="font-size:12px;color:var(--text-light)">${fmtDateTime(item.data_registro)}</td>
-        <td><button class="btn btn-ghost btn-sm"
-          onclick="_verHistItem('${item.id}','${escapeHtml(item.produtos?.nome_produto??'')}')">
-          Histórico</button></td>
-      </tr>`;
-    }).join('');
-  } catch(err) {
-    document.getElementById('histItensTbody').innerHTML =
-      `<tr><td colspan="8" style="color:var(--danger);padding:20px">Erro: ${escapeHtml(err.message)}</td></tr>`;
-  }
+    if (!data.length) tbody.innerHTML = `<tr class="tr-empty"><td colspan="4">Nenhum item contato.</td></tr>`;
+    else tbody.innerHTML = data.map(i => `<tr><td class="mono">${escapeHtml(i.produtos?.codigo_produto)}</td><td>${escapeHtml(i.produtos?.nome_produto)}</td><td class="mono" style="color:var(--primary); font-weight:700;">${fmtNum(i.quantidade_contada)}</td><td class="mono">${fmtDateTime(i.data_registro)}</td></tr>`).join('');
+  } catch (err) { showToast(err.message, 'error'); irPara('auditorias'); } finally { hideLoading(); }
 }
 
-async function _histEdicoes(auditoriaId) {
-  const el = document.getElementById('histConteudo');
-  el.innerHTML = `<div class="card"><table><thead><tr>
-    <th>Produto</th><th>Qtd anterior</th><th>Qtd nova</th><th>Variação</th><th>Usuário</th><th>Motivo</th><th>Data</th>
-  </tr></thead><tbody id="histEdTbody">
-    <tr><td colspan="7" style="text-align:center;padding:30px"><div class="spinner" style="margin:auto"></div></td></tr>
-  </tbody></table></div>`;
-
-  try {
-    const { data, error } = await supabase
-      .from('auditoria_itens_historico')
-      .select(`id,quantidade_anterior,quantidade_nova,motivo,criado_em,
-               usuarios(nome),
-               auditoria_itens!inner(auditoria_id,produtos(codigo_produto,nome_produto,unidade_medida))`)
-      .eq('auditoria_itens.auditoria_id', auditoriaId)
-      .order('criado_em',{ascending:false});
-
-    const tbody = document.getElementById('histEdTbody');
-    if (error) throw new Error(error.message);
-    if (!data?.length) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:30px">Nenhuma edição registrada.</td></tr>`;
-      return;
-    }
-    tbody.innerHTML = data.map(h=>{
-      const ant=Number(h.quantidade_anterior), nova=Number(h.quantidade_nova), v=nova-ant;
-      const cls=v>0?'diff-positive':v<0?'diff-negative':'diff-zero';
-      const p=h.auditoria_itens?.produtos;
-      return `<tr>
-        <td>
-          <div style="font-weight:500">${escapeHtml(p?.nome_produto??'—')}</div>
-          <div class="mono" style="font-size:11px;color:var(--text-light)">${escapeHtml(p?.codigo_produto??'')}</div>
-        </td>
-        <td class="mono">${fmtNum(ant)} ${escapeHtml(p?.unidade_medida??'')}</td>
-        <td class="mono" style="font-weight:700">${fmtNum(nova)} ${escapeHtml(p?.unidade_medida??'')}</td>
-        <td class="mono ${cls}">${v>0?'+':''}${fmtNum(v)}</td>
-        <td>${escapeHtml(h.usuarios?.nome??'—')}</td>
-        <td style="font-size:12px;color:var(--text-muted)">${escapeHtml(h.motivo??'—')}</td>
-        <td style="font-size:12px;color:var(--text-light)">${fmtDateTime(h.criado_em)}</td>
-      </tr>`;
-    }).join('');
-  } catch(err) {
-    document.getElementById('histEdTbody').innerHTML =
-      `<tr><td colspan="7" style="color:var(--danger);padding:20px">Erro: ${escapeHtml(err.message)}</td></tr>`;
-  }
-}
-
-window._verHistItem = async function(itemId, nomeProduto) {
-  const historico = await historicoItem(itemId);
-  if (!historico.length) { showToast(`Nenhuma edição para ${nomeProduto}.`,'warning'); return; }
-
-  const modal = document.createElement('div');
-  modal.className = 'modal-backdrop active';
-  modal.innerHTML = `
-    <div class="modal" style="width:600px;max-height:80vh;overflow-y:auto">
-      <div class="modal-title">Histórico — ${escapeHtml(nomeProduto)}</div>
-      <table style="margin-top:16px"><thead><tr>
-        <th>Qtd anterior</th><th>Qtd nova</th><th>Variação</th><th>Usuário</th><th>Data</th><th>Motivo</th>
-      </tr></thead><tbody>
-        ${historico.map(h=>{
-          const a=Number(h.quantidade_anterior),n=Number(h.quantidade_nova),v=n-a;
-          return `<tr>
-            <td class="mono">${fmtNum(a)}</td>
-            <td class="mono" style="font-weight:700">${fmtNum(n)}</td>
-            <td class="mono ${v>0?'diff-positive':v<0?'diff-negative':'diff-zero'}">${v>0?'+':''}${fmtNum(v)}</td>
-            <td>${escapeHtml(h.usuarios?.nome??'—')}</td>
-            <td style="font-size:12px;color:var(--text-light)">${fmtDateTime(h.criado_em)}</td>
-            <td style="font-size:12px;color:var(--text-muted)">${escapeHtml(h.motivo??'—')}</td>
-          </tr>`;
-        }).join('')}
-      </tbody></table>
-      <div style="margin-top:20px;text-align:right">
-        <button class="btn btn-ghost" onclick="this.closest('.modal-backdrop').remove()">Fechar</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
-};
-
-// ═══════════════════════════════════════════════════════════
-//  EMPRESAS
-// ═══════════════════════════════════════════════════════════
+// EMPRESAS
 let _empEditandoId = null, _empBusca = '';
-
 async function renderEmpresas() {
   pageBody.innerHTML = `
     <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
-      <input class="form-input" style="width:280px" id="empCampoBusca"
-             placeholder="Buscar empresa..." oninput="_onBuscaEmp(this.value)"/>
+      <input class="form-input" style="width:280px" id="empCampoBusca" placeholder="Buscar empresa..." oninput="_onBuscaEmp(this.value)"/>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);cursor:pointer">
-          <input type="checkbox" id="empCheckInat" onchange="_carregarEmps()"
-                 style="accent-color:var(--primary)"/> Mostrar inativas
-        </label>
-        ${hasRole('administrador')
-          ?`<button class="btn btn-primary" onclick="_abrirNovaEmp()">+ Nova Empresa</button>`:''}
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);cursor:pointer"><input type="checkbox" id="empCheckInat" onchange="_carregarEmps()" style="accent-color:var(--primary)"/> Mostrar inativas</label>
+        ${hasRole('administrador') ? `<button class="btn btn-primary" onclick="_abrirNovaEmp()">+ Nova Empresa</button>`:''}
       </div>
     </div>
-    <div class="card"><table><thead><tr>
-      <th>Empresa</th><th>CNPJ</th><th>Cidade / UF</th><th>Produtos</th><th>Status</th><th></th>
-    </tr></thead><tbody id="empTbody">
-      <tr><td colspan="6" style="text-align:center;padding:40px"><div class="spinner" style="margin:auto"></div></td></tr>
-    </tbody></table></div>`;
-
+    <div class="card"><div class="tabela-container"><table><thead><tr><th>Empresa</th><th>CNPJ</th><th>Cidade / UF</th><th>Produtos</th><th>Status</th><th></th></tr></thead><tbody id="empTbody"><tr><td colspan="6" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr></tbody></table></div></div>`;
   await _carregarEmps();
-  window._onBuscaEmp = (v) => { _empBusca = v.toLowerCase().trim(); _carregarEmps(); };
+  window._onBuscaEmp = debounce((v) => { _empBusca = v.toLowerCase().trim(); _carregarEmps(); }, 300);
 }
-
 async function _carregarEmps() {
-  const tbody = document.getElementById('empTbody');
-  if (!tbody) return;
+  const tbody = document.getElementById('empTbody'); if (!tbody) return;
   const mostrarInat = document.getElementById('empCheckInat')?.checked;
   try {
     const lista0 = await listarEmpresas({ apenasAtivas: !mostrarInat });
-    const lista  = _empBusca
-      ? lista0.filter(e=>e.nome.toLowerCase().includes(_empBusca)||(e.cnpj??'').includes(_empBusca)||(e.cidade??'').toLowerCase().includes(_empBusca))
-      : lista0;
-    if (!lista.length) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:40px">Nenhuma empresa encontrada.</td></tr>`;
-      return;
-    }
+    const lista = _empBusca ? lista0.filter(e=>e.nome.toLowerCase().includes(_empBusca)||(e.cnpj??'').includes(_empBusca)||(e.cidade??'').toLowerCase().includes(_empBusca)) : lista0;
+    if (!lista.length) { tbody.innerHTML = `<tr class="tr-empty"><td colspan="6">Nenhuma empresa encontrada.</td></tr>`; return; }
     const counts = await Promise.all(lista.map(e=>contarProdutosPorEmpresa(e.id)));
-    tbody.innerHTML = lista.map((e,i)=>`<tr>
-      <td>
-        <div style="font-weight:600">${escapeHtml(e.nome)}</div>
-        ${e.cidade?`<div style="font-size:11px;color:var(--text-light)">${escapeHtml(e.cidade)}${e.estado?' / '+e.estado:''}</div>`:''}
-      </td>
-      <td class="mono" style="font-size:12px">${escapeHtml(e.cnpj??'—')}</td>
-      <td>${e.cidade?escapeHtml(e.cidade)+(e.estado?' / '+e.estado:''):'—'}</td>
-      <td class="mono">${counts[i].toLocaleString('pt-BR')}</td>
-      <td>${badgeAtivo(e.ativo)}</td>
-      <td><div style="display:flex;gap:6px">
-        ${hasRole('administrador')?`
-          <button class="btn btn-ghost btn-sm" onclick="_abrirEditarEmp('${e.id}')">Editar</button>
-          <button class="btn btn-ghost btn-sm" onclick="_confirmarStatusEmp('${e.id}','${escapeHtml(e.nome)}',${e.ativo})">
-            ${e.ativo?'Inativar':'Ativar'}
-          </button>`:''}
-      </div></td>
-    </tr>`).join('');
-  } catch(err) {
-    tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:20px">Erro: ${escapeHtml(err.message)}</td></tr>`;
-  }
+    tbody.innerHTML = lista.map((e,i)=>`<tr><td><div style="font-weight:600">${escapeHtml(e.nome)}</div>${e.cidade?`<div style="font-size:11px;color:var(--text-label)">${escapeHtml(e.cidade)}${e.estado?' / '+e.estado:''}</div>`:''}</td><td class="mono">${escapeHtml(e.cnpj??'—')}</td><td>${e.cidade?escapeHtml(e.cidade)+(e.estado?' / '+e.estado:''):'—'}</td><td class="mono">${counts[i].toLocaleString('pt-BR')}</td><td>${badgeAtivo(e.ativo)}</td><td><div style="display:flex;gap:6px">${hasRole('administrador')?`<button class="btn btn-ghost btn-sm" onclick="_abrirEditarEmp('${e.id}')">Editar</button><button class="btn btn-ghost btn-sm" onclick="_confirmarStatusEmp('${e.id}','${escapeHtml(e.nome)}',${e.ativo})">${e.ativo?'Inativar':'Ativar'}</button>`:''}</div></td></tr>`).join('');
+  } catch(err) { tbody.innerHTML = `<tr class="tr-empty"><td colspan="6">${escapeHtml(err.message)}</td></tr>`; }
 }
-
-window._abrirNovaEmp = function() {
-  _empEditandoId = null;
-  document.getElementById('modalEmpTitulo').textContent = 'Nova Empresa';
-  document.getElementById('btnSalvarEmp').textContent   = 'Salvar empresa';
-  _limparFormEmp();
-  document.getElementById('modalEmpresa').classList.add('active');
-  document.getElementById('empNome').focus();
-};
-
-window._abrirEditarEmp = async function(id) {
-  showLoading();
-  try {
-    const e = await buscarEmpresa(id);
-    _empEditandoId = id;
-    document.getElementById('modalEmpTitulo').textContent = 'Editar Empresa';
-    document.getElementById('btnSalvarEmp').textContent   = 'Salvar alterações';
-    document.getElementById('empNome').value     = e.nome        ?? '';
-    document.getElementById('empCnpj').value     = e.cnpj        ?? '';
-    document.getElementById('empEstado').value   = e.estado      ?? '';
-    document.getElementById('empCidade').value   = e.cidade      ?? '';
-    document.getElementById('empEndereco').value = e.endereco    ?? '';
-    document.getElementById('empObs').value      = e.observacoes ?? '';
-    document.getElementById('modalEmpresa').classList.add('active');
-  } catch(err) { showToast('Erro: '+err.message,'error'); }
-  finally { hideLoading(); }
-};
+window._abrirNovaEmp = function() { _empEditandoId = null; document.getElementById('modalEmpTitulo').textContent = 'Nova Empresa'; _limparFormEmp(); document.getElementById('modalEmpresa').classList.add('active'); };
+window._abrirEditarEmp = async function(id) { showLoading(); try { const e = await buscarEmpresa(id); _empEditandoId = id; document.getElementById('modalEmpTitulo').textContent = 'Editar Empresa'; document.getElementById('empNome').value = e.nome??''; document.getElementById('empCnpj').value = e.cnpj??''; document.getElementById('empEstado').value = e.estado??''; document.getElementById('empCidade').value = e.cidade??''; document.getElementById('empEndereco').value = e.endereco??''; document.getElementById('empObs').value = e.observacoes??''; document.getElementById('modalEmpresa').classList.add('active'); } catch(err){} finally { hideLoading(); } };
 window.fecharModalEmp = () => { document.getElementById('modalEmpresa').classList.remove('active'); _empEditandoId=null; _limparFormEmp(); };
-
 window.salvarEmpresa = async function() {
-  const nome = document.getElementById('empNome').value.trim();
-  if (!nome) { showToast('O nome é obrigatório.','warning'); return; }
-  const campos = {
-    nome,
-    cnpj:        document.getElementById('empCnpj').value.trim()     || null,
-    estado:      document.getElementById('empEstado').value.trim().toUpperCase() || null,
-    cidade:      document.getElementById('empCidade').value.trim()   || null,
-    endereco:    document.getElementById('empEndereco').value.trim() || null,
-    observacoes: document.getElementById('empObs').value.trim()      || null,
-  };
-  const btn = document.getElementById('btnSalvarEmp');
-  btn.disabled = true; btn.textContent = 'Salvando...';
+  const nome = document.getElementById('empNome').value.trim(); if (!nome) { showToast('Nome obrigatório.','warning'); return; }
+  const campos = { nome, cnpj: document.getElementById('empCnpj').value.trim()||null, estado: document.getElementById('empEstado').value.trim().toUpperCase()||null, cidade: document.getElementById('empCidade').value.trim()||null, endereco: document.getElementById('empEndereco').value.trim()||null, observacoes: document.getElementById('empObs').value.trim()||null };
   showLoading();
-  try {
-    if (_empEditandoId) { await atualizarEmpresa(_empEditandoId, campos); showToast('Empresa atualizada!','success'); }
-    else               { await criarEmpresa(campos); showToast('Empresa criada!','success'); }
-    fecharModalEmp();
-    await _carregarEmps();
-  } catch(err) { showToast('Erro: '+err.message,'error'); }
-  finally { btn.disabled=false; btn.textContent=_empEditandoId?'Salvar alterações':'Salvar empresa'; hideLoading(); }
+  try { if (_empEditandoId) { await atualizarEmpresa(_empEditandoId, campos); showToast('Empresa atualizada!','success'); } else { await criarEmpresa(campos); showToast('Empresa criada!','success'); } fecharModalEmp(); await _carregarEmps(); } catch(err) { showToast('Erro: '+err.message,'error'); } finally { hideLoading(); }
 };
-
-window._confirmarStatusEmp = async function(id, nome, ativo) {
-  const acao = ativo ? 'inativar' : 'ativar';
-  const ok = await fmConfirm({ titulo:`${ativo?'Inativar':'Ativar'} empresa?`, msg:`Deseja ${acao} "${nome}"?`, confirmTxt:ativo?'Inativar':'Ativar', tipo: ativo?'perigo':'info' });
-  if (!ok) return;
-  showLoading();
-  try { await alternarStatusEmpresa(id); showToast(`Empresa ${acao}da!`,'success'); await _carregarEmps(); }
-  catch(err) { showToast('Erro: '+err.message,'error'); }
-  finally { hideLoading(); }
-};
-
+window._confirmarStatusEmp = async function(id, nome, ativo) { const acao = ativo ? 'inativar' : 'ativar'; const ok = await fmConfirm({ titulo:`${ativo?'Inativar':'Ativar'} empresa?`, msg:`Deseja ${acao} "${nome}"?`, confirmTxt:ativo?'Inativar':'Ativar', tipo: ativo?'perigo':'info' }); if (!ok) return; showLoading(); try { await alternarStatusEmpresa(id); showToast(`Empresa ${acao}da!`,'success'); await _carregarEmps(); } catch(err) { showToast('Erro: '+err.message,'error'); } finally { hideLoading(); } };
 function _limparFormEmp() { ['empNome','empCnpj','empEstado','empCidade','empEndereco','empObs'].forEach(id=>{document.getElementById(id).value='';}); }
 
-// ═══════════════════════════════════════════════════════════
-//  PRODUTOS
-// ═══════════════════════════════════════════════════════════
+// PRODUTOS
 let _prodEditandoId=null, _prodBusca='', _prodEmpresa='', _prodPage=1, _prodEmpresas=[];
 const PROD_LIMIT = 50;
-
 async function renderProdutos() {
   pageBody.innerHTML = `
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
-      <input class="form-input" style="width:280px" id="prodCampoBusca"
-             placeholder="Buscar por código, nome ou cód. barras..." oninput="_onBuscaProd(this.value)"/>
-      <select class="form-input" style="width:220px" id="prodSelectEmp" onchange="_onEmpresaProd(this.value)">
-        <option value="">Todas as empresas</option>
-      </select>
+      <input class="form-input" style="width:280px" id="prodCampoBusca" placeholder="Buscar por código, nome..." oninput="_onBuscaProd(this.value)"/>
+      <select class="form-input" style="width:220px" id="prodSelectEmp" onchange="_onEmpresaProd(this.value)"><option value="">Todas as empresas</option></select>
       <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
-        ${hasRole('administrador')?`
-          <button class="btn btn-ghost btn-sm" onclick="_abrirClonarProd()">Clonar produtos</button>
-          <button class="btn btn-ghost btn-sm" onclick="_abrirImportProd()">Importar Excel</button>
-          <button class="btn btn-primary btn-sm" onclick="_abrirNovoProd()">+ Novo Produto</button>`:''}
+        ${hasRole('administrador')?`<button class="btn btn-ghost btn-sm" onclick="_abrirClonarProd()">Clonar</button><button class="btn btn-ghost btn-sm" onclick="_abrirImportProd()">Importar Excel</button><button class="btn btn-primary btn-sm" onclick="_abrirNovoProd()">+ Novo Produto</button>`:''}
       </div>
     </div>
-    <div style="font-size:12px;color:var(--text-light);margin-bottom:10px" id="prodTotal"></div>
-    <div class="card"><table><thead><tr>
-      <th>Código</th><th>Nome</th><th>Unidade</th><th>Cód. Barras</th><th>Empresa</th><th>Status</th><th></th>
-    </tr></thead><tbody id="prodTbody">
-      <tr><td colspan="7" style="text-align:center;padding:40px"><div class="spinner" style="margin:auto"></div></td></tr>
-    </tbody></table></div>
-    <div id="prodPaginacao" style="display:none;display:flex;gap:8px;align-items:center;margin-top:12px;justify-content:center">
-      <button class="btn btn-ghost btn-sm" id="prodBtnAnt" onclick="_prodPaginar(-1)">Anterior</button>
-      <span id="prodPagLabel" style="font-size:13px;color:var(--text-muted)"></span>
-      <button class="btn btn-ghost btn-sm" id="prodBtnProx" onclick="_prodPaginar(1)">Próxima</button>
+    <div class="card"><div class="tabela-container"><table><thead><tr><th>Código</th><th>Nome</th><th>Unidade</th><th>Cód. Barras</th><th>Empresa</th><th>Status</th><th></th></tr></thead><tbody id="prodTbody"><tr><td colspan="7" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr></tbody></table></div></div>
+    <div id="prodPaginacao" style="display:none; gap:8px; align-items:center; justify-content:center; margin-top:12px;">
+      <button class="btn btn-ghost btn-sm" id="prodBtnAnt" onclick="_prodPaginar(-1)">Anterior</button><span id="prodPagLabel" class="label-tech"></span><button class="btn btn-ghost btn-sm" id="prodBtnProx" onclick="_prodPaginar(1)">Próxima</button>
     </div>`;
-
-  _prodEmpresas = await listarEmpresas({ apenasAtivas: true });
-  _preencherSelectsProd();
-  await _carregarProds();
+  _prodEmpresas = await listarEmpresas({ apenasAtivas: true }); _preencherSelectsProd(); await _carregarProds();
   window._onBuscaProd = debounce(async(v)=>{_prodBusca=v.trim();_prodPage=1;await _carregarProds();},350);
   window._onEmpresaProd = async(v)=>{_prodEmpresa=v;_prodPage=1;await _carregarProds();};
 }
-
 async function _carregarProds() {
-  const tbody = document.getElementById('prodTbody');
-  if (!tbody) return;
-  const empresaId = _prodEmpresa || _prodEmpresas[0]?.id;
-  if (!empresaId) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px">Nenhuma empresa cadastrada.</td></tr>`;
-    return;
-  }
-  if (!_prodEmpresa && _prodEmpresas.length>0) {
-    document.getElementById('prodSelectEmp').value = empresaId;
-    _prodEmpresa = empresaId;
-  }
+  const tbody = document.getElementById('prodTbody'); if (!tbody) return;
+  const empresaId = _prodEmpresa || _prodEmpresas[0]?.id; if (!empresaId) { tbody.innerHTML = `<tr class="tr-empty"><td colspan="7">Nenhuma empresa cadastrada.</td></tr>`; return; }
+  if (!_prodEmpresa && _prodEmpresas.length>0) { document.getElementById('prodSelectEmp').value = empresaId; _prodEmpresa = empresaId; }
   try {
     const { data, count } = await listarProdutos(empresaId,{q:_prodBusca,apenasAtivos:false,page:_prodPage,limit:PROD_LIMIT});
-    document.getElementById('prodTotal').textContent = `${count.toLocaleString('pt-BR')} produto(s)`;
-    if (!data.length) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px">Nenhum produto encontrado.</td></tr>`;
-      document.getElementById('prodPaginacao').style.display='none'; return;
-    }
+    if (!data.length) { tbody.innerHTML = `<tr class="tr-empty"><td colspan="7">Nenhum produto encontrado.</td></tr>`; document.getElementById('prodPaginacao').style.display='none'; return; }
     const emp = _prodEmpresas.find(e=>e.id===empresaId);
-    tbody.innerHTML = data.map(p=>`<tr>
-      <td class="mono">${escapeHtml(p.codigo_produto)}</td>
-      <td style="font-weight:500">${escapeHtml(p.nome_produto)}</td>
-      <td>${escapeHtml(p.unidade_medida??'—')}</td>
-      <td class="mono" style="font-size:12px">${escapeHtml(p.codigo_barras??'—')}</td>
-      <td style="font-size:12px;color:var(--text-muted)">${escapeHtml(emp?.nome??'—')}</td>
-      <td>${badgeAtivo(p.ativo)}</td>
-      <td>${hasRole('administrador')?`<button class="btn btn-ghost btn-sm" onclick="_abrirEditarProd('${p.id}')">Editar</button>`:''}</td>
-    </tr>`).join('');
+    tbody.innerHTML = data.map(p=>`<tr><td class="mono">${escapeHtml(p.codigo_produto)}</td><td style="font-weight:600">${escapeHtml(p.nome_produto)}</td><td>${escapeHtml(p.unidade_medida??'—')}</td><td class="mono">${escapeHtml(p.codigo_barras??'—')}</td><td class="label-tech">${escapeHtml(emp?.nome??'—')}</td><td>${badgeAtivo(p.ativo)}</td><td>${hasRole('administrador')?`<button class="btn btn-ghost btn-sm" onclick="_abrirEditarProd('${p.id}')">Editar</button>`:''}</td></tr>`).join('');
     const pages=Math.ceil(count/PROD_LIMIT), pag=document.getElementById('prodPaginacao');
-    if (pages<=1){pag.style.display='none';}
-    else{
-      pag.style.display='flex';
-      document.getElementById('prodPagLabel').textContent=`Página ${_prodPage} de ${pages}`;
-      document.getElementById('prodBtnAnt').disabled=_prodPage<=1;
-      document.getElementById('prodBtnProx').disabled=_prodPage>=pages;
-    }
-  } catch(err) {
-    tbody.innerHTML = `<tr><td colspan="7" style="color:var(--danger);padding:20px">Erro: ${escapeHtml(err.message)}</td></tr>`;
-  }
+    if (pages<=1) { pag.style.display='none'; } else { pag.style.display='flex'; document.getElementById('prodPagLabel').textContent=`Página ${_prodPage} de ${pages}`; document.getElementById('prodBtnAnt').disabled=_prodPage<=1; document.getElementById('prodBtnProx').disabled=_prodPage>=pages; }
+  } catch(err) { tbody.innerHTML = `<tr class="tr-empty"><td colspan="7">${escapeHtml(err.message)}</td></tr>`; }
 }
-
 window._prodPaginar = async(dir)=>{_prodPage+=dir;await _carregarProds();window.scrollTo(0,0);};
-window._abrirNovoProd = ()=>{ _prodEditandoId=null; document.getElementById('modalProdTitulo').textContent='Novo Produto'; document.getElementById('btnSalvarProd').textContent='Salvar produto'; _limparFormProd(); if(_prodEmpresa) document.getElementById('prodEmpresa').value=_prodEmpresa; document.getElementById('modalProduto').classList.add('active'); document.getElementById('prodCodigo').focus(); };
-window._abrirEditarProd = async(id)=>{ showLoading(); try{ const p=await buscarProdutoPorId(id); _prodEditandoId=id; document.getElementById('modalProdTitulo').textContent='Editar Produto'; document.getElementById('btnSalvarProd').textContent='Salvar alterações'; document.getElementById('prodEmpresa').value=p.empresa_id??''; document.getElementById('prodCodigo').value=p.codigo_produto??''; document.getElementById('prodNome').value=p.nome_produto??''; document.getElementById('prodUnidade').value=p.unidade_medida??''; document.getElementById('prodBarras').value=p.codigo_barras??''; document.getElementById('modalProduto').classList.add('active'); }catch(err){showToast('Erro: '+err.message,'error');}finally{hideLoading();} };
+window._abrirNovoProd = ()=>{ _prodEditandoId=null; document.getElementById('modalProdTitulo').textContent='Novo Produto'; _limparFormProd(); if(_prodEmpresa) document.getElementById('prodEmpresa').value=_prodEmpresa; document.getElementById('modalProduto').classList.add('active'); };
+window._abrirEditarProd = async(id)=>{ showLoading(); try{ const p=await buscarProdutoPorId(id); _prodEditandoId=id; document.getElementById('modalProdTitulo').textContent='Editar Produto'; document.getElementById('prodEmpresa').value=p.empresa_id??''; document.getElementById('prodCodigo').value=p.codigo_produto??''; document.getElementById('prodNome').value=p.nome_produto??''; document.getElementById('prodUnidade').value=p.unidade_medida??''; document.getElementById('prodBarras').value=p.codigo_barras??''; document.getElementById('modalProduto').classList.add('active'); }catch(err){}finally{hideLoading();} };
 window.fecharModalProd = ()=>{ document.getElementById('modalProduto').classList.remove('active'); _prodEditandoId=null; _limparFormProd(); };
-window.salvarProduto = async()=>{ const empId=document.getElementById('prodEmpresa').value, codigo=document.getElementById('prodCodigo').value.trim(), nome=document.getElementById('prodNome').value.trim(); if(!empId){showToast('Selecione a empresa.','warning');return;} if(!codigo){showToast('Código obrigatório.','warning');return;} if(!nome){showToast('Nome obrigatório.','warning');return;} const campos={empresa_id:empId,codigo_produto:codigo,nome_produto:nome,unidade_medida:document.getElementById('prodUnidade').value.trim()||null,codigo_barras:document.getElementById('prodBarras').value.trim()||null}; const btn=document.getElementById('btnSalvarProd'); btn.disabled=true;btn.textContent='Salvando...';showLoading(); try{ if(_prodEditandoId){await atualizarProduto(_prodEditandoId,campos);showToast('Produto atualizado!','success');}else{await criarProduto(campos);showToast('Produto criado!','success');} fecharModalProd(); await _carregarProds(); }catch(err){showToast('Erro: '+err.message,'error');}finally{btn.disabled=false;btn.textContent=_prodEditandoId?'Salvar alterações':'Salvar produto';hideLoading();} };
-
+window.salvarProduto = async()=>{ const empId=document.getElementById('prodEmpresa').value, codigo=document.getElementById('prodCodigo').value.trim(), nome=document.getElementById('prodNome').value.trim(); if(!empId||!codigo||!nome){showToast('Preencha os campos obrigatórios.','warning');return;} const campos={empresa_id:empId,codigo_produto:codigo,nome_produto:nome,unidade_medida:document.getElementById('prodUnidade').value.trim()||null,codigo_barras:document.getElementById('prodBarras').value.trim()||null}; showLoading(); try{ if(_prodEditandoId){await atualizarProduto(_prodEditandoId,campos);showToast('Atualizado!','success');}else{await criarProduto(campos);showToast('Criado!','success');} fecharModalProd(); await _carregarProds(); }catch(err){showToast(err.message,'error');}finally{hideLoading();} };
 window._abrirImportProd = ()=>{ document.getElementById('importPreview').style.display='none'; document.getElementById('importResultado').style.display='none'; document.getElementById('importArquivo').value=''; document.getElementById('modalImport').classList.add('active'); };
 window.fecharModalImport = ()=>document.getElementById('modalImport').classList.remove('active');
-document.getElementById('importArquivo').addEventListener('change', async function(){
-  const file=this.files[0]; if(!file) return;
-  try{ const linhas=await _lerExcel(file); document.getElementById('importPreviewText').innerHTML=`<strong>${linhas.length}</strong> produto(s) no arquivo. Primeiros 3: ${linhas.slice(0,3).map(l=>`<span class="mono">${escapeHtml(String(l.codigo??l.Codigo??''))}</span> — ${escapeHtml(String(l.nome??l.Nome??''))}`).join(', ')}`; document.getElementById('importPreview').style.display='block'; }catch(err){showToast('Erro ao ler arquivo: '+err.message,'error');}
-});
-window.executarImportacao = async()=>{ const empId=document.getElementById('importEmpresa').value, file=document.getElementById('importArquivo').files[0]; if(!empId){showToast('Selecione a empresa.','warning');return;} if(!file){showToast('Selecione um arquivo Excel.','warning');return;} const btn=document.getElementById('btnImportar'); btn.disabled=true;btn.textContent='Importando...';showLoading(); try{ const linhas=await _lerExcel(file); const r=await importarProdutosExcel(empId,linhas,auth.user.id); document.getElementById('importResultado').style.display='block'; document.getElementById('importResultado').innerHTML=`<div style="background:var(--success-light);border:1px solid var(--success);border-radius:8px;padding:14px;font-size:13px">Criados: <strong>${r.criados}</strong> &nbsp;·&nbsp; Atualizados: <strong>${r.atualizados}</strong> &nbsp;·&nbsp; Erros: <strong>${r.erros.length}</strong>${r.erros.length>0?`<div style="margin-top:8px;color:var(--danger)">${r.erros.slice(0,5).map(e=>`Linha ${e.linha}: ${escapeHtml(e.motivo)}`).join('<br/>')}</div>`:''}</div>`; showToast(`Importação: ${r.criados} criados, ${r.atualizados} atualizados.`,'success'); await _carregarProds(); }catch(err){showToast('Erro: '+err.message,'error');}finally{btn.disabled=false;btn.textContent='Importar';hideLoading();} };
-
+document.getElementById('importArquivo').addEventListener('change', async function(){ const file=this.files[0]; if(!file) return; try{ const linhas=await _lerExcel(file); document.getElementById('importPreviewText').innerHTML=`<strong>${linhas.length}</strong> produto(s) identificados.`; document.getElementById('importPreview').style.display='block'; }catch(err){showToast('Erro ao ler arquivo.','error');} });
+window.executarImportacao = async()=>{ const empId=document.getElementById('importEmpresa').value, file=document.getElementById('importArquivo').files[0]; if(!empId||!file) return showToast('Selecione empresa e arquivo.','warning'); showLoading(); try{ const linhas=await _lerExcel(file); const r=await importarProdutosExcel(empId,linhas,auth.user.id); document.getElementById('importResultado').style.display='block'; document.getElementById('importResultado').innerHTML=`<div style="background:var(--success-light);border:1px solid var(--success);border-radius:8px;padding:14px;">Criados: ${r.criados} · Atualizados: ${r.atualizados}</div>`; await _carregarProds(); }catch(err){showToast(err.message,'error');}finally{hideLoading();} };
 window._abrirClonarProd = ()=>{ const opts=_prodEmpresas.map(e=>`<option value="${e.id}">${escapeHtml(e.nome)}</option>`).join(''); document.getElementById('clonarOrigem').innerHTML=opts; document.getElementById('clonarDestino').innerHTML=opts; document.getElementById('modalClonar').classList.add('active'); };
 window.fecharModalClonar = ()=>document.getElementById('modalClonar').classList.remove('active');
-window.executarClone = async()=>{ const orig=document.getElementById('clonarOrigem').value, dest=document.getElementById('clonarDestino').value; if(!orig||!dest){showToast('Selecione as duas empresas.','warning');return;} if(orig===dest){showToast('Origem e destino não podem ser iguais.','warning');return;} const btn=document.getElementById('btnClonar'); btn.disabled=true;btn.textContent='Clonando...';showLoading(); try{ const r=await clonarProdutos(orig,dest); showToast(`${r.criados} produto(s) clonados!`,'success'); fecharModalClonar(); await _carregarProds(); }catch(err){showToast('Erro: '+err.message,'error');}finally{btn.disabled=false;btn.textContent='Clonar produtos';hideLoading();} };
-
-async function _lerExcel(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>{ try{ const wb=XLSX.read(e.target.result,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; res(XLSX.utils.sheet_to_json(ws)); }catch(err){rej(err);} }; r.onerror=()=>rej(new Error('Falha ao ler arquivo.')); r.readAsArrayBuffer(file); }); }
+window.executarClone = async()=>{ const orig=document.getElementById('clonarOrigem').value, dest=document.getElementById('clonarDestino').value; if(!orig||!dest||orig===dest) return showToast('Origem e destino inválidos.','warning'); showLoading(); try{ const r=await clonarProdutos(orig,dest); showToast(`${r.criados} produtos clonados!`,'success'); fecharModalClonar(); await _carregarProds(); }catch(err){showToast(err.message,'error');}finally{hideLoading();} };
+async function _lerExcel(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>{ try{ const wb=XLSX.read(e.target.result,{type:'array'}); res(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])); }catch(err){rej(err);} }; r.onerror=()=>rej(new Error()); r.readAsArrayBuffer(file); }); }
 function _limparFormProd(){ ['prodEmpresa','prodCodigo','prodNome','prodUnidade','prodBarras'].forEach(id=>{document.getElementById(id).value='';}); }
-function _preencherSelectsProd(){ const opts=_prodEmpresas.map(e=>`<option value="${e.id}">${escapeHtml(e.nome)}</option>`).join(''); const sf=document.getElementById('prodSelectEmp'); sf.innerHTML='<option value="">Todas as empresas</option>'+opts; document.getElementById('prodEmpresa').innerHTML='<option value="">Selecione...</option>'+opts; document.getElementById('importEmpresa').innerHTML='<option value="">Selecione...</option>'+opts; }
+function _preencherSelectsProd(){ const opts=_prodEmpresas.map(e=>`<option value="${e.id}">${escapeHtml(e.nome)}</option>`).join(''); document.getElementById('prodSelectEmp').innerHTML='<option value="">Todas as empresas</option>'+opts; document.getElementById('prodEmpresa').innerHTML='<option value="">Selecione...</option>'+opts; document.getElementById('importEmpresa').innerHTML='<option value="">Selecione...</option>'+opts; }
 
-// ═══════════════════════════════════════════════════════════
-//  USUÁRIOS
-// ═══════════════════════════════════════════════════════════
+// USUÁRIOS
 let _usrEditandoId=null, _usrBusca='', _usrEmpresas=[];
-const ROLES_DISP = isSupremo()
-  ? [{value:'supremo',label:'Supremo'},{value:'administrador',label:'Administrador'},{value:'auditor',label:'Auditor'},{value:'visualizador',label:'Visualizador'}]
-  : [{value:'auditor',label:'Auditor'},{value:'visualizador',label:'Visualizador'}];
-
+const ROLES_DISP = isSupremo() ? [{value:'supremo',label:'Supremo'},{value:'administrador',label:'Administrador'},{value:'auditor',label:'Auditor'},{value:'visualizador',label:'Visualizador'}] : [{value:'auditor',label:'Auditor'},{value:'visualizador',label:'Visualizador'}];
 async function renderUsuarios() {
-  if (!hasRole('administrador')) {
-    pageBody.innerHTML = `<div class="empty-state"><div class="empty-state-text">Acesso não autorizado.</div></div>`;
-    return;
-  }
+  if (!hasRole('administrador')) { pageBody.innerHTML = `<div class="empty-state">Acesso negado.</div>`; return; }
   pageBody.innerHTML = `
     <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
-      <input class="form-input" style="width:280px" id="usrCampoBusca"
-             placeholder="Buscar por nome ou e-mail..." oninput="_onBuscaUsr(this.value)"/>
-      <select class="form-input" style="width:180px" id="usrSelectRole" onchange="_carregarUsrs()">
-        <option value="">Todos os perfis</option>
-        <option value="supremo">Supremo</option>
-        <option value="administrador">Administrador</option>
-        <option value="auditor">Auditor</option>
-        <option value="visualizador">Visualizador</option>
-      </select>
-      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);cursor:pointer">
-          <input type="checkbox" id="usrCheckInat" onchange="_carregarUsrs()" style="accent-color:var(--primary)"/> Mostrar inativos
-        </label>
-        <button class="btn btn-primary" onclick="_abrirNovoUsr()">+ Novo Usuário</button>
-      </div>
+      <input class="form-input" style="width:280px" id="usrCampoBusca" placeholder="Buscar usuário..." oninput="_onBuscaUsr(this.value)"/>
+      <select class="form-input" style="width:180px" id="usrSelectRole" onchange="_carregarUsrs()"><option value="">Todos os perfis</option><option value="supremo">Supremo</option><option value="administrador">Administrador</option><option value="auditor">Auditor</option><option value="visualizador">Visualizador</option></select>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center"><label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);"><input type="checkbox" id="usrCheckInat" onchange="_carregarUsrs()"/> Mostrar inativos</label><button class="btn btn-primary" onclick="_abrirNovoUsr()">+ Novo Usuário</button></div>
     </div>
-    <div class="card"><table><thead><tr>
-      <th>Nome</th><th>E-mail</th><th>Perfil</th><th>Empresa</th><th>Último acesso</th><th>Status</th><th></th>
-    </tr></thead><tbody id="usrTbody">
-      <tr><td colspan="7" style="text-align:center;padding:40px"><div class="spinner" style="margin:auto"></div></td></tr>
-    </tbody></table></div>`;
-
-  _usrEmpresas = await listarEmpresas({ apenasAtivas: false });
-  _preencherSelectsUsr();
-  await _carregarUsrs();
+    <div class="card"><div class="tabela-container"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Empresa</th><th>Status</th><th></th></tr></thead><tbody id="usrTbody"><tr><td colspan="6" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr></tbody></table></div></div>`;
+  _usrEmpresas = await listarEmpresas({ apenasAtivas: false }); _preencherSelectsUsr(); await _carregarUsrs();
   window._onBuscaUsr = debounce(async(v)=>{_usrBusca=v.toLowerCase().trim();await _carregarUsrs();},300);
 }
-
 async function _carregarUsrs() {
   const tbody=document.getElementById('usrTbody'); if(!tbody) return;
-  const mostrarInat=document.getElementById('usrCheckInat')?.checked;
-  const roleFiltro=document.getElementById('usrSelectRole')?.value;
+  const mostrarInat=document.getElementById('usrCheckInat')?.checked, roleFiltro=document.getElementById('usrSelectRole')?.value;
   try {
-    let q=supabase.from('usuarios').select('id,nome,email,role,empresa_id,ativo,ultimo_acesso').order('nome');
-    if(!mostrarInat) q=q.eq('ativo',true);
-    if(roleFiltro)   q=q.eq('role',roleFiltro);
+    let q=supabase.from('usuarios').select('id,nome,email,role,empresa_id,ativo').order('nome');
+    if(!mostrarInat) q=q.eq('ativo',true); if(roleFiltro) q=q.eq('role',roleFiltro);
     if(!isSupremo()) { q=q.in('role',['auditor','visualizador']); if(perfil.empresa_id) q=q.eq('empresa_id',perfil.empresa_id); }
-    const{data,error}=await q; if(error) throw new Error(error.message);
-    const lista=_usrBusca?data.filter(u=>u.nome.toLowerCase().includes(_usrBusca)||u.email.toLowerCase().includes(_usrBusca)):data;
-    if(!lista.length){ tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px">Nenhum usuário encontrado.</td></tr>`; return; }
+    const{data}=await q; const lista=_usrBusca?data.filter(u=>u.nome.toLowerCase().includes(_usrBusca)||u.email.toLowerCase().includes(_usrBusca)):data;
+    if(!lista.length){ tbody.innerHTML=`<tr class="tr-empty"><td colspan="6">Nenhum usuário encontrado.</td></tr>`; return; }
     const empMapa=Object.fromEntries(_usrEmpresas.map(e=>[e.id,e.nome]));
-    tbody.innerHTML=lista.map(u=>{
-      const souEu=u.id===perfil.id;
-      const podeEdit=isSupremo()||['auditor','visualizador'].includes(u.role);
-      return `<tr>
-        <td><div style="font-weight:600">${escapeHtml(u.nome)}${souEu?'<span class="badge badge-blue" style="margin-left:6px;font-size:10px">você</span>':''}</div></td>
-        <td class="mono" style="font-size:12px">${escapeHtml(u.email)}</td>
-        <td>${badgeRole(u.role)}</td>
-        <td style="font-size:12px;color:var(--text-muted)">${escapeHtml(empMapa[u.empresa_id]??'—')}</td>
-        <td style="font-size:12px;color:var(--text-light)">${u.ultimo_acesso?fmtDateTime(u.ultimo_acesso):'Nunca'}</td>
-        <td>${badgeAtivo(u.ativo)}</td>
-        <td><div style="display:flex;gap:6px">
-          ${podeEdit&&!souEu?`<button class="btn btn-ghost btn-sm" onclick="_abrirEditarUsr('${u.id}')">Editar</button>
-            <button class="btn btn-ghost btn-sm" onclick="_confirmarStatusUsr('${u.id}','${escapeHtml(u.nome)}',${u.ativo})">${u.ativo?'Inativar':'Ativar'}</button>`:''}
-          ${souEu?`<button class="btn btn-ghost btn-sm" onclick="_abrirEditarUsr('${u.id}')">Meu perfil</button>`:''}
-        </div></td>
-      </tr>`;
-    }).join('');
-  } catch(err) { tbody.innerHTML=`<tr><td colspan="7" style="color:var(--danger);padding:20px">Erro: ${escapeHtml(err.message)}</td></tr>`; }
+    tbody.innerHTML=lista.map(u=>{ const souEu=u.id===perfil.id, podeEdit=isSupremo()||['auditor','visualizador'].includes(u.role); return `<tr><td><div style="font-weight:600">${escapeHtml(u.nome)}${souEu?'<span class="badge badge-blue" style="margin-left:6px">você</span>':''}</div></td><td class="mono">${escapeHtml(u.email)}</td><td>${badgeRole(u.role)}</td><td class="label-tech">${escapeHtml(empMapa[u.empresa_id]??'—')}</td><td>${badgeAtivo(u.ativo)}</td><td><div style="display:flex;gap:6px">${podeEdit&&!souEu?`<button class="btn btn-ghost btn-sm" onclick="_abrirEditarUsr('${u.id}')">Editar</button><button class="btn btn-ghost btn-sm" onclick="_confirmarStatusUsr('${u.id}','${escapeHtml(u.nome)}',${u.ativo})">${u.ativo?'Inativar':'Ativar'}</button>`:''}</div></td></tr>`; }).join('');
+  } catch(err) { tbody.innerHTML=`<tr class="tr-empty"><td colspan="6">${err.message}</td></tr>`; }
 }
-
-window._abrirNovoUsr=()=>{ _usrEditandoId=null; document.getElementById('modalUsrTitulo').textContent='Novo Usuário'; document.getElementById('btnSalvarUsr').textContent='Criar usuário'; document.getElementById('usrGrupoSenha').style.display=''; document.getElementById('usrEmailHint').textContent='Será usado para login no sistema.'; document.getElementById('usrEmail').readOnly=false; _limparFormUsr(); document.getElementById('modalUsuario').classList.add('active'); document.getElementById('usrNome').focus(); };
-window._abrirEditarUsr=async(id)=>{ showLoading(); try{ const{data:u,error}=await supabase.from('usuarios').select('*').eq('id',id).single(); if(error) throw new Error(error.message); _usrEditandoId=id; document.getElementById('modalUsrTitulo').textContent='Editar Usuário'; document.getElementById('btnSalvarUsr').textContent='Salvar alterações'; document.getElementById('usrGrupoSenha').style.display='none'; document.getElementById('usrEmailHint').textContent='E-mail não pode ser alterado.'; document.getElementById('usrEmail').readOnly=true; document.getElementById('usrNome').value=u.nome??''; document.getElementById('usrEmail').value=u.email??''; document.getElementById('usrRole').value=u.role??''; document.getElementById('usrEmpresa').value=u.empresa_id??''; document.getElementById('modalUsuario').classList.add('active'); }catch(err){showToast('Erro: '+err.message,'error');}finally{hideLoading();} };
+window._abrirNovoUsr=()=>{ _usrEditandoId=null; document.getElementById('modalUsrTitulo').textContent='Novo Usuário'; document.getElementById('usrGrupoSenha').style.display=''; document.getElementById('usrEmail').readOnly=false; _limparFormUsr(); document.getElementById('modalUsuario').classList.add('active'); };
+window._abrirEditarUsr=async(id)=>{ showLoading(); try{ const{data:u}=await supabase.from('usuarios').select('*').eq('id',id).single(); _usrEditandoId=id; document.getElementById('modalUsrTitulo').textContent='Editar Usuário'; document.getElementById('usrGrupoSenha').style.display='none'; document.getElementById('usrEmail').readOnly=true; document.getElementById('usrNome').value=u.nome??''; document.getElementById('usrEmail').value=u.email??''; document.getElementById('usrRole').value=u.role??''; document.getElementById('usrEmpresa').value=u.empresa_id??''; document.getElementById('modalUsuario').classList.add('active'); }catch(err){}finally{hideLoading();} };
 window.fecharModalUsr=()=>{ document.getElementById('modalUsuario').classList.remove('active'); _usrEditandoId=null; _limparFormUsr(); };
-window.salvarUsuario=async()=>{ const nome=document.getElementById('usrNome').value.trim(),email=document.getElementById('usrEmail').value.trim().toLowerCase(),senha=document.getElementById('usrSenha').value,role=document.getElementById('usrRole').value,empresaId=document.getElementById('usrEmpresa').value||null; if(!nome){showToast('Nome obrigatório.','warning');return;} if(!email){showToast('E-mail obrigatório.','warning');return;} if(!role){showToast('Selecione um perfil.','warning');return;} const btn=document.getElementById('btnSalvarUsr'); btn.disabled=true;btn.textContent='Salvando...';showLoading(); try{ if(_usrEditandoId){ const{error}=await supabase.from('usuarios').update({nome,role,empresa_id:empresaId}).eq('id',_usrEditandoId); if(error) throw new Error(error.message); showToast('Usuário atualizado!','success'); }else{ if(!senha||senha.length<6){showToast('Senha mínima: 6 caracteres.','warning');btn.disabled=false;btn.textContent='Criar usuário';hideLoading();return;} const{data:authData,error:authErr}=await supabase.auth.signUp({email,password:senha}); if(authErr) throw new Error('Erro no Auth: '+authErr.message); if(!authData.user) throw new Error('Usuário não criado no Auth.'); const{error:dbErr}=await supabase.from('usuarios').insert([{id:authData.user.id,nome,email,role,empresa_id:empresaId,senha_hash:'auth-supabase',ativo:true}]); if(dbErr) throw new Error('Erro ao salvar perfil: '+dbErr.message); showToast('Usuário criado!','success'); } fecharModalUsr(); await _carregarUsrs(); }catch(err){showToast('Erro: '+err.message,'error');}finally{btn.disabled=false;btn.textContent=_usrEditandoId?'Salvar alterações':'Criar usuário';hideLoading();} };
-window._confirmarStatusUsr=async(id,nome,ativo)=>{ const ok=await fmConfirm({titulo:`${ativo?'Inativar':'Ativar'} usuário?`,msg:`Deseja ${ativo?'inativar':'ativar'} "${nome}"?${ativo?' Ele não conseguirá mais fazer login.':''}`,confirmTxt:ativo?'Inativar':'Ativar',tipo:ativo?'perigo':'info'}); if(!ok) return; showLoading(); try{ const{error}=await supabase.from('usuarios').update({ativo:!ativo}).eq('id',id); if(error) throw new Error(error.message); showToast(`Usuário ${ativo?'inativado':'ativado'}!`,'success'); await _carregarUsrs(); }catch(err){showToast('Erro: '+err.message,'error');}finally{hideLoading();} };
-function _preencherSelectsUsr(){ const opts='<option value="">Nenhuma (acesso geral)</option>'+_usrEmpresas.map(e=>`<option value="${e.id}">${escapeHtml(e.nome)}</option>`).join(''); document.getElementById('usrEmpresa').innerHTML=opts; document.getElementById('usrRole').innerHTML='<option value="">Selecione...</option>'+ROLES_DISP.map(r=>`<option value="${r.value}">${r.label}</option>`).join(''); }
+window.salvarUsuario=async()=>{ const nome=document.getElementById('usrNome').value.trim(),email=document.getElementById('usrEmail').value.trim().toLowerCase(),senha=document.getElementById('usrSenha').value,role=document.getElementById('usrRole').value,empresaId=document.getElementById('usrEmpresa').value||null; if(!nome||!email||!role) return showToast('Preencha os campos obrigatórios.','warning'); showLoading(); try{ if(_usrEditandoId){ await supabase.from('usuarios').update({nome,role,empresa_id:empresaId}).eq('id',_usrEditandoId); showToast('Atualizado!','success'); }else{ if(!senha||senha.length<6) return showToast('Senha fraca.','warning'); const{data:authData,error:authErr}=await supabase.auth.signUp({email,password:senha}); if(authErr) throw new Error(authErr.message); await supabase.from('usuarios').insert([{id:authData.user.id,nome,email,role,empresa_id:empresaId,senha_hash:'auth-supabase',ativo:true}]); showToast('Criado!','success'); } fecharModalUsr(); await _carregarUsrs(); }catch(err){showToast(err.message,'error');}finally{hideLoading();} };
+window._confirmarStatusUsr=async(id,nome,ativo)=>{ const ok=await fmConfirm({titulo:`Atenção`,msg:`Deseja ${ativo?'inativar':'ativar'} "${nome}"?`,confirmTxt:ativo?'Inativar':'Ativar',tipo:ativo?'perigo':'info'}); if(!ok) return; showLoading(); try{ await supabase.from('usuarios').update({ativo:!ativo}).eq('id',id); showToast(`Concluído!`,'success'); await _carregarUsrs(); }catch(err){}finally{hideLoading();} };
+function _preencherSelectsUsr(){ document.getElementById('usrEmpresa').innerHTML='<option value="">Acesso geral</option>'+_usrEmpresas.map(e=>`<option value="${e.id}">${escapeHtml(e.nome)}</option>`).join(''); document.getElementById('usrRole').innerHTML='<option value="">Selecione...</option>'+ROLES_DISP.map(r=>`<option value="${r.value}">${r.label}</option>`).join(''); }
 function _limparFormUsr(){ ['usrNome','usrEmail','usrSenha'].forEach(id=>{const el=document.getElementById(id);if(el){el.value='';el.readOnly=false;}}); const r=document.getElementById('usrRole'),e=document.getElementById('usrEmpresa'); if(r)r.value=''; if(e)e.value=''; document.getElementById('usrGrupoSenha').style.display=''; }
 
-// ═══════════════════════════════════════════════════════════
-//  RELATÓRIOS
-// ═══════════════════════════════════════════════════════════
+// RELATÓRIOS
 let _relFiltroEmp = '', _relBusca = '';
-
 async function renderRelatorios() {
   pageBody.innerHTML = `
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
-      <input class="form-input" style="width:280px" id="relCampoBusca"
-             placeholder="Buscar por nº auditoria ou empresa..."
-             oninput="_onBuscaRel(this.value)"/>
-      <select class="form-input" style="width:220px" id="relSelectEmp"
-              onchange="_onEmpresaRel(this.value)">
-        <option value="">Todas as empresas</option>
-      </select>
+      <input class="form-input" style="width:280px" placeholder="Buscar auditoria..." oninput="_onBuscaRel(this.value)"/>
+      <select class="form-input" style="width:220px" id="relSelectEmp" onchange="_onEmpresaRel(this.value)"><option value="">Todas as empresas</option></select>
     </div>
-    <div class="card">
-      <table><thead><tr>
-        <th>Nº Auditoria</th><th>Empresa</th><th>Criada por</th>
-        <th>Início</th><th>Fim</th><th>Modo</th><th></th>
-      </tr></thead>
-      <tbody id="relListTbody">
-        <tr><td colspan="7" style="text-align:center;padding:40px">
-          <div class="spinner" style="margin:auto"></div>
-        </td></tr>
-      </tbody></table>
-    </div>\`;
-
-  try {
-    const emps = await listarEmpresas({ apenasAtivas: false });
-    const sel  = document.getElementById('relSelectEmp');
-    emps.forEach(e => {
-      const opt = document.createElement('option');
-      opt.value = e.id;
-      opt.textContent = e.nome;
-      sel.appendChild(opt);
-    });
-  } catch(_) {}
-
+    <div class="card"><div class="tabela-container"><table><thead><tr><th>Nº Auditoria</th><th>Empresa</th><th>Criada por</th><th>Data Fim</th><th></th></tr></thead><tbody id="relListTbody"><tr><td colspan="5" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr></tbody></table></div></div>`;
+  try { const emps = await listarEmpresas({ apenasAtivas: false }); const sel = document.getElementById('relSelectEmp'); sel.innerHTML = '<option value="">Todas as empresas</option>'; emps.forEach(e => { const opt = document.createElement('option'); opt.value = e.id; opt.textContent = e.nome; sel.appendChild(opt); }); } catch(_) {}
   await _carregarRelatorios();
-
-  window._onBuscaRel   = debounce(async v => { _relBusca = v.toLowerCase().trim(); await _carregarRelatorios(); }, 300);
+  window._onBuscaRel = debounce(async v => { _relBusca = v.toLowerCase().trim(); await _carregarRelatorios(); }, 300);
   window._onEmpresaRel = async v => { _relFiltroEmp = v; await _carregarRelatorios(); };
 }
-
 async function _carregarRelatorios() {
-  const tbody = document.getElementById('relListTbody');
-  if (!tbody) return;
-
+  const tbody = document.getElementById('relListTbody'); if (!tbody) return;
   try {
-    let q = supabase
-      .from('auditorias')
-      .select(`
-        id, numero_auditoria, auditoria_cega,
-        data_inicio, data_fim,
-        empresas ( id, nome ),
-        usuarios!auditorias_criado_por_fkey ( nome )
-      `)
-      .eq('status', 'finalizada')
-      .order('data_fim', { ascending: false })
-      .limit(100);
-
+    let q = supabase.from('auditorias').select(`id, numero_auditoria, data_fim, empresas(nome), usuarios!auditorias_criado_por_fkey(nome)`).eq('status', 'finalizada').order('data_fim', { ascending: false }).limit(100);
     if (_relFiltroEmp) q = q.eq('empresa_id', _relFiltroEmp);
-
-    const { data, error } = await q;
-    if (error) throw new Error(error.message);
-
-    let lista = data ?? [];
-
-    if (_relBusca) {
-      lista = lista.filter(a =>
-        a.numero_auditoria.toLowerCase().includes(_relBusca) ||
-        (a.empresas?.nome ?? '').toLowerCase().includes(_relBusca)
-      );
-    }
-
-    if (!lista.length) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px">
-        Nenhuma auditoria finalizada encontrada.</td></tr>`;
-      return;
-    }
-
-    tbody.innerHTML = lista.map(a => `<tr>
-      <td class="mono" style="color:var(--primary)">\${escapeHtml(a.numero_auditoria)}</td>
-      <td style="font-weight:500">\${escapeHtml(a.empresas?.nome ?? '—')}</td>
-      <td style="font-size:12px;color:var(--text-muted)">\${escapeHtml(a.usuarios?.nome ?? '—')}</td>
-      <td style="font-size:12px">\${fmtDate(a.data_inicio)}</td>
-      <td style="font-size:12px">\${fmtDate(a.data_fim)}</td>
-      <td style="font-size:12px">\${a.auditoria_cega ? 'Cega' : 'Visível'}</td>
-      <td>
-        <div style="display:flex;gap:6px">
-          <a href="relatorios.html?id=\${a.id}" class="btn btn-primary btn-sm">Ver relatório</a>
-          <a href="#" class="btn btn-ghost btn-sm"
-             onclick="irPara('historico','\${a.id}');return false">Histórico</a>
-        </div>
-      </td>
-    </tr>`).join('');
-
-  } catch(err) {
-    tbody.innerHTML = `<tr><td colspan="7" style="color:var(--danger);padding:20px">
-      Erro: \${escapeHtml(err.message)}</td></tr>`;
-  }
+    const { data } = await q; let lista = data ?? [];
+    if (_relBusca) lista = lista.filter(a => a.numero_auditoria.toLowerCase().includes(_relBusca) || (a.empresas?.nome ?? '').toLowerCase().includes(_relBusca));
+    if (!lista.length) { tbody.innerHTML = `<tr class="tr-empty"><td colspan="5">Nenhum relatório encontrado.</td></tr>`; return; }
+    tbody.innerHTML = lista.map(a => `<tr><td class="mono" style="color:var(--primary)">${escapeHtml(a.numero_auditoria)}</td><td style="font-weight:600;">${escapeHtml(a.empresas?.nome)}</td><td class="label-tech">${escapeHtml(a.usuarios?.nome)}</td><td class="mono">${fmtDate(a.data_fim)}</td><td><div style="display:flex;gap:6px"><a href="relatorios.html?id=${a.id}" class="btn btn-primary btn-sm">Abrir PDF / CSV</a></div></td></tr>`).join('');
+  } catch(err) { tbody.innerHTML = `<tr class="tr-empty"><td colspan="5">${err.message}</td></tr>`; }
 }
 
-// ═══════════════════════════════════════════════════════════
-//  CONFIGURAÇÕES
-// ═══════════════════════════════════════════════════════════
+// CONFIGURAÇÕES
 async function renderConfig() {
   pageBody.innerHTML = `
     <div style="max-width:680px;display:flex;flex-direction:column;gap:20px">
-
-      <div class="card">
-        <div class="card-header"><span class="card-title">Meu perfil</span></div>
-        <div class="card-body">
-          <div class="form-group"><label class="form-label">Nome</label>
-            <input class="form-input" id="cfgNome" value="${escapeHtml(perfil?.nome??'')}"/></div>
-          <div class="form-group"><label class="form-label">E-mail</label>
-            <input class="form-input" value="${escapeHtml(perfil?.email??'')}" readonly style="opacity:.6;cursor:not-allowed"/></div>
-          <div class="form-group"><label class="form-label">Perfil</label>
-            <input class="form-input" value="${escapeHtml(perfil?.role??'')}" readonly style="opacity:.6;cursor:not-allowed"/></div>
-          <button class="btn btn-primary" onclick="cfgSalvarNome()">Salvar nome</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><span class="card-title">Alterar senha</span></div>
-        <div class="card-body">
-          <div class="form-group"><label class="form-label">Nova senha</label>
-            <input class="form-input" type="password" id="cfgSenhaNova" placeholder="Mínimo 6 caracteres" autocomplete="new-password"/></div>
-          <div class="form-group"><label class="form-label">Confirmar nova senha</label>
-            <input class="form-input" type="password" id="cfgSenhaConf" placeholder="Repita a senha" autocomplete="new-password"/></div>
-          <button class="btn btn-primary" onclick="cfgAlterarSenha()">Alterar senha</button>
-        </div>
-      </div>
-
-      ${isSupremo() ? `
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Sistema</span>
-          <span class="badge badge-blue">Supremo</span>
-        </div>
-        <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--surface-alt);border-radius:8px">
-            <div>
-              <div style="font-weight:600;margin-bottom:2px">Banco de dados</div>
-              <div style="font-size:12px;color:var(--text-muted)" id="cfgDbInfo">Verificando...</div>
-            </div>
-            <button class="btn btn-ghost btn-sm" onclick="cfgVerificarBanco()">Verificar</button>
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--danger-light);border-radius:8px;border:1px solid var(--danger)">
-            <div>
-              <div style="font-weight:600;color:var(--danger);margin-bottom:2px">Zona de perigo</div>
-              <div style="font-size:12px;color:var(--text-muted)">Exportar todos os dados do sistema em JSON.</div>
-            </div>
-            <button class="btn btn-danger btn-sm" onclick="cfgExportarDados()">Exportar tudo</button>
-          </div>
-        </div>
-      </div>` : ''}
-
+      <div class="card"><div class="card-header"><span class="card-title">Meu perfil</span></div><div class="card-body">
+        <div class="form-group"><label class="form-label">Nome</label><input class="form-input" id="cfgNome" value="${escapeHtml(perfil?.nome??'')}"/></div>
+        <div class="form-group"><label class="form-label">E-mail</label><input class="form-input" value="${escapeHtml(perfil?.email??'')}" readonly style="opacity:.6;cursor:not-allowed"/></div>
+        <button class="btn btn-primary" onclick="cfgSalvarNome()">Salvar</button>
+      </div></div>
     </div>`;
-
-  if (isSupremo()) cfgVerificarBanco();
 }
+window.cfgSalvarNome = async()=>{ const nome=document.getElementById('cfgNome').value.trim(); if(!nome)return; showLoading(); try{ await supabase.from('usuarios').update({nome}).eq('id',perfil.id); showToast('Nome atualizado!','success'); }catch(e){}finally{hideLoading();} };
 
-window.cfgSalvarNome = async()=>{ const nome=document.getElementById('cfgNome').value.trim(); if(!nome){showToast('Nome não pode ser vazio.','warning');return;} showLoading(); try{ const{error}=await supabase.from('usuarios').update({nome}).eq('id',perfil.id); if(error) throw new Error(error.message); showToast('Nome atualizado!','success'); }catch(err){showToast('Erro: '+err.message,'error');}finally{hideLoading();} };
-window.cfgAlterarSenha = async()=>{ const nova=document.getElementById('cfgSenhaNova').value,conf=document.getElementById('cfgSenhaConf').value; if(!nova||nova.length<6){showToast('Senha mínima: 6 caracteres.','warning');return;} if(nova!==conf){showToast('As senhas não conferem.','warning');return;} showLoading(); try{ const{error}=await supabase.auth.updateUser({password:nova}); if(error) throw new Error(error.message); document.getElementById('cfgSenhaNova').value=''; document.getElementById('cfgSenhaConf').value=''; showToast('Senha alterada!','success'); }catch(err){showToast('Erro: '+err.message,'error');}finally{hideLoading();} };
-window.cfgVerificarBanco = async()=>{ const el=document.getElementById('cfgDbInfo'); if(!el) return; el.textContent='Verificando...'; try{ const t=Date.now(); const{count}=await supabase.from('empresas').select('id',{count:'exact',head:true}); el.textContent=`Conectado — ${count} empresa(s) · latência ${Date.now()-t}ms`; }catch(err){el.textContent='Erro de conexão: '+err.message;} };
-window.cfgExportarDados = async()=>{ const ok=await fmConfirm({titulo:'Exportar todos os dados?',msg:'Isso exportará todas as tabelas em JSON. Continuar?',confirmTxt:'Exportar',tipo:'aviso'}); if(!ok) return; showLoading(); try{ const[empresas,usuarios,produtos,auditorias,itens]=await Promise.all([supabase.from('empresas').select('*'),supabase.from('usuarios').select('id,nome,email,role,empresa_id,ativo'),supabase.from('produtos').select('*'),supabase.from('auditorias').select('*'),supabase.from('auditoria_itens').select('*')]); const dump={exportado_em:new Date().toISOString(),empresas:empresas.data,usuarios:usuarios.data,produtos:produtos.data,auditorias:auditorias.data,auditoria_itens:itens.data}; const blob=new Blob([JSON.stringify(dump,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`audistock-backup-${new Date().toISOString().slice(0,10)}.json`; a.click(); URL.revokeObjectURL(url); showToast('Exportação concluída!','success'); }catch(err){showToast('Erro: '+err.message,'error');}finally{hideLoading();} };
+// FECHAR MODAL CLICANDO FORA
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('active')); });
+document.addEventListener('click', e => { if (e.target.classList.contains('modal-backdrop')) e.target.classList.remove('active'); });
 
-// ═══════════════════════════════════════════════════════════
-//  UTILITÁRIOS INTERNOS
-// ═══════════════════════════════════════════════════════════
-
-// Prompt estilizado para texto livre (substitui prompt() nativo)
-function _promptMotivo(label, titulo) {
-  return new Promise(resolve => {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-backdrop active';
-    overlay.style.zIndex = '2000';
-    overlay.innerHTML = `
-      <div class="modal" style="max-width:420px">
-        <div class="modal-title">${escapeHtml(titulo)}</div>
-        <div class="form-group" style="margin-top:12px">
-          <label class="form-label">${escapeHtml(label)}</label>
-          <input class="form-input" id="_promptInput" placeholder="Opcional"/>
-        </div>
-        <div class="modal-actions">
-          <button class="btn btn-ghost _pm-cancel">Cancelar</button>
-          <button class="btn btn-primary _pm-ok">Confirmar</button>
-        </div>
-      </div>`;
-    const fechar = v => { overlay.remove(); resolve(v); };
-    overlay.querySelector('._pm-ok').onclick     = () => fechar(document.getElementById('_promptInput').value);
-    overlay.querySelector('._pm-cancel').onclick = () => fechar(null);
-    overlay.addEventListener('keydown', e => { if(e.key==='Escape') fechar(null); if(e.key==='Enter'){e.preventDefault();fechar(document.getElementById('_promptInput').value);} });
-    document.body.appendChild(overlay);
-    setTimeout(() => document.getElementById('_promptInput')?.focus(), 40);
-  });
-}
-
-function _skelCards(n) {
-  return Array(n).fill(`
-    <div class="stat-card" style="opacity:.35">
-      <div style="height:42px;width:42px;background:var(--surface-alt);border-radius:8px;margin-bottom:16px"></div>
-      <div style="height:11px;width:55%;background:var(--surface-alt);border-radius:4px;margin-bottom:10px"></div>
-      <div style="height:28px;width:35%;background:var(--surface-alt);border-radius:4px"></div>
-    </div>`).join('');
-}
-
-// Esc fecha qualquer modal aberto
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    ['modalAuditoria','modalEmpresa','modalProduto','modalImport','modalClonar','modalUsuario']
-      .forEach(id => document.getElementById(id)?.classList.remove('active'));
-  }
-});
-
-// ═══════════════════════════════════════════════════════════
-//  ARRANQUE: expõe irPara globalmente e roteia
-// ═══════════════════════════════════════════════════════════
 window.irPara = irPara;
 await _rotear();
-
 </script>
 </body>
 </html>

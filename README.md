@@ -1,227 +1,196 @@
-# AudiStock — Guia de Configuração
+# AudiStock
 
-## ⚡ Início rápido
-
-### 1. Configure as credenciais do Supabase
-
-Abra `js/supabaseClient.js` e substitua:
-
-```js
-const SUPABASE_URL      = 'https://SEU_PROJECT_ID.supabase.co';
-const SUPABASE_ANON_KEY = 'SUA_ANON_PUBLIC_KEY';
-```
-
-Encontre esses valores em:
-**Supabase Dashboard → Project Settings → API**
+**AudiStock** is a web-based inventory audit management system built with vanilla JavaScript and Supabase. It allows businesses to run physical stock counts, track divergences between counted and system quantities, generate divergence reports, and manage multiple companies, products, and auditor users — all from a clean, dark-themed interface.
 
 ---
 
-### 2. Execute o schema SQL
+## Features
 
-No Supabase, vá em **SQL Editor** e cole o conteúdo de `audistock-schema.sql`.
+- **Multi-company support** — manage products and audits across multiple business units
+- **Audit lifecycle** — create, run, pause, finalize, and cancel audits
+- **Blind or visible mode** — hide or show system stock quantities during counting
+- **Three counting input modes** — manual entry, barcode scanner (USB/Bluetooth), and camera (native Barcode Detection API)
+- **Offline support** — counts are queued in IndexedDB and synced automatically when back online
+- **Real-time collaboration** — multiple auditors can count simultaneously via Supabase Realtime (Presence + Broadcast)
+- **Divergence reports** — filter by surpluses, shortages, or all items; export to CSV or PDF
+- **Role-based access control** — four roles: `supremo`, `administrador`, `auditor`, `visualizador`
+- **Excel import** — bulk-import products via `.xlsx` file using SheetJS
+- **Edit history** — every count correction is logged with user, timestamp, and optional reason
+- **Light / dark theme** — toggle with one click, preference saved in localStorage
 
-Isso cria:
-- Todas as tabelas
-- Views `vw_relatorio_divergencias` e `vw_produtos_nao_auditados`
-- Função `gerar_numero_auditoria()`
-- Índices de busca full-text
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Vanilla JS (ES6 modules), HTML, CSS |
+| Backend / Database | [Supabase](https://supabase.com) (PostgreSQL + Auth + Realtime) |
+| Offline queue | IndexedDB |
+| PDF export | jsPDF + jsPDF-AutoTable |
+| Excel import | SheetJS (XLSX) |
+| Fonts | Syne, DM Sans, JetBrains Mono |
+
+No build step, no bundler, no framework — just files served over HTTP.
+
+---
+
+## File Structure
+
+```
+audistock/
+├── index.html          ← redirects to login or dashboard
+├── login.html          ← authentication page
+├── app.html            ← main SPA shell (dashboard, audits, reports, settings...)
+├── contagem.html       ← counting screen (?id=audit_id)
+├── relatorios.html     ← divergence report (?id=audit_id)
+│
+├── style.css           ← complete design system
+│
+├── auth.js             ← login / logout / requireAuth / role helpers
+├── ui.js               ← layout, sidebar, toasts, modals, formatters
+├── supabaseClient.js   ← configure your credentials here
+├── auditorias.js       ← audit lifecycle (create, finalize, cancel, progress)
+├── contagem.js         ← count registration, conflict resolution, edit history
+├── produtos.js         ← product search and management
+├── empresas.js         ← company CRUD
+├── relatorios.js       ← divergence views and CSV export
+└── offline.js          ← IndexedDB queue and auto-sync
+```
+
+---
+
+## Getting Started
+
+### 1. Configure Supabase credentials
+
+Open `supabaseClient.js` and replace the placeholder values:
+
+```js
+const SUPABASE_URL      = 'https://YOUR_PROJECT_ID.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY';
+```
+
+Find these values at: **Supabase Dashboard → Project Settings → API**
+
+---
+
+### 2. Run the SQL schema
+
+In the Supabase dashboard, go to **SQL Editor** and run the contents of `audistock-schema.sql`.
+
+This creates:
+- All tables (`empresas`, `usuarios`, `produtos`, `auditorias`, `auditoria_itens`, etc.)
+- Views: `vw_relatorio_divergencias` and `vw_produtos_nao_auditados`
+- Function: `gerar_numero_auditoria()` — generates sequential audit numbers (AUD-YYYY-NNNN)
+- Full-text search indexes
 
 ---
 
 ### 3. Configure Row Level Security (RLS)
 
-No Supabase Dashboard → Authentication → Policies, adicione estas políticas básicas:
+In **Supabase Dashboard → Authentication → Policies**, add the following policies:
 
 ```sql
--- Habilitar RLS em todas as tabelas
 ALTER TABLE empresas            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE usuarios            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE produtos            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auditorias          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auditoria_itens     ENABLE ROW LEVEL SECURITY;
 
--- Política: usuário autenticado pode ler tudo
--- (ajuste conforme sua necessidade de isolamento por empresa)
+CREATE POLICY "authenticated can read"
+  ON empresas FOR SELECT TO authenticated USING (true);
 
-CREATE POLICY "autenticados podem ler"
-  ON empresas FOR SELECT
-  TO authenticated USING (true);
+CREATE POLICY "authenticated can read"
+  ON produtos FOR SELECT TO authenticated USING (ativo = true);
 
-CREATE POLICY "autenticados podem ler"
-  ON produtos FOR SELECT
-  TO authenticated USING (ativo = true);
+CREATE POLICY "authenticated can read"
+  ON auditorias FOR SELECT TO authenticated USING (true);
 
-CREATE POLICY "autenticados podem ler"
-  ON auditorias FOR SELECT
-  TO authenticated USING (true);
+CREATE POLICY "authenticated can insert items"
+  ON auditoria_itens FOR INSERT TO authenticated WITH CHECK (true);
 
-CREATE POLICY "autenticados podem inserir itens"
-  ON auditoria_itens FOR INSERT
-  TO authenticated WITH CHECK (true);
+CREATE POLICY "authenticated can read items"
+  ON auditoria_itens FOR SELECT TO authenticated USING (true);
 
-CREATE POLICY "autenticados podem ler itens"
-  ON auditoria_itens FOR SELECT
-  TO authenticated USING (true);
-
-CREATE POLICY "autenticados podem atualizar itens"
-  ON auditoria_itens FOR UPDATE
-  TO authenticated USING (true);
+CREATE POLICY "authenticated can update items"
+  ON auditoria_itens FOR UPDATE TO authenticated USING (true);
 ```
 
 ---
 
-### 4. Crie o primeiro usuário (Supremo)
+### 4. Create the first user (Supremo)
 
-No **Supabase Dashboard → Authentication → Users → Add User**:
+In **Supabase Dashboard → Authentication → Users → Add User**, create a user with your email and password.
 
-```
-Email: alyssom1919@gmail.com
-Password: (sua senha)
-```
-
-Depois no **SQL Editor**:
+Then in the **SQL Editor**, insert the profile:
 
 ```sql
 INSERT INTO usuarios (id, nome, email, role, ativo)
 VALUES (
-  '<UUID do usuário criado no Auth>',
-  'Alyssom',
-  'alyssom1919@gmail.com',
+  '<UUID from Auth Users tab>',
+  'Your Name',
+  'your@email.com',
   'supremo',
   true
 );
 ```
 
-> Para encontrar o UUID: Authentication → Users → copie o UUID da coluna ID.
-
 ---
 
-### 5. Sirva os arquivos
+### 5. Serve the files
 
-**Opção A — Firebase Hosting (recomendado):**
-
-```bash
-npm install -g firebase-tools
-firebase login
-firebase init hosting
-# Pasta pública: audistock/
-firebase deploy
-```
-
-**Opção B — Servidor local simples:**
+> **Do not open HTML files directly** (`file://`). ES6 modules require an HTTP server.
 
 ```bash
-# Python
-cd audistock/
-python3 -m http.server 8080
-
-# Node
+# Node (recommended)
 npx serve .
+
+# Python
+python3 -m http.server 8080
 ```
 
-Acesse: `http://localhost:8080`
-
-> ⚠️ **Não abra o HTML diretamente como arquivo** (file://).
-> Os módulos ES6 requerem um servidor HTTP.
+Then open `http://localhost:3000` in your browser.
 
 ---
 
-## 📁 Estrutura de arquivos
+## User Roles
 
-```
-audistock/
-├── index.html          ← redireciona login/dashboard
-├── login.html          ← autenticação
-├── dashboard.html      ← visão geral
-├── auditorias.html     ← lista + criar auditoria
-├── contagem.html       ← tela do auditor (?id=auditoria_id)
-├── relatorios.html     ← divergências (?id=auditoria_id)
-│
-├── css/
-│   └── style.css       ← design system completo
-│
-└── js/
-    ├── supabaseClient.js   ← ⚙️ configure aqui
-    ├── auth.js             ← login / logout / requireAuth
-    ├── ui.js               ← toasts / loading / formatadores
-    ├── _layout.js          ← sidebar + topbar
-    ├── empresas.js         ← CRUD empresas
-    ├── produtos.js         ← busca + importação
-    ├── auditorias.js       ← ciclo de vida auditoria
-    ├── contagem.js         ← registrar / editar contagens
-    ├── relatorios.js       ← views + exportação CSV
-    └── offline.js          ← IndexedDB + sync automático
-```
+| Role | Permissions |
+|---|---|
+| `supremo` | Full access — manage all users, companies, products, audits, and system settings |
+| `administrador` | Create and manage audits, companies, products, and lower-level users |
+| `auditor` | Run counting sessions |
+| `visualizador` | Read-only access to reports and audit history |
 
 ---
 
-## 🔗 Como as páginas se comunicam
+## Page Flow
 
 ```
 login.html
-  └─→ dashboard.html          (após login bem-sucedido)
+  └─→ app.html (dashboard)
 
-auditorias.html
-  └─→ contagem.html?id=<id>   (ao clicar "Continuar" ou criar nova)
+app.html?tela=auditorias
+  └─→ contagem.html?id=<id>     (start or continue counting)
 
 contagem.html?id=<id>
-  └─→ relatorios.html?id=<id> (ao clicar "Finalizar")
+  └─→ relatorios.html?id=<id>   (after finalizing)
 
-relatorios.html?id=<id>
-  └─→ contagem.html?id=<id>   (se status = em_andamento)
+app.html?tela=relatorios
+  └─→ relatorios.html?id=<id>   (view any finalized audit report)
 ```
 
 ---
 
-## 🔧 Próximas páginas a implementar
+## Common Issues
 
-| Página | Módulo JS principal |
-|--------|---------------------|
-| `empresas.html` | `empresas.js` |
-| `produtos.html` | `produtos.js` |
-| `usuarios.html` | auth.js + supabase direto |
-| `config.html`   | supabase direto |
-
-Padrão a seguir:
-1. `requireAuth()` no topo
-2. `initLayout('Título')`
-3. Chamar os módulos js/
-4. Renderizar HTML no `#pageBody`
-
----
-
-## 🌐 Configuração do Supabase para produção
-
-### Storage (para importação de Excel)
-```
-Dashboard → Storage → New bucket → "importacoes"
-Tornar privado
-```
-
-### Realtime (opcional — atualizações em tempo real)
-```sql
--- Habilita realtime na tabela de itens
-ALTER PUBLICATION supabase_realtime ADD TABLE auditoria_itens;
-```
-
-Então no JS:
-```js
-supabase
-  .channel('itens-auditoria')
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'auditoria_itens' },
-    payload => console.log(payload))
-  .subscribe();
-```
-
----
-
-## 🐛 Erros comuns
-
-| Erro | Solução |
-|------|---------|
-| `Failed to fetch` | Verifique SUPABASE_URL em supabaseClient.js |
-| `Invalid API key` | Verifique SUPABASE_ANON_KEY |
-| `permission denied for table` | Configure as políticas RLS (passo 3) |
-| `CORS error` | Adicione seu domínio em Supabase → Auth → URL Configuration |
-| `relation does not exist` | Execute o schema SQL (passo 2) |
-| Módulos ES6 não carregam | Sirva com HTTP, não file:// |
+| Error | Solution |
+|---|---|
+| `Failed to fetch` | Check `SUPABASE_URL` in `supabaseClient.js` |
+| `Invalid API key` | Check `SUPABASE_ANON_KEY` |
+| `permission denied for table` | Set up RLS policies (step 3) |
+| `CORS error` | Add your domain in Supabase → Auth → URL Configuration |
+| `relation does not exist` | Run the SQL schema (step 2) |
+| ES6 modules not loading | Serve with HTTP — do not use `file://` |
+| Supabase project paused | Free tier pauses after 7 days of inactivity — reactivate at supabase.com/dashboard |

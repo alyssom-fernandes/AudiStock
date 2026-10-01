@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>AudiStock</title>
+<script src="js/erros.js"></script>
 <link rel="stylesheet" href="css/style.css"/>
 </head>
 <body>
@@ -450,8 +451,18 @@ async function renderConfig() {
         <div class="form-group"><label class="form-label">E-mail</label><input class="form-input" value="${escapeHtml(perfil?.email??'')}" readonly style="opacity:.6;cursor:not-allowed"/></div>
         <button class="btn btn-primary" onclick="cfgSalvarNome()">Salvar</button>
       </div></div>
+      <div class="card"><div class="card-header"><span class="card-title">Sistema</span><button class="btn btn-ghost btn-sm" onclick="errosLimpar()">Limpar registro</button></div><div class="card-body" id="cfgErros"></div></div>
     </div>`;
+  _renderErros();
 }
+function _renderErros() {
+  const el = document.getElementById('cfgErros'); if (!el) return;
+  const erros = window.errosRegistrados?.() ?? [];
+  el.innerHTML = !erros.length
+    ? `<div style="color:var(--text-muted)">Nenhum erro registrado neste navegador.</div>`
+    : `<div style="display:flex;flex-direction:column;gap:12px">${erros.map(e => `<div><div class="mono">${fmtDateTime(e.ts)} · ${escapeHtml(e.pagina)} · ${escapeHtml(e.tipo)}</div><div>${escapeHtml(e.msg)}</div></div>`).join('')}</div>`;
+}
+document.addEventListener('audistock:erros', _renderErros);
 window.cfgSalvarNome = async()=>{ const nome=document.getElementById('cfgNome').value.trim(); if(!nome)return; showLoading(); try{ await supabase.from('usuarios').update({nome}).eq('id',perfil.id); showToast('Nome atualizado!','success'); }catch(e){}finally{hideLoading();} };
 
 // FECHAR MODAL CLICANDO FORA

@@ -35,6 +35,7 @@ export async function login(email, senha) {
 
   _currentUser = data.user;
   _currentPerfil = await carregarPerfil(data.user.id);
+  window.__usuarioAtual = _currentPerfil;
 
   // Atualiza último acesso
   await supabase
@@ -79,6 +80,7 @@ export async function requireAuth() {
   if (!_currentPerfil) {
     _currentPerfil = await carregarPerfil(session.user.id);
   }
+  window.__usuarioAtual = _currentPerfil;
 
   // Usuário inativo
   if (_currentPerfil && !_currentPerfil.ativo) {

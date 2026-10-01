@@ -5,6 +5,10 @@
 // ================================================================
 
 import { logout, getPerfil, hasRole } from './auth.js';
+import { demoAtivo } from './demo.js';
+
+// erros.js chama isto no primeiro erro não tratado da página
+window.__avisarErro = () => showToast('Algo falhou nesta tela e ficou registrado em Configurações › Sistema.', 'error', 8000);
 
 const ICONS = {
     dashboard:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`,
@@ -71,7 +75,13 @@ export function initLayout(titulo) {
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="window.__layoutFecharSidebar()"></div>`;
 
-    const topbarHtml = `
+    const demoHtml = demoAtivo() ? `
+        <div class="demo-bar" role="note">
+            <span><strong>Demonstração</strong> — dados fictícios, nada é gravado de verdade.</span>
+            <button type="button" class="demo-bar-sair" onclick="window.__layoutLogout()">Sair da demonstração</button>
+        </div>` : '';
+
+    const topbarHtml = `${demoHtml}
         <div class="offline-bar" id="offlineBar"></div>
         <header class="topbar">
             <button class="btn-hamburger" onclick="window.__layoutToggleSidebar()" aria-label="Menu">

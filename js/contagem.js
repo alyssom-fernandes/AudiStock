@@ -138,7 +138,7 @@ export async function listarItensContados(auditoriaId, { page = 1, limit = 100 }
   const { data, count, error } = await supabase
     .from('auditoria_itens')
     .select(`
-      id, quantidade_contada, estoque_sistema, diferenca, data_registro,
+      id, produto_id, quantidade_contada, estoque_sistema, diferenca, data_registro, atualizado_em,
       produtos ( id, codigo_produto, nome_produto, unidade_medida ),
       usuarios!auditoria_itens_registrado_por_fkey ( nome )
     `, { count: 'exact' })
@@ -208,8 +208,8 @@ async function _inserirItem(auditoriaId, produtoId, quantidade, usuarioId) {
       data_registro:      new Date().toISOString(),
     }])
     .select(`
-      id, quantidade_contada, estoque_sistema, diferenca, data_registro,
-      produtos ( codigo_produto, nome_produto, unidade_medida )
+      id, produto_id, quantidade_contada, estoque_sistema, diferenca, data_registro, atualizado_em,
+      produtos ( id, codigo_produto, nome_produto, unidade_medida )
     `)
     .single();
 
@@ -229,8 +229,8 @@ async function _atualizarItem(existente, novaQtd, usuarioId) {
     })
     .eq('id', existente.id)
     .select(`
-      id, quantidade_contada, estoque_sistema, diferenca, data_registro,
-      produtos ( codigo_produto, nome_produto, unidade_medida )
+      id, produto_id, quantidade_contada, estoque_sistema, diferenca, data_registro, atualizado_em,
+      produtos ( id, codigo_produto, nome_produto, unidade_medida )
     `)
     .single();
 

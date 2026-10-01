@@ -1,317 +1,450 @@
 // ================================================================
-//  AudiStock — js/ui.js  v4.0
-//  Utilitários de UI: toasts, loading, tema, sidebar, layout,
-//  modais fmConfirm/fmAlert, formatadores, debounce.
+//  AudiStock — js/ui.js  v5
+//  Layout (menu lateral, topo, faixa da demonstração), tema, avisos,
+//  carregamento, modais acessíveis, formatadores e pequenos utilitários.
 // ================================================================
 
-import { logout, getPerfil, hasRole } from './auth.js';
+import { logout, getPerfil } from './auth.js';
 import { demoAtivo } from './demo.js';
 
 // erros.js chama isto no primeiro erro não tratado da página
 window.__avisarErro = () => showToast('Algo falhou nesta tela e ficou registrado em Configurações › Sistema.', 'error', 8000);
 
-const ICONS = {
-    dashboard:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`,
-    empresas:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>`,
-    produtos:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`,
-    usuarios:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
-    auditorias:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>`,
-    relatorios:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
-    config:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
-    logout:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
-    moon:         `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
-    sun:          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`,
-    close:        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
+const svg = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
+
+export const ICONS = {
+    marca:      svg('<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/>'),
+    dashboard:  svg('<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>'),
+    empresas:   svg('<path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/>'),
+    produtos:   svg('<path d="m7.5 4.3 9 5.1M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.7z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/>'),
+    usuarios:   svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>'),
+    auditorias: svg('<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 14 2 2 4-4"/>'),
+    relatorios: svg('<path d="M3 3v18h18"/><path d="M7 16v-4M12 16V8M17 16v-7"/>'),
+    config:     svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
+    sair:       svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>'),
+    lua:        svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
+    sol:        svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+    menu:       svg('<path d="M4 6h16M4 12h16M4 18h16"/>'),
+    fechar:     svg('<path d="M18 6 6 18M6 6l12 12"/>'),
+    voltar:     svg('<path d="m15 18-6-6 6-6"/>'),
+    mais:       svg('<path d="M12 5v14M5 12h14"/>'),
+    ok:         svg('<path d="M20 6 9 17l-5-5"/>'),
+    alerta:     svg('<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>'),
+    erro:       svg('<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/>'),
+    info:       svg('<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'),
+    baixar:     svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>'),
+    imprimir:   svg('<path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>'),
+    busca:      svg('<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>'),
 };
 
-// Menu de Navegação - Botão 'Contagem' removido para evitar confusão de navegação
-const NAV_ITEMS = [
-    { section: 'Principal' },
-    { label: 'Dashboard',     icon: 'dashboard',  tela: 'dashboard',  visible: () => true },
-    { divider: true },
-    { section: 'Cadastros' },
-    { label: 'Empresas',      icon: 'empresas',   tela: 'empresas',   visible: (p) => ['supremo','administrador'].includes(p.role) },
-    { label: 'Produtos',      icon: 'produtos',   tela: 'produtos',   visible: (p) => ['supremo','administrador'].includes(p.role) },
-    { label: 'Usuários',      icon: 'usuarios',   tela: 'usuarios',   visible: (p) => ['supremo','administrador'].includes(p.role) },
-    { divider: true },
-    { section: 'Auditoria' },
-    { label: 'Auditorias',    icon: 'auditorias', tela: 'auditorias', visible: () => true },
-    { label: 'Relatórios',    icon: 'relatorios', tela: 'relatorios', visible: () => true },
-    { divider: true },
-    { section: 'Sistema' },
-    { label: 'Configurações', icon: 'config',     tela: 'config',     visible: () => true },
+const NAV = [
+    { itens: [ { label: 'Dashboard', icon: 'dashboard', tela: 'dashboard' } ] },
+    { secao: 'Auditoria', itens: [
+        { label: 'Auditorias', icon: 'auditorias', tela: 'auditorias' },
+        { label: 'Relatórios', icon: 'relatorios', tela: 'relatorios' },
+    ] },
+    { secao: 'Cadastros', papeis: ['supremo', 'administrador'], itens: [
+        { label: 'Empresas', icon: 'empresas', tela: 'empresas' },
+        { label: 'Produtos', icon: 'produtos', tela: 'produtos' },
+        { label: 'Usuários', icon: 'usuarios', tela: 'usuarios' },
+    ] },
+    { secao: 'Sistema', itens: [ { label: 'Configurações', icon: 'config', tela: 'config' } ] },
 ];
 
-export function initLayout(titulo) {
+export const NOMES_PAPEL = { supremo: 'Supremo', administrador: 'Administrador', auditor: 'Auditor', visualizador: 'Visualizador' };
+
+// ─────────────────────────────────────────────────────────────
+//  Layout
+// ─────────────────────────────────────────────────────────────
+export function initLayout(titulo, { ativa = null } = {}) {
     initTheme();
-
     const perfil = getPerfil();
-    const pagina = location.pathname.split('/').pop() || 'dashboard.html';
+    const nomeCurto = perfil?.nome?.split(' ').slice(0, 2).join(' ') ?? '—';
 
-    const sidebarHtml = `
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
-                <div class="brand-icon">${ICONS.produtos}</div>
-                <div class="brand-name">Audi<span>Stock</span></div>
-                <button class="btn-fechar-sidebar" onclick="window.__layoutFecharSidebar()" aria-label="Fechar menu">
-                    ${ICONS.close}
-                </button>
+    const nav = NAV.filter(g => !g.papeis || g.papeis.includes(perfil?.role)).map(g => `
+        <div class="nav-grupo">
+            ${g.secao ? `<div class="nav-secao">${escapeHtml(g.secao)}</div>` : ''}
+            ${g.itens.map(i => `
+                <a class="nav-item" href="app.html?tela=${i.tela}" data-tela="${i.tela}" ${i.tela === ativa ? 'aria-current="page"' : ''}>
+                    ${ICONS[i.icon]}<span>${escapeHtml(i.label)}</span>
+                </a>`).join('')}
+        </div>`).join('');
+
+    const sidebar = `
+        <aside class="sidebar" id="sidebar" aria-label="Menu principal">
+            <div class="sidebar-marca">
+                <span class="marca-icone">${ICONS.marca}</span>
+                <span class="marca-nome">AudiStock</span>
+                <button type="button" class="btn-icone sidebar-fechar" onclick="window.__layoutFecharSidebar()" aria-label="Fechar menu">${ICONS.fechar}</button>
             </div>
-
-            <nav class="sidebar-nav" id="sidebarNav">
-                ${_buildNavHtml(perfil, pagina)}
-            </nav>
-
-            <div class="sidebar-footer">
-                <div class="user-card" onclick="window.__layoutLogout()">
-                    <div class="avatar">${escapeHtml(perfil?.nome?.charAt(0) ?? '?')}</div>
-                    <div class="user-info">
-                        <div class="user-name">${escapeHtml(perfil?.nome?.split(' ')[0] ?? '—')}</div>
-                        <div class="user-role">${escapeHtml(perfil?.role ?? '—')}</div>
-                    </div>
+            <nav class="sidebar-nav">${nav}</nav>
+            <div class="sidebar-rodape">
+                <div class="usuario">
+                    <span class="avatar" aria-hidden="true">${escapeHtml(perfil?.nome?.charAt(0)?.toUpperCase() ?? '?')}</span>
+                    <span class="usuario-info">
+                        <span class="usuario-nome" id="usuarioNome">${escapeHtml(nomeCurto)}</span>
+                        <span class="usuario-papel">${escapeHtml(NOMES_PAPEL[perfil?.role] ?? '—')}</span>
+                    </span>
+                    <button type="button" class="btn-icone" onclick="window.__layoutLogout()" aria-label="Sair" title="Sair">${ICONS.sair}</button>
                 </div>
             </div>
         </aside>
-
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="window.__layoutFecharSidebar()"></div>`;
 
-    const demoHtml = demoAtivo() ? `
+    const demo = demoAtivo() ? `
         <div class="demo-bar" role="note">
-            <span><strong>Demonstração</strong> — dados fictícios, nada é gravado de verdade.</span>
-            <button type="button" class="demo-bar-sair" onclick="window.__layoutLogout()">Sair da demonstração</button>
+            <span><strong>Demonstração</strong><span class="demo-bar-longo"> · dados fictícios, nada é gravado de verdade</span></span>
+            <button type="button" class="link" onclick="window.__layoutLogout()">Sair da demonstração</button>
         </div>` : '';
 
-    const topbarHtml = `${demoHtml}
-        <div class="offline-bar" id="offlineBar"></div>
+    const topo = `${demo}
+        <div class="offline-bar" id="offlineBar" role="status" aria-live="polite"></div>
         <header class="topbar">
-            <button class="btn-hamburger" onclick="window.__layoutToggleSidebar()" aria-label="Menu">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-            </button>
-            <span class="topbar-title" id="topbarTitle">${escapeHtml(titulo ?? document.title)}</span>
-            <div class="topbar-actions">
-                <span class="topbar-datetime" id="topbarDatetime"></span>
-                <div class="topbar-sep"></div>
-                <button class="topbar-btn" onclick="window.__layoutToggleTheme()" id="btnTema" title="Alternar tema">
-                    ${ICONS.moon}
-                </button>
-                <button class="topbar-btn" onclick="window.__layoutLogout()" title="Sair">
-                    ${ICONS.logout}
-                </button>
-            </div>
+            <button type="button" class="btn-icone btn-hamburger" id="btnMenu" onclick="window.__layoutToggleSidebar()" aria-label="Abrir menu" aria-expanded="false" aria-controls="sidebar">${ICONS.menu}</button>
+            <h1 class="topbar-titulo" id="topbarTitle">${escapeHtml(titulo ?? '')}</h1>
+            <button type="button" class="btn-icone" id="btnTema" onclick="window.__layoutToggleTheme()"></button>
         </header>`;
 
     const shell = document.getElementById('appShell');
     if (shell) {
-        shell.insertAdjacentHTML('afterbegin', sidebarHtml);
-
+        shell.insertAdjacentHTML('afterbegin', sidebar);
         const main = document.createElement('div');
         main.className = 'main';
-        main.id = 'main';
-        main.innerHTML = topbarHtml + '<div class="page-content" id="pageContent"></div>';
-
+        main.innerHTML = topo + '<main class="page-content" id="pageContent"></main>';
         shell.appendChild(main);
-
-        const content = document.getElementById('pageBody');
-        if (content) document.getElementById('pageContent').appendChild(content);
+        const corpo = document.getElementById('pageBody');
+        if (corpo) document.getElementById('pageContent').appendChild(corpo);
     }
+    _garantirCamadas();
+    _applyTheme(_temaAtual());
+    definirTitulo(titulo);
 
+    window.__layoutLogout        = () => logout();
+    window.__layoutToggleSidebar = () => toggleSidebar();
+    window.__layoutFecharSidebar = () => fecharSidebar();
+    window.__layoutToggleTheme   = () => toggleTheme();
+}
+
+export function definirTitulo(titulo, ativa) {
+    const el = document.getElementById('topbarTitle');
+    if (el && titulo) el.textContent = titulo;
+    if (titulo) document.title = `${titulo} · AudiStock`;
+    if (ativa !== undefined) {
+        document.querySelectorAll('.nav-item').forEach(a => {
+            if (a.dataset.tela === ativa) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+        });
+    }
+}
+
+function _garantirCamadas() {
     if (!document.getElementById('loadingOverlay')) {
-        document.body.insertAdjacentHTML('beforeend', `<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>`);
+        document.body.insertAdjacentHTML('beforeend', `<div class="loading-overlay" id="loadingOverlay" role="status" aria-live="polite"><div class="carregando"><span class="spinner"></span><span id="loadingTexto">Carregando…</span></div></div>`);
     }
     if (!document.getElementById('toasts')) {
-        document.body.insertAdjacentHTML('beforeend', `<div class="toasts" id="toasts"></div>`);
+        document.body.insertAdjacentHTML('beforeend', `<div class="toasts" id="toasts" role="status" aria-live="polite"></div>`);
     }
-
-    _iniciarRelogio();
-
-    window.__layoutLogout          = () => logout();
-    window.__layoutToggleSidebar   = () => toggleSidebar();
-    window.__layoutFecharSidebar   = () => fecharSidebar();
-    window.__layoutToggleTheme     = () => toggleTheme();
-}
-
-function _buildNavHtml(perfil, paginaAtual) {
-    let html = '<div class="nav-section">';
-    let emSection = false;
-
-    for (const item of NAV_ITEMS) {
-        if (item.section) {
-            if (emSection) html += '</div>';
-            html += `<div class="nav-section"><div class="nav-label">${escapeHtml(item.section)}</div>`;
-            emSection = true;
-            continue;
-        }
-        if (item.divider) { html += `<div class="nav-divider"></div>`; continue; }
-        if (!item.visible(perfil)) continue;
-
-        const isInterna = !!item.tela;
-        const href  = isInterna ? `app.html?tela=${item.tela}` : item.href;
-        const ativo = isInterna && paginaAtual.includes(`tela=${item.tela}`) ? 'active' : !isInterna && paginaAtual === item.href ? 'active' : '';
-        html += `
-            <a class="nav-item ${ativo}" href="${href}" ${isInterna ? `data-tela="${item.tela}"` : ''}>
-                <span class="icon">${ICONS[item.icon] ?? ''}</span>
-                <span class="nav-item-label">${escapeHtml(item.label)}</span>
-            </a>`;
-    }
-    html += '</div>';
-    return html;
-}
-
-function _iniciarRelogio() {
-    function atualizar() {
-        const el = document.getElementById('topbarDatetime');
-        if (!el) return;
-        const agora = new Date();
-        el.textContent = `${agora.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric'})} · ${agora.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}`;
-    }
-    atualizar(); setInterval(atualizar, 1000);
 }
 
 export function toggleSidebar() {
     const s = document.getElementById('sidebar');
-    const o = document.getElementById('sidebarOverlay');
     if (!s) return;
-    if (s.classList.contains('open')) { s.classList.remove('open'); o?.classList.remove('visible'); } 
-    else { s.classList.add('open'); o?.classList.add('visible'); }
+    s.classList.contains('open') ? fecharSidebar() : abrirSidebar();
 }
-
+function abrirSidebar() {
+    document.getElementById('sidebar')?.classList.add('open');
+    document.getElementById('sidebarOverlay')?.classList.add('visible');
+    document.getElementById('btnMenu')?.setAttribute('aria-expanded', 'true');
+    setTimeout(() => document.querySelector('#sidebar .nav-item')?.focus(), 50);
+}
 export function fecharSidebar() {
+    const aberta = document.getElementById('sidebar')?.classList.contains('open');
     document.getElementById('sidebar')?.classList.remove('open');
     document.getElementById('sidebarOverlay')?.classList.remove('visible');
+    const btn = document.getElementById('btnMenu');
+    btn?.setAttribute('aria-expanded', 'false');
+    if (aberta && window.innerWidth <= 900) btn?.focus();
+}
+document.addEventListener('click', e => { if (window.innerWidth <= 900 && e.target.closest('.nav-item')) fecharSidebar(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.querySelector('.modal-backdrop') && document.getElementById('sidebar')?.classList.contains('open')) fecharSidebar(); });
+
+// ─────────────────────────────────────────────────────────────
+//  Tema: o salvo; na primeira visita, o do sistema operacional
+// ─────────────────────────────────────────────────────────────
+function _temaAtual() {
+    let salvo = null;
+    try { salvo = localStorage.getItem('audistock-theme'); } catch (_) {}
+    if (salvo === 'light' || salvo === 'dark') return salvo;
+    return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+export function initTheme() { _applyTheme(_temaAtual()); }
+export function toggleTheme() {
+    const proximo = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+    _applyTheme(proximo);
+    try { localStorage.setItem('audistock-theme', proximo); } catch (_) {}
+}
+function _applyTheme(tema) {
+    document.documentElement.dataset.theme = tema;
+    const btn = document.getElementById('btnTema');
+    if (btn) {
+        const rotulo = tema === 'light' ? 'Mudar para o tema escuro' : 'Mudar para o tema claro';
+        btn.innerHTML = tema === 'light' ? ICONS.lua : ICONS.sol;
+        btn.setAttribute('aria-label', rotulo);
+        btn.title = rotulo;
+    }
 }
 
-document.addEventListener('click', function(e) {
-    if (window.innerWidth <= 900 && e.target.closest('.nav-item')) fecharSidebar();
+// ─────────────────────────────────────────────────────────────
+//  Avisos (toasts)
+// ─────────────────────────────────────────────────────────────
+const TIPO_TOAST = { success: ['sucesso', ICONS.ok], error: ['erro', ICONS.erro], warning: ['aviso', ICONS.alerta], info: ['info', ICONS.info] };
+
+export function showToast(msg, tipo = 'success', duracao = 4000) {
+    _garantirCamadas();
+    const [classe, icone] = TIPO_TOAST[tipo] ?? TIPO_TOAST.info;
+    const el = document.createElement('div');
+    el.className = `toast toast-${classe}`;
+    if (tipo === 'error') el.setAttribute('role', 'alert');
+    el.innerHTML = `<span class="toast-icone">${icone}</span><span class="toast-msg">${escapeHtml(msg)}</span>
+        <button type="button" class="btn-icone toast-fechar" aria-label="Fechar aviso">${ICONS.fechar}</button>`;
+    const sair = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 200); };
+    el.querySelector('.toast-fechar').onclick = sair;
+    document.getElementById('toasts').appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+    setTimeout(sair, duracao);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Carregamento: só aparece se a espera passar de 200 ms
+// ─────────────────────────────────────────────────────────────
+let _timerLoading = null;
+export function showLoading(texto = 'Carregando…') {
+    _garantirCamadas();
+    document.getElementById('loadingTexto').textContent = texto;
+    clearTimeout(_timerLoading);
+    _timerLoading = setTimeout(() => document.getElementById('loadingOverlay')?.classList.add('active'), 200);
+}
+export function hideLoading() {
+    clearTimeout(_timerLoading);
+    document.getElementById('loadingOverlay')?.classList.remove('active');
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Modais
+//  abrirModal({ titulo, subtitulo, corpo, acoes, largura, aoEnviar, aoFechar })
+//   - corpo: HTML; o conteúdo vai dentro de um <form>, então Enter envia
+//   - acoes: [{ texto, classe, tipo:'submit'|'button', acao(modal), id }]
+//   - aoEnviar(modal): chamado no submit (Enter ou botão submit)
+//  Esc e clique no fundo fecham só o modal de cima. O foco fica preso
+//  dentro dele e volta ao botão que o abriu.
+// ─────────────────────────────────────────────────────────────
+const _pilha = [];
+let _seqModal = 0;
+
+export function abrirModal({ titulo, subtitulo = '', corpo = '', acoes = [], largura = 'md', aoEnviar = null, aoFechar = null, papel = 'dialog' } = {}) {
+    const id = `modal${++_seqModal}`;
+    const origem = document.activeElement;
+    const fundo = document.createElement('div');
+    fundo.className = 'modal-backdrop';
+    fundo.innerHTML = `
+        <form class="modal modal-${largura}" role="${papel}" aria-modal="true" aria-labelledby="${id}t" ${subtitulo ? `aria-describedby="${id}s"` : ''} novalidate>
+            <div class="modal-cab">
+                <div>
+                    <h2 class="modal-titulo" id="${id}t">${escapeHtml(titulo)}</h2>
+                    ${subtitulo ? `<p class="modal-sub" id="${id}s">${subtitulo}</p>` : ''}
+                </div>
+                <button type="button" class="btn-icone modal-x" data-fechar aria-label="Fechar">${ICONS.fechar}</button>
+            </div>
+            <div class="modal-corpo">${corpo}</div>
+            ${acoes.length ? `<div class="modal-rodape">${acoes.map((a, i) => `<button type="${a.tipo ?? 'button'}" class="btn ${a.classe ?? 'btn-secondary'}" data-i="${i}" ${a.id ? `id="${a.id}"` : ''}>${escapeHtml(a.texto)}</button>`).join('')}</div>` : ''}
+        </form>`;
+
+    const form = fundo.querySelector('form');
+    const modal = {
+        el: form, fundo,
+        fechar(resultado) {
+            if (!fundo.isConnected) return;
+            fundo.classList.remove('active');
+            const i = _pilha.indexOf(modal); if (i >= 0) _pilha.splice(i, 1);
+            setTimeout(() => fundo.remove(), 150);
+            if (origem?.isConnected) origem.focus?.();
+            aoFechar?.(resultado);
+        },
+        $: sel => form.querySelector(sel),
+        ocupado(sim, texto) {
+            const b = form.querySelector('[type=submit]');
+            if (!b) return;
+            b.disabled = sim;
+            if (sim) { b.dataset.texto = b.textContent; if (texto) b.textContent = texto; }
+            else if (b.dataset.texto) b.textContent = b.dataset.texto;
+        },
+    };
+
+    form.addEventListener('submit', e => { e.preventDefault(); aoEnviar?.(modal); });
+    form.addEventListener('click', e => {
+        if (e.target.closest('[data-fechar]')) { modal.fechar(false); return; }
+        const b = e.target.closest('.modal-rodape [data-i]');
+        if (b && b.type !== 'submit') acoes[b.dataset.i].acao?.(modal);
+    });
+    // Fecha pelo fundo só se o clique começou e terminou nele (arrastar seleção de texto não fecha)
+    let inicioNoFundo = false;
+    fundo.addEventListener('mousedown', e => { inicioNoFundo = e.target === fundo; });
+    fundo.addEventListener('click', e => { if (e.target === fundo && inicioNoFundo) modal.fechar(false); });
+
+    document.body.appendChild(fundo);
+    _pilha.push(modal);
+    requestAnimationFrame(() => fundo.classList.add('active'));
+    setTimeout(() => {
+        const alvo = form.querySelector('[data-foco]') || form.querySelector('input:not([type=hidden]):not([disabled]):not([readonly]), select:not([disabled]), textarea') || form.querySelector('.modal-rodape [type=submit]') || form.querySelector('.modal-rodape .btn');
+        alvo?.focus();
+    }, 60);
+    return modal;
+}
+
+document.addEventListener('keydown', e => {
+    const topo = _pilha[_pilha.length - 1];
+    if (!topo) return;
+    if (e.key === 'Escape') { e.preventDefault(); topo.fechar(false); return; }
+    if (e.key === 'Tab') {
+        const focaveis = [...topo.el.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(x => x.offsetParent !== null);
+        if (!focaveis.length) return;
+        const [primeiro, ultimo] = [focaveis[0], focaveis[focaveis.length - 1]];
+        if (e.shiftKey && document.activeElement === primeiro) { e.preventDefault(); ultimo.focus(); }
+        else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primeiro.focus(); }
+    }
 });
 
-export function initTheme() {
-    const saved = localStorage.getItem('audistock-theme') || 'dark';
-    _applyTheme(saved);
-}
-
-export function toggleTheme() {
-    const atual = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-    const next  = atual === 'dark' ? 'light' : 'dark';
-    _applyTheme(next);
-    localStorage.setItem('audistock-theme', next);
-}
-
-function _applyTheme(theme) {
-    document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : '');
-    const btn = document.getElementById('btnTema');
-    if (btn) btn.innerHTML = theme === 'light' ? ICONS.moon : ICONS.sun;
-}
-
-let _toastContainer = null;
-function _getToastContainer() {
-    if (_toastContainer) return _toastContainer;
-    _toastContainer = document.getElementById('toasts');
-    if (!_toastContainer) { _toastContainer = document.createElement('div'); _toastContainer.className = 'toasts'; document.body.appendChild(_toastContainer); }
-    return _toastContainer;
-}
-
-export function showToast(msg, tipo = 'success', duracao = 3500) {
-    const container = _getToastContainer();
-    const iconMap = {
-        success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:12px;height:12px"><polyline points="20,6 9,17 4,12"/></svg>',
-        error:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
-        warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:12px;height:12px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
-    };
-    const el = document.createElement('div');
-    el.className = `toast toast-${tipo}`;
-    el.innerHTML = `<span class="toast-icon" style="background:var(--${tipo}); color:#fff;">${iconMap[tipo] ?? ''}</span><span class="toast-msg">${escapeHtml(msg)}</span>`;
-    container.appendChild(el);
-    requestAnimationFrame(() => { requestAnimationFrame(() => el.classList.add('show')); });
-    setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(50px)'; setTimeout(() => el.remove(), 320); }, duracao);
-}
-
-export function showLoading() { document.getElementById('loadingOverlay')?.classList.add('active'); }
-export function hideLoading() { document.getElementById('loadingOverlay')?.classList.remove('active'); }
-
-export function fmConfirm({ titulo = 'Confirmar', msg = '', confirmTxt = 'Confirmar', cancelTxt = 'Cancelar', tipo = 'perigo' } = {}) {
+// Confirmação. Em ação perigosa o foco começa em "Cancelar", para um Enter distraído não apagar nada.
+export function fmConfirm({ titulo = 'Confirmar', msg = '', confirmTxt = 'Confirmar', cancelTxt = 'Cancelar', tipo = 'info' } = {}) {
     return new Promise(resolve => {
-        const overlay = document.createElement('div');
-        overlay.className = 'modal-backdrop active';
-        overlay.style.zIndex = '9999'; // CORREÇÃO DE Z-INDEX PARA NUNCA MAIS TRAVAR
-
-        const corMap = { perigo: 'var(--danger)', aviso: 'var(--warning)', info: 'var(--primary)' };
-        const cor = corMap[tipo] || corMap.perigo;
-
-        overlay.innerHTML = `
-            <div class="modal" style="max-width:420px">
-                <div class="modal-title">${escapeHtml(titulo)}</div>
-                ${msg ? `<div class="modal-body" style="white-space:pre-wrap">${escapeHtml(msg)}</div>` : ''}
-                <div class="modal-actions">
-                    <button class="btn btn-ghost fm-cancel">${escapeHtml(cancelTxt)}</button>
-                    <button class="btn btn-primary fm-ok" style="background:${cor}; color:#fff; box-shadow:0 4px 15px ${cor}40;">${escapeHtml(confirmTxt)}</button>
-                </div>
-            </div>`;
-
-        const fechar = r => { overlay.remove(); resolve(r); };
-        overlay.querySelector('.fm-ok').onclick     = () => fechar(true);
-        overlay.querySelector('.fm-cancel').onclick = () => fechar(false);
-        overlay.addEventListener('keydown', e => { if (e.key === 'Escape') fechar(false); if (e.key === 'Enter')  { e.preventDefault(); fechar(true); } });
-        document.body.appendChild(overlay);
-        setTimeout(() => overlay.querySelector('.fm-ok')?.focus(), 40);
+        let ok = false;
+        const perigo = tipo === 'perigo';
+        const m = abrirModal({
+            titulo, largura: 'sm', papel: 'alertdialog',
+            corpo: msg ? `<p class="modal-texto">${escapeHtml(msg)}</p>` : '',
+            acoes: [
+                { texto: cancelTxt, classe: 'btn-secondary', acao: m => m.fechar(false) },
+                { texto: confirmTxt, classe: perigo ? 'btn-danger' : 'btn-primary', tipo: 'submit' },
+            ],
+            aoEnviar: m => { ok = true; m.fechar(true); },
+            aoFechar: () => resolve(ok),
+        });
+        if (perigo) setTimeout(() => m.$('.modal-rodape .btn-secondary')?.focus(), 80);
     });
 }
 
-export function fmAlert({ titulo = 'Atenção', msg = '', tipo = 'info', btnTxt = 'OK' } = {}) {
-    return new Promise(resolve => {
-        const overlay = document.createElement('div');
-        overlay.className = 'modal-backdrop active';
-        overlay.style.zIndex = '9999'; // CORREÇÃO DE Z-INDEX
 
-        const cores = { info: 'var(--primary)', aviso: 'var(--warning)', erro: 'var(--danger)', sucesso: 'var(--success)' };
-        const cor = cores[tipo] || cores.info;
-
-        overlay.innerHTML = `
-            <div class="modal" style="max-width:420px">
-                <div class="modal-title" style="color:${cor}">${escapeHtml(titulo)}</div>
-                ${msg ? `<div class="modal-body" style="white-space:pre-wrap">${escapeHtml(msg)}</div>` : ''}
-                <div class="modal-actions">
-                    <button class="btn btn-primary fm-ok" style="background:${cor}; color:#fff;">${escapeHtml(btnTxt)}</button>
-                </div>
-            </div>`;
-
-        const fechar = () => { overlay.remove(); resolve(); };
-        overlay.querySelector('.fm-ok').onclick = fechar;
-        overlay.addEventListener('keydown', e => { if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); fechar(); } });
-        document.body.appendChild(overlay);
-        setTimeout(() => overlay.querySelector('.fm-ok')?.focus(), 40);
-    });
-}
-
+// ─────────────────────────────────────────────────────────────
+//  Selos
+// ─────────────────────────────────────────────────────────────
+const selo = (classe, texto) => `<span class="badge ${classe}">${escapeHtml(texto)}</span>`;
 export function badgeStatus(status) {
-    const map = {
-        em_andamento: '<span class="badge badge-yellow">Em andamento</span>',
-        finalizada:   '<span class="badge badge-green">Finalizada</span>',
-        cancelada:    '<span class="badge badge-red">Cancelada</span>',
-    };
-    return map[status] ?? `<span class="badge badge-gray">${escapeHtml(status)}</span>`;
+    return { em_andamento: selo('badge-aviso', 'Em andamento'), finalizada: selo('badge-sucesso', 'Finalizada'), cancelada: selo('badge-neutro', 'Cancelada') }[status] ?? selo('badge-neutro', status);
+}
+export function badgeRole(role) { return selo(role === 'supremo' ? 'badge-acento' : 'badge-neutro', NOMES_PAPEL[role] ?? role); }
+export function badgeSituacao(diferenca) {
+    if (diferenca == null) return selo('badge-neutro', 'Sem saldo');
+    const d = Number(diferenca);
+    return d > 0 ? selo('badge-sucesso', 'Sobra') : d < 0 ? selo('badge-perigo', 'Falta') : selo('badge-calmo', 'OK');
 }
 
-export function badgeRole(role) {
-    const map = {
-        supremo:       '<span class="badge badge-blue">Supremo</span>',
-        administrador: '<span class="badge badge-yellow">Admin</span>',
-        auditor:       '<span class="badge badge-gray">Auditor</span>',
-        visualizador:  '<span class="badge badge-gray">Visualizador</span>',
-    };
-    return map[role] ?? `<span class="badge badge-gray">${escapeHtml(role)}</span>`;
+// ─────────────────────────────────────────────────────────────
+//  Estado vazio
+// ─────────────────────────────────────────────────────────────
+export function vazioHtml({ titulo, texto = '', acoes = '', compacto = false }) {
+    return `<div class="vazio${compacto ? ' vazio-compacto' : ''}">
+        <p class="vazio-titulo">${escapeHtml(titulo)}</p>
+        ${texto ? `<p class="vazio-texto">${texto}</p>` : ''}
+        ${acoes ? `<div class="vazio-acoes">${acoes}</div>` : ''}
+    </div>`;
+}
+export function erroCargaHtml(acao = 'location.reload()') {
+    return vazioHtml({ titulo: 'Não foi possível carregar', texto: 'Verifique a conexão e tente de novo.', acoes: `<button type="button" class="btn btn-secondary btn-sm" onclick="${acao}">Tentar de novo</button>`, compacto: true });
 }
 
-export function badgeAtivo(ativo) { return ativo ? '<span class="badge badge-green">Ativo</span>' : '<span class="badge badge-gray">Inativo</span>'; }
-export function renderEmptyTable(tbodyEl, colSpan, mensagem = 'Nenhum registro encontrado.') { tbodyEl.innerHTML = `<tr><td colspan="${colSpan}" style="text-align:center;padding:48px;color:var(--text-muted)">${escapeHtml(mensagem)}</td></tr>`; }
-export function fmtDate(iso) { return !iso ? '—' : new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
-export function fmtDateTime(iso) { return !iso ? '—' : new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
-export function fmtNum(n, decimais = 3) { return n == null ? '—' : Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: decimais }); }
-export function escapeHtml(str) { return str == null ? '' : String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-export function debounce(fn, delay = 300) { let timer; return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), delay); }; }
+// ─────────────────────────────────────────────────────────────
+//  Formatadores
+// ─────────────────────────────────────────────────────────────
+const fmtD  = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const fmtH  = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
+export function fmtDate(iso)     { return !iso ? '—' : fmtD.format(new Date(iso)); }
+export function fmtDateTime(iso) { return !iso ? '—' : `${fmtD.format(new Date(iso))} ${fmtH.format(new Date(iso))}`; }
+export function fmtInt(n) { return Number(n ?? 0).toLocaleString('pt-BR'); }
+
+// Unidades fracionadas sempre com 3 casas (15,730 kg), para a vírgula alinhar
+// e "1,288" nunca ser lido como mil duzentos e oitenta e oito.
+const FRACIONADAS = new Set(['KG', 'G', 'L', 'LT', 'ML', 'M', 'M2', 'M3', 'TON']);
+export function casasDaUnidade(un) { return FRACIONADAS.has(String(un ?? '').toUpperCase()) ? 3 : 0; }
+export function fmtQtd(n, un) {
+    if (n == null || n === '') return '—';
+    const c = casasDaUnidade(un);
+    const inteiro = c === 0 && !Number.isInteger(Number(n));
+    return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: inteiro ? 0 : c, maximumFractionDigits: inteiro ? 3 : c });
+}
+export function fmtDif(n, un) {
+    if (n == null || n === '') return '—';
+    const d = Number(n);
+    return (d > 0 ? '+' : d < 0 ? '−' : '') + fmtQtd(Math.abs(d), un);
+}
+export function unHtml(un) { return un ? ` <span class="un">${escapeHtml(String(un).toUpperCase())}</span>` : ''; }
+export function qtdHtml(n, un) { return n == null ? '—' : `<span class="nowrap">${fmtQtd(n, un)}${unHtml(un)}</span>`; }
+export function difHtml(n, un) {
+    if (n == null) return '<span class="dif-nula">—</span>';
+    const d = Number(n);
+    if (d === 0) return '<span class="dif-zero">0</span>';
+    return `<span class="nowrap"><span class="${d > 0 ? 'dif-sobra' : 'dif-falta'}">${fmtDif(d, un)}</span>${unHtml(un)}</span>`;
+}
+export function plural(n, um, varios) { return `${fmtInt(n)} ${Number(n) === 1 ? um : varios}`; }
+
+// ─────────────────────────────────────────────────────────────
+//  Utilitários
+// ─────────────────────────────────────────────────────────────
+export function escapeHtml(str) {
+    return str == null ? '' : String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+export function normalizar(s) { return String(s ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim(); }
+export function debounce(fn, delay = 300) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); }; }
+
+// Um único ouvinte por contêiner: <button data-acao="editar" data-id="…">.
+// Evita passar nomes por onclick (um apóstrofo quebrava o botão).
+export function delegarAcoes(raiz, mapa) {
+    raiz.addEventListener('click', e => {
+        const alvo = e.target.closest('[data-acao]');
+        if (!alvo || !raiz.contains(alvo) || !mapa[alvo.dataset.acao]) return;
+        e.preventDefault();
+        mapa[alvo.dataset.acao](alvo.dataset, alvo, e);
+    });
+}
+
 export function renderUserCard(perfil) {
-    if (!perfil) return;
-    const nm = document.querySelector('.user-name'); const rl = document.querySelector('.user-role'); const av = document.querySelector('.avatar');
-    if (nm) nm.textContent = perfil.nome?.split(' ')[0] ?? perfil.nome;
-    if (rl) rl.textContent = perfil.role;
-    if (av) av.textContent = perfil.nome?.charAt(0)?.toUpperCase() ?? '?';
+    const el = document.getElementById('usuarioNome');
+    if (el && perfil?.nome) el.textContent = perfil.nome.split(' ').slice(0, 2).join(' ');
+}
+
+// Bibliotecas pesadas (planilha, PDF) só são baixadas quando usadas
+const _scripts = {};
+export function carregarScript(url, global) {
+    if (global && window[global]) return Promise.resolve(window[global]);
+    _scripts[url] ??= new Promise((ok, falha) => {
+        const s = document.createElement('script');
+        s.src = url; s.crossOrigin = 'anonymous';
+        s.onload = () => ok(global ? window[global] : true);
+        s.onerror = () => { delete _scripts[url]; s.remove(); falha(new Error('Não foi possível carregar um componente necessário. Verifique a conexão e tente de novo.')); };
+        document.head.appendChild(s);
+    });
+    return _scripts[url];
+}
+
+// Mensagens do banco e da rede em português; o texto original vai para o console
+export function mensagemErro(err, contexto = '') {
+    const m = String(err?.message ?? err ?? '');
+    const mapa = [
+        [/duplicate key|23505/i, 'Já existe um registro com esses dados.'],
+        [/Failed to fetch|NetworkError|network/i, 'Sem conexão com o servidor. Verifique a internet e tente de novo.'],
+        [/JSON object requested|no\) rows/i, 'Registro não encontrado. Ele pode ter sido excluído.'],
+        [/permission denied|row-level security|42501/i, 'Você não tem permissão para esta ação.'],
+        [/JWT|token/i, 'Sua sessão expirou. Entre de novo.'],
+    ];
+    const achado = mapa.find(([re]) => re.test(m));
+    if (achado) { console.warn('[AudiStock]', contexto, m); return achado[1]; }
+    return m || 'Não foi possível concluir. Tente de novo.';
 }

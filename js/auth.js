@@ -16,7 +16,6 @@
 // ================================================================
 
 import supabase from './supabaseClient.js';
-import { showToast } from './ui.js';
 
 // ── Estado global do usuário ──────────────────────────────────
 let _currentUser   = null;   // auth.User do Supabase

@@ -8,7 +8,7 @@
 //  3. Conflitos são resolvidos pela ação configurada (somar/sobrescrever)
 //
 //  USO:
-//    import { registrarOffline, iniciarSync, isOnline } from './offline.js';
+//    import { registrarOffline, initOfflineSync, isOnline } from './offline.js';
 // ================================================================
 
 import { registrarContagem } from './contagem.js';
@@ -142,8 +142,8 @@ export function initOfflineSync(onStatusChange) {
       if (!online || pendentes > 0) {
         bar.classList.add('visible');
         bar.innerHTML = !online
-          ? `<div class="offline-dot"></div> Modo offline — ${pendentes} item(ns) na fila`
-          : `<div class="offline-dot" style="background:var(--blue)"></div> Sincronizando ${pendentes} item(ns)...`;
+          ? `<span class="offline-dot"></span> Sem internet. ${pendentes ? `${pendentes} ${pendentes === 1 ? 'contagem guardada' : 'contagens guardadas'} neste aparelho; o envio é automático quando a rede voltar.` : 'As próximas contagens ficam guardadas neste aparelho.'}`
+          : `<span class="offline-dot"></span> Enviando ${pendentes} ${pendentes === 1 ? 'contagem guardada' : 'contagens guardadas'}…`;
       } else {
         bar.classList.remove('visible');
       }
@@ -156,10 +156,10 @@ export function initOfflineSync(onStatusChange) {
     await atualizar();
     const resultado = await sincronizar();
     if (resultado.ok > 0) {
-      showToast(`✓ ${resultado.ok} item(ns) sincronizados!`, 'success');
+      showToast(`${resultado.ok} ${resultado.ok === 1 ? 'contagem guardada foi enviada' : 'contagens guardadas foram enviadas'}.`, 'success');
     }
     if (resultado.erros > 0) {
-      showToast(`${resultado.erros} item(ns) com erro na sincronização.`, 'error');
+      showToast(`${resultado.erros} ${resultado.erros === 1 ? 'contagem não pôde ser enviada' : 'contagens não puderam ser enviadas'}. Confira a lista e registre esses itens de novo.`, 'error', 8000);
     }
     await atualizar();
   });

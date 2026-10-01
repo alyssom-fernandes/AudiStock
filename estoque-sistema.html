@@ -3,91 +3,19 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Estoque do Sistema — AudiStock</title>
+<title>Fechamento · AudiStock</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23c2410c'/%3E%3Cpath d='M23 19.5v-7a1.6 1.6 0 0 0-.8-1.4l-5.4-3.1a1.6 1.6 0 0 0-1.6 0l-5.4 3.1a1.6 1.6 0 0 0-.8 1.4v7a1.6 1.6 0 0 0 .8 1.4l5.4 3.1a1.6 1.6 0 0 0 1.6 0l5.4-3.1a1.6 1.6 0 0 0 .8-1.4zM9.2 11.6 16 15.5l6.8-3.9M16 23.8v-8.3' fill='none' stroke='white' stroke-width='1.8' stroke-linejoin='round'/%3E%3C/svg%3E"/>
+<script>try{var t=localStorage.getItem('audistock-theme');document.documentElement.dataset.theme=t==='light'||t==='dark'?t:(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){document.documentElement.dataset.theme='dark'}</script>
 <script src="js/erros.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"/>
 <link rel="stylesheet" href="css/style.css"/>
 </head>
 <body>
-
 <div class="app-shell" id="appShell">
-  <div id="pageBody">
-    <div style="margin-bottom: 24px;">
-      <h2 style="font-size: 1.8rem; font-weight: 800; letter-spacing: -0.02em;">Saldos do Sistema (ERP)</h2>
-      <p style="color: var(--text-muted);">Auditoria <strong id="lblAuditoria" style="color: var(--primary);">Carregando...</strong></p>
-      <p class="label-tech" style="margin-top: 8px;">Informe o estoque registrado no sistema.</p>
-    </div>
-
-    <div class="card">
-      <div class="tabela-container">
-        <table>
-          <thead>
-            <tr><th>Código</th><th>Produto</th><th>Contado (Físico)</th><th style="width: 250px;">Estoque do Sistema</th></tr>
-          </thead>
-          <tbody id="tabelaItens">
-            <tr class="tr-empty"><td colspan="4"><div class="spinner" style="margin:auto"></div></td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
-      <button class="btn btn-ghost" onclick="voltarParaContagem()">Voltar para Contagem</button>
-      <button class="btn btn-primary" id="btnConcluir" onclick="finalizarOficialmente()">Concluir</button>
-    </div>
-  </div>
+  <div id="pageBody"></div>
 </div>
-
-<script type="module">
-import { requireAuth } from './js/auth.js';
-import { initLayout, showToast, showLoading, hideLoading, escapeHtml, fmtNum } from './js/ui.js';
-import { buscarAuditoria, finalizarAuditoria } from './js/auditorias.js';
-import { listarItensContados, preencherEstoquesSistema } from './js/contagem.js';
-
-(async () => {
-  const auth = await requireAuth();
-  if (!auth) { window.location.href = 'login.html'; return; }
-  initLayout('Fechamento de Auditoria');
-
-  const params = new URLSearchParams(location.search);
-  const auditoriaId = params.get('id');
-  if (!auditoriaId) { window.location.href = 'app.html?tela=auditorias'; return; }
-
-  let auditoria, itens = [];
-  try {
-    auditoria = await buscarAuditoria(auditoriaId);
-    document.getElementById('lblAuditoria').textContent = auditoria.numero_auditoria;
-    const res = await listarItensContados(auditoriaId, { limit: 5000 });
-    itens = res.data;
-    const tbody = document.getElementById('tabelaItens');
-    
-    if (itens.length === 0) { tbody.innerHTML = '<tr class="tr-empty"><td colspan="4">Nenhum item contato.</td></tr>'; return; }
-
-    tbody.innerHTML = itens.map(item => `
-      <tr>
-        <td class="mono">${escapeHtml(item.produtos?.codigo_produto)}</td>
-        <td style="font-weight:600;">${escapeHtml(item.produtos?.nome_produto)}</td>
-        <td class="mono" style="color:var(--primary); font-size:1.1rem; font-weight:800;">${fmtNum(item.quantidade_contada)}</td>
-        <td>
-          <input type="number" class="input-field input-sistema" data-prodid="${item.produtos.id}" 
-                 placeholder="Digite o saldo..." step="0.01" value="${item.estoque_sistema !== null ? item.estoque_sistema : ''}" />
-        </td>
-      </tr>
-    `).join('');
-  } catch (err) { showToast('Erro: ' + err.message, 'error'); }
-
-  window.voltarParaContagem = () => { window.location.href = `contagem.html?id=${auditoriaId}`; };
-
-  window.finalizarOficialmente = async () => {
-    const inputs = document.querySelectorAll('.input-sistema');
-    const estoques = [];
-    inputs.forEach(inp => { const val = parseFloat(inp.value); if (!isNaN(val)) estoques.push({ produto_id: inp.dataset.prodid, quantidade: val }); });
-    if (estoques.length === 0 && itens.length > 0) return showToast('Preencha pelo menos um saldo.', 'warning');
-    const btn = document.getElementById('btnConcluir'); btn.disabled = true; btn.textContent = 'Processando...';
-    showLoading();
-    try { await preencherEstoquesSistema(auditoriaId, estoques); await finalizarAuditoria(auditoriaId); window.location.href = `relatorios.html?id=${auditoriaId}`; } 
-    catch (err) { showToast(err.message, 'error'); btn.disabled = false; btn.textContent = 'Concluir'; } finally { hideLoading(); }
-  };
-})();
-</script>
+<script type="module" src="js/telas/fechamento.js"></script>
 </body>
 </html>

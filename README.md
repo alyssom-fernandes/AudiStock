@@ -1,196 +1,187 @@
 # AudiStock
 
-**AudiStock** is a web-based inventory audit management system built with vanilla JavaScript and Supabase. It allows businesses to run physical stock counts, track divergences between counted and system quantities, generate divergence reports, and manage multiple companies, products, and auditor users — all from a clean, dark-themed interface.
+![AudiStock: the discrepancy report on desktop and the counting screen on a phone](docs/telas/capa.png)
 
----
+AudiStock runs physical inventory audits. The team counts what is on the
+shelf from a phone, with a barcode scanner or by typing; at closing, they
+enter the balance the ERP system shows, and AudiStock lists, item by item,
+what is over and what is short. The report comes out as a PDF, an Excel
+workbook, a CSV file or a printed sheet.
 
-## Features
+Plain JavaScript, no framework and no build step, backed by Supabase
+(PostgreSQL and authentication). The interface is in Brazilian Portuguese.
 
-- **Multi-company support** — manage products and audits across multiple business units
-- **Audit lifecycle** — create, run, pause, finalize, and cancel audits
-- **Blind or visible mode** — hide or show system stock quantities during counting
-- **Three counting input modes** — manual entry, barcode scanner (USB/Bluetooth), and camera (native Barcode Detection API)
-- **Offline support** — counts are queued in IndexedDB and synced automatically when back online
-- **Real-time collaboration** — multiple auditors can count simultaneously via Supabase Realtime (Presence + Broadcast)
-- **Divergence reports** — filter by surpluses, shortages, or all items; export to CSV or PDF
-- **Role-based access control** — four roles: `supremo`, `administrador`, `auditor`, `visualizador`
-- **Excel import** — bulk-import products via `.xlsx` file using SheetJS
-- **Edit history** — every count correction is logged with user, timestamp, and optional reason
-- **Light / dark theme** — toggle with one click, preference saved in localStorage
+**[Open AudiStock](https://alyssom-fernandes.github.io/AudiStock/)** · **[Try the demo](https://alyssom-fernandes.github.io/AudiStock/app.html?demo=1)**,
+with fictional companies, products and audits, where nothing is saved.
 
----
+![JavaScript](https://img.shields.io/badge/JavaScript-no_framework-f7df1e?style=flat-square&logo=javascript&logoColor=black)
+![No build](https://img.shields.io/badge/build_step-none-success?style=flat-square)
+![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL_and_Auth-3ecf8e?style=flat-square&logo=supabase&logoColor=white)
+![Theme](https://img.shields.io/badge/theme-light_and_dark-c2410c?style=flat-square)
 
-## Tech Stack
+This README is also available in [Portuguese](README.pt-BR.md).
 
-| Layer | Technology |
+## In 30 seconds
+
+1. Open the [demo](https://alyssom-fernandes.github.io/AudiStock/app.html?demo=1).
+2. In **Auditorias**, continue counting AUD-2026-0007: type "arroz", pick
+   the product, enter the quantity and press Enter.
+3. In **Relatórios**, open AUD-2026-0006, filter the shortages
+   ("Faltas") and download the PDF or the spreadsheet.
+
+## Screens
+
+Captured from the demo mode.
+
+| Dashboard, dark theme | Dashboard, light theme |
 |---|---|
-| Frontend | Vanilla JS (ES6 modules), HTML, CSS |
-| Backend / Database | [Supabase](https://supabase.com) (PostgreSQL + Auth + Realtime) |
-| Offline queue | IndexedDB |
-| PDF export | jsPDF + jsPDF-AutoTable |
-| Excel import | SheetJS (XLSX) |
-| Fonts | Syne, DM Sans, JetBrains Mono |
+| ![Dashboard in the dark theme](docs/telas/dashboard-escuro.png) | ![Dashboard in the light theme](docs/telas/dashboard-claro.png) |
+| **Counting** | **Discrepancy report** |
+| ![Counting screen with the list of counted items](docs/telas/contagem.png) | ![Report with indicators, filters and items](docs/telas/relatorio.png) |
 
-No build step, no bundler, no framework — just files served over HTTP.
+| PDF report | On a phone |
+|---|---|
+| <img src="docs/telas/pdf.png" alt="First page of the PDF report" width="520"> | <img src="docs/telas/celular.png" alt="Counting on a phone" width="260"> |
 
----
+## What it does
 
-## File Structure
+### Counting
 
-```
-audistock/
-├── index.html          ← redirects to login or dashboard
-├── login.html          ← authentication page
-├── app.html            ← main SPA shell (dashboard, audits, reports, settings...)
-├── contagem.html       ← counting screen (?id=audit_id)
-├── relatorios.html     ← divergence report (?id=audit_id)
-│
-├── style.css           ← complete design system
-│
-├── auth.js             ← login / logout / requireAuth / role helpers
-├── ui.js               ← layout, sidebar, toasts, modals, formatters
-├── supabaseClient.js   ← configure your credentials here
-├── auditorias.js       ← audit lifecycle (create, finalize, cancel, progress)
-├── contagem.js         ← count registration, conflict resolution, edit history
-├── produtos.js         ← product search and management
-├── empresas.js         ← company CRUD
-├── relatorios.js       ← divergence views and CSV export
-└── offline.js          ← IndexedDB queue and auto-sync
-```
+- One audit per company at a time, with a sequential number
+  (AUD-2026-0007), a counting type (blind or visible) and notes.
+- Three ways to record a count: **keyboard**, searching by code, name or
+  barcode with arrow-key suggestions; a USB or Bluetooth **scanner**, where
+  each scan adds one unit; and the phone **camera**, where the browser
+  supports barcode detection.
+- Product already counted: the app asks whether to add or replace, and
+  shows the result of each option. Adding is the default, because the same
+  product is often stored in more than one place.
+- Corrections are kept in the audit history with the previous value, who
+  changed it, when and why.
+- Offline, counts are stored on the device (IndexedDB) and sent
+  automatically when the connection comes back.
 
----
+### Closing and report
 
-## Getting Started
+- At closing, the system balance is typed next to the counted quantity,
+  with the difference computed on the spot. Only then is the audit
+  completed, with a warning if any balance was left blank. Audits can also
+  be cancelled, with the reason recorded.
+- The report shows counted items, items without discrepancy, shortages,
+  overages and the products nobody counted.
+- Filters for discrepancies, shortages or overages, sorted by the largest
+  discrepancy (by size, shortage or overage), by name or by code.
+- Every quantity carries its unit. Fractional units (kg, L, m) always use
+  three decimals, so "1,288 kg" is never read as one thousand.
+- **PDF** to file and sign: audit details, summary, a table with shortages
+  and overages highlighted, "Page X of Y" and signature lines.
+- **Excel** with real numbers (not text), difference and status computed
+  by formula, filters, a frozen header and a sheet with uncounted products.
+- **CSV** that opens correctly in Brazilian Excel: semicolons, decimal
+  comma and proper accents.
+- **Printing** with its own A4 layout, always in the light theme.
 
-### 1. Configure Supabase credentials
+### Records and access
 
-Open `supabaseClient.js` and replace the placeholder values:
+- Companies, products and users. Products are imported from an `.xlsx`
+  sheet, with a preview of problem rows before importing and a template to
+  download, or copied from another company's catalog.
+- Four roles: **supremo** (everything, including deleting audits),
+  **administrador** (records, creating and cancelling audits),
+  **auditor** (records counts) and **visualizador** (read only).
 
-```js
-const SUPABASE_URL      = 'https://YOUR_PROJECT_ID.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY';
-```
+### Interface
 
-Find these values at: **Supabase Dashboard → Project Settings → API**
+- Light and dark themes, following the device until someone picks one.
+- On phones, tables become cards and forms open as bottom sheets.
+- Keyboard friendly: dialogs trap focus and close with Esc; in dangerous
+  actions, focus starts on "Cancelar".
+- Unhandled errors are logged in the browser and listed under
+  **Configurações**. In the console, `errosRegistrados()` lists the ones
+  for the current page.
 
----
+## Demo mode
 
-### 2. Run the SQL schema
+`?demo=1` on any page (or the **Explorar a demonstração** button on the
+login page) swaps Supabase for `js/demo.js`, a fake database that mimics
+the part of `supabase-js` the app uses: filters, joins, the two report
+views and audit numbering. It holds 5 companies, 263 products, 8 audits in
+every status and 8 fictional users, always the same. Data lives only in
+the open tab; **Configurações › Restaurar dados da demonstração** starts
+over, and `?demo=vazio` opens an empty database. A call the fake database
+does not know is logged to `errosRegistrados()` instead of failing
+silently.
 
-In the Supabase dashboard, go to **SQL Editor** and run the contents of `audistock-schema.sql`.
+## How it is built
 
-This creates:
-- All tables (`empresas`, `usuarios`, `produtos`, `auditorias`, `auditoria_itens`, etc.)
-- Views: `vw_relatorio_divergencias` and `vw_produtos_nao_auditados`
-- Function: `gerar_numero_auditoria()` — generates sequential audit numbers (AUD-YYYY-NNNN)
-- Full-text search indexes
+| Part | Technology |
+|---|---|
+| Interface | HTML, CSS and JavaScript ES modules, no framework, no build |
+| Data and login | Supabase (PostgreSQL, Auth) |
+| Offline counting | IndexedDB |
+| PDF | jsPDF and jsPDF-AutoTable |
+| Excel | ExcelJS to write, SheetJS to read the product sheet |
+| Fonts | IBM Plex Sans and IBM Plex Mono (Google Fonts) |
 
----
+The PDF and spreadsheet libraries are only downloaded when someone exports
+or imports.
 
-### 3. Configure Row Level Security (RLS)
+## Known limitations
 
-In **Supabase Dashboard → Authentication → Policies**, add the following policies:
+- Two people can count the same audit at once, but each one only sees the
+  other's records after reloading: there are no real-time updates.
+- Camera scanning depends on `BarcodeDetector`, available in Chrome and
+  Edge on Android, macOS and ChromeOS. On Windows and iPhone, use a scanner
+  or the keyboard.
+- Creating a user calls `signUp` in the administrator's browser. With email
+  confirmation turned off in Supabase, the session may switch to the newly
+  created user. The proper fix is an Edge Function using the service key.
+- The database schema (tables, the `vw_relatorio_divergencias` and
+  `vw_produtos_nao_auditados` views and the `gerar_numero_auditoria`
+  function) is not in this repository.
+- The interface is Portuguese only.
 
-```sql
-ALTER TABLE empresas            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE usuarios            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE produtos            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE auditorias          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE auditoria_itens     ENABLE ROW LEVEL SECURITY;
+## Running your own copy
 
-CREATE POLICY "authenticated can read"
-  ON empresas FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "authenticated can read"
-  ON produtos FOR SELECT TO authenticated USING (ativo = true);
-
-CREATE POLICY "authenticated can read"
-  ON auditorias FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "authenticated can insert items"
-  ON auditoria_itens FOR INSERT TO authenticated WITH CHECK (true);
-
-CREATE POLICY "authenticated can read items"
-  ON auditoria_itens FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "authenticated can update items"
-  ON auditoria_itens FOR UPDATE TO authenticated USING (true);
-```
-
----
-
-### 4. Create the first user (Supremo)
-
-In **Supabase Dashboard → Authentication → Users → Add User**, create a user with your email and password.
-
-Then in the **SQL Editor**, insert the profile:
-
-```sql
-INSERT INTO usuarios (id, nome, email, role, ativo)
-VALUES (
-  '<UUID from Auth Users tab>',
-  'Your Name',
-  'your@email.com',
-  'supremo',
-  true
-);
-```
-
----
-
-### 5. Serve the files
-
-> **Do not open HTML files directly** (`file://`). ES6 modules require an HTTP server.
+1. Create a [Supabase](https://supabase.com) project with the tables, views
+   and function listed above, plus access policies (RLS) for authenticated
+   users.
+2. In `js/supabaseClient.js`, replace the URL and public key with your
+   project's (Supabase › Project Settings › API).
+3. Create the first user under Authentication › Users and insert their
+   profile into the `usuarios` table with the `supremo` role.
+4. Serve the files over HTTP (ES modules do not load from `file://`):
 
 ```bash
-# Node (recommended)
 npx serve .
-
-# Python
-python3 -m http.server 8080
 ```
 
-Then open `http://localhost:3000` in your browser.
+To just see it working, none of this is needed: open `app.html?demo=1`.
 
----
-
-## User Roles
-
-| Role | Permissions |
-|---|---|
-| `supremo` | Full access — manage all users, companies, products, audits, and system settings |
-| `administrador` | Create and manage audits, companies, products, and lower-level users |
-| `auditor` | Run counting sessions |
-| `visualizador` | Read-only access to reports and audit history |
-
----
-
-## Page Flow
+## Structure
 
 ```
-login.html
-  └─→ app.html (dashboard)
-
-app.html?tela=auditorias
-  └─→ contagem.html?id=<id>     (start or continue counting)
-
-contagem.html?id=<id>
-  └─→ relatorios.html?id=<id>   (after finalizing)
-
-app.html?tela=relatorios
-  └─→ relatorios.html?id=<id>   (view any finalized audit report)
+index.html              redirects to the login or the app
+login.html              sign-in, with the demo entry point
+app.html                app shell; screens live in js/telas/
+contagem.html           counting (?id=)
+estoque-sistema.html    closing: system balances (?id=)
+relatorios.html         discrepancy report (?id=)
+404.html                not-found page
+css/style.css           all styling, both themes and the print sheet
+js/
+  app.js                router for app.html
+  telas/                one screen per file (dashboard, audits, counting…)
+  ui.js                 layout, dialogs, toasts, formatters
+  auth.js               login, session and roles
+  supabaseClient.js     Supabase connection (or the demo)
+  demo.js               fake database for the demo mode
+  erros.js              unhandled-error log
+  auditorias.js, contagem.js, produtos.js, empresas.js, relatorios.js
+                        data access
+  exportacao.js         PDF and Excel
+  offline.js            offline counting queue
+docs/telas/             images for this README
 ```
 
----
-
-## Common Issues
-
-| Error | Solution |
-|---|---|
-| `Failed to fetch` | Check `SUPABASE_URL` in `supabaseClient.js` |
-| `Invalid API key` | Check `SUPABASE_ANON_KEY` |
-| `permission denied for table` | Set up RLS policies (step 3) |
-| `CORS error` | Add your domain in Supabase → Auth → URL Configuration |
-| `relation does not exist` | Run the SQL schema (step 2) |
-| ES6 modules not loading | Serve with HTTP — do not use `file://` |
-| Supabase project paused | Free tier pauses after 7 days of inactivity — reactivate at supabase.com/dashboard |
+Made by [Alyssom Fernandes](https://github.com/alyssom-fernandes), AFN Systems.

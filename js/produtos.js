@@ -38,10 +38,11 @@ export async function listarProdutos(empresaId, {
     query = query.eq('ativo', true);
   }
 
-  if (q.trim()) {
-    // Busca por código exato, código de barras exato, ou nome parcial (case-insensitive)
+  const termo = _termoSeguro(q);
+  if (termo) {
+    // Código (começo, sem diferenciar maiúsculas), código de barras exato ou nome parcial
     query = query.or(
-      `codigo_produto.eq.${q.trim()},codigo_barras.eq.${q.trim()},nome_produto.ilike.%${q.trim()}%`
+      `codigo_produto.ilike.${termo}%,codigo_barras.eq.${termo},nome_produto.ilike.%${termo}%`
     );
   }
 
@@ -60,7 +61,7 @@ export async function buscarProdutoPorCodigo(empresaId, codigo) {
     .from('produtos')
     .select('id, codigo_produto, nome_produto, unidade_medida, codigo_barras')
     .eq('empresa_id', empresaId)
-    .eq('codigo_produto', codigo.trim())
+    .eq('codigo_produto', codigo.trim().toUpperCase())
     .eq('ativo', true)
     .maybeSingle();   // retorna null se não achar (sem lançar erro)
 
@@ -108,9 +109,9 @@ export async function buscarProdutoUnificado(empresaId, termo) {
     .select('id, codigo_produto, nome_produto, unidade_medida, codigo_barras')
     .eq('empresa_id', empresaId)
     .eq('ativo', true)
-    .ilike('nome_produto', `%${termo}%`)
-    .limit(10)
-    .order('nome_produto');
+    .ilike('nome_produto', `%${_termoSeguro(termo)}%`)
+    .order('nome_produto')
+    .limit(10);
 
   if (error) throw new Error(error.message);
   return data ?? [];
@@ -156,12 +157,13 @@ export async function criarProduto(campos) {
 //  atualizarProduto(id, campos)
 // ─────────────────────────────────────────────────────────────
 export async function atualizarProduto(id, campos) {
+  // Campo ausente (undefined) não muda; campo vazio limpa o valor
   const payload = {};
   if (campos.codigo_produto != null) payload.codigo_produto = campos.codigo_produto.trim().toUpperCase();
   if (campos.nome_produto   != null) payload.nome_produto   = campos.nome_produto.trim();
-  if (campos.unidade_medida != null) payload.unidade_medida = campos.unidade_medida.trim().toUpperCase() || null;
-  if (campos.codigo_barras  != null) payload.codigo_barras  = campos.codigo_barras.trim() || null;
-  if (campos.observacoes    != null) payload.observacoes    = campos.observacoes.trim() || null;
+  if (campos.unidade_medida !== undefined) payload.unidade_medida = campos.unidade_medida?.trim().toUpperCase() || null;
+  if (campos.codigo_barras  !== undefined) payload.codigo_barras  = campos.codigo_barras?.trim() || null;
+  if (campos.observacoes    !== undefined) payload.observacoes    = campos.observacoes?.trim() || null;
   if (campos.ativo          != null) payload.ativo          = campos.ativo;
 
   const { data, error } = await supabase
@@ -191,12 +193,12 @@ export async function importarProdutosExcel(empresaId, linhas, usuarioId) {
   const erros = [];
 
   for (let i = 0; i < linhas.length; i++) {
-    const l = linhas[i];
-    const codigo = String(l.codigo ?? l.Codigo ?? '').trim().toUpperCase();
-    const nome   = String(l.nome   ?? l.Nome   ?? '').trim();
+    const l = normalizarLinhaPlanilha(linhas[i]);
+    const codigo = l.codigo.toUpperCase();
+    const nome   = l.nome;
 
     if (!codigo || !nome) {
-      erros.push({ linha: i + 2, motivo: 'Código ou nome vazios.' });
+      erros.push({ linha: i + 2, motivo: !codigo ? 'sem código' : 'sem nome' });
       continue;
     }
 
@@ -212,8 +214,8 @@ export async function importarProdutosExcel(empresaId, linhas, usuarioId) {
       empresa_id:     empresaId,
       codigo_produto: codigo,
       nome_produto:   nome,
-      unidade_medida: String(l.unidade ?? l.Unidade ?? '').trim().toUpperCase() || null,
-      codigo_barras:  String(l.codigo_barras ?? l.CodigoBarras ?? '').trim() || null,
+      unidade_medida: l.unidade.toUpperCase() || null,
+      codigo_barras:  l.codigo_barras || null,
       ativo:          true,
     };
 
@@ -264,7 +266,15 @@ export async function clonarProdutos(origemId, destinoId, ids = null) {
   const { data: fonte, error: errFonte } = await query;
   if (errFonte) throw new Error(errFonte.message);
 
-  const novos = fonte.map(p => ({ ...p, empresa_id: destinoId }));
+  const novos = fonte.map(p => ({ ...p, empresa_id: destinoId, ativo: true }));
+
+  // Códigos que já existem no destino serão atualizados, não criados
+  const { data: existentes, error: errDest } = await supabase
+    .from('produtos')
+    .select('codigo_produto')
+    .eq('empresa_id', destinoId);
+  if (errDest) throw new Error(errDest.message);
+  const jaExistem = new Set(existentes.map(p => p.codigo_produto));
 
   // upsert para não duplicar por código
   const { error } = await supabase
@@ -272,5 +282,29 @@ export async function clonarProdutos(origemId, destinoId, ids = null) {
     .upsert(novos, { onConflict: 'empresa_id,codigo_produto', ignoreDuplicates: false });
 
   if (error) throw new Error(error.message);
-  return { criados: novos.length };
+  const atualizados = novos.filter(p => jaExistem.has(p.codigo_produto)).length;
+  return { criados: novos.length - atualizados, atualizados };
+}
+
+// ─────────────────────────────────────────────────────────────
+//  normalizarLinhaPlanilha(linha) → { codigo, nome, unidade, codigo_barras }
+//  Aceita cabeçalhos com acento, maiúsculas e sinônimos comuns
+//  ("Código", "Nome do produto", "Un.", "EAN"…).
+// ─────────────────────────────────────────────────────────────
+const SINONIMOS = {
+  codigo:        ['codigo', 'cod', 'codigoproduto', 'sku', 'referencia', 'ref'],
+  nome:          ['nome', 'nomedoproduto', 'nomeproduto', 'produto', 'descricao', 'descricaodoproduto'],
+  unidade:       ['unidade', 'un', 'und', 'unid', 'unidademedida', 'unidadedemedida'],
+  codigo_barras: ['codigobarras', 'codigodebarras', 'ean', 'gtin', 'barras', 'codbarras'],
+};
+export function normalizarLinhaPlanilha(linha) {
+  const chave = k => String(k).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const porChave = Object.fromEntries(Object.entries(linha).map(([k, v]) => [chave(k), v]));
+  const pegar = campo => String(SINONIMOS[campo].map(s => porChave[s]).find(v => v !== undefined && v !== '') ?? '').trim();
+  return { codigo: pegar('codigo'), nome: pegar('nome'), unidade: pegar('unidade'), codigo_barras: pegar('codigo_barras') };
+}
+
+// Vírgula, parênteses e asterisco têm significado no filtro or() do PostgREST
+function _termoSeguro(q) {
+  return String(q ?? '').replace(/[,()*%\\:]/g, ' ').replace(/\s+/g, ' ').trim();
 }

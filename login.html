@@ -3,58 +3,51 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>AudiStock — Login</title>
+<title>Entrar · AudiStock</title>
+<meta name="description" content="AudiStock: auditoria de estoque com contagem cega, divergências e relatórios."/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23c2410c'/%3E%3Cpath d='M23 19.5v-7a1.6 1.6 0 0 0-.8-1.4l-5.4-3.1a1.6 1.6 0 0 0-1.6 0l-5.4 3.1a1.6 1.6 0 0 0-.8 1.4v7a1.6 1.6 0 0 0 .8 1.4l5.4 3.1a1.6 1.6 0 0 0 1.6 0l5.4-3.1a1.6 1.6 0 0 0 .8-1.4zM9.2 11.6 16 15.5l6.8-3.9M16 23.8v-8.3' fill='none' stroke='white' stroke-width='1.8' stroke-linejoin='round'/%3E%3C/svg%3E"/>
+<script>try{var t=localStorage.getItem('audistock-theme');document.documentElement.dataset.theme=t==='light'||t==='dark'?t:(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){document.documentElement.dataset.theme='dark'}</script>
 <script src="js/erros.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"/>
 <link rel="stylesheet" href="css/style.css"/>
-<style>
-body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg); }
-.login-wrap { width: 100%; max-width: 420px; padding: 20px; animation: fade-in .4s ease; }
-@keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-.login-box { background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-xl); padding: 40px; box-shadow: var(--shadow); }
-.login-brand { text-align: center; margin-bottom: 32px; }
-.login-brand-icon { width: 56px; height: 56px; background: var(--primary); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; box-shadow: 0 8px 25px var(--primary-glow); }
-.login-brand-icon svg { width: 28px; height: 28px; color: #fff; }
-.login-title { font-size: 1.8rem; font-weight: 800; color: var(--text); letter-spacing: -0.02em; }
-.login-title span { color: var(--primary); }
-.login-sub { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-label); margin-top: 8px; text-transform: uppercase; letter-spacing: 0.1em; }
-.login-error { background: var(--danger-light); border: 1px solid var(--danger); border-radius: var(--radius-sm); padding: 12px; font-size: 0.85rem; color: var(--danger); margin-bottom: 20px; display: none; }
-.login-error.visible { display: block; }
-.login-footer { text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-label); margin-top: 24px; text-transform: uppercase; }
-</style>
 </head>
 <body>
 
-<div class="login-wrap">
-    <div class="login-box">
-        <div class="login-brand">
-            <div class="login-brand-icon">
-                <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                    <polyline points="3.27,6.96 12,12.01 20.73,6.96"/>
-                    <line x1="12" y1="22.08" x2="12" y2="12"/>
-                </svg>
-            </div>
-            <div class="login-title">Audi<span>Stock</span></div>
-            <div class="login-sub">Auditoria & Logística</div>
+<main class="tela-central">
+    <div class="login-wrap">
+        <div class="login-marca">
+            <span class="marca-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg></span>
+            <span class="marca-nome">AudiStock</span>
         </div>
-        <div class="login-error" id="loginError"></div>
-        <div class="form-group">
-            <label class="form-label">E-mail</label>
-            <input class="input-field" type="email" id="email" placeholder="seu@email.com" autocomplete="email"/>
+
+        <div class="login-box">
+            <h1>Entrar</h1>
+            <p>Auditoria de estoque para equipes de contagem.</p>
+
+            <div class="aviso aviso-perigo login-erro" id="loginError" role="alert"></div>
+
+            <form id="formLogin" novalidate>
+                <div class="form-group">
+                    <label class="form-label" for="email">E-mail</label>
+                    <input class="form-input" type="email" id="email" autocomplete="email" placeholder="voce@empresa.com.br" aria-describedby="loginError"/>
+                </div>
+                <div class="form-group" style="margin-bottom:20px">
+                    <label class="form-label" for="senha">Senha</label>
+                    <input class="form-input" type="password" id="senha" autocomplete="current-password" placeholder="Sua senha" aria-describedby="loginError"/>
+                </div>
+                <button type="submit" class="btn btn-primary btn-bloco" id="loginBtn">Entrar</button>
+            </form>
+
+            <div class="divisor">ou</div>
+            <a class="btn btn-secondary btn-bloco" href="app.html?demo=1">Explorar a demonstração</a>
+            <p class="login-demo-texto">Dados fictícios, sem cadastro. Nada do que você fizer é gravado.</p>
         </div>
-        <div class="form-group" style="margin-bottom: 24px;">
-            <label class="form-label">Senha</label>
-            <input class="input-field" type="password" id="senha" placeholder="••••••••" autocomplete="current-password"/>
-        </div>
-        <button class="btn btn-primary" style="width: 100%; justify-content: center; padding: 14px;" id="loginBtn" onclick="fazerLogin()">
-            Entrar no Sistema
-        </button>
-        <a class="btn btn-ghost" style="width: 100%; justify-content: center; padding: 12px; margin-top: 12px; text-decoration: none;" href="app.html?demo=1">
-            Explorar a demonstração
-        </a>
+
+        <p class="login-rodape">Contagem cega, divergências e relatórios em PDF, Excel e CSV.</p>
     </div>
-    <div class="login-footer">AudiStock v2.0 · Supabase Edition</div>
-</div>
+</main>
 
 <script type="module">
 import { login } from './js/auth.js';
@@ -62,25 +55,31 @@ import { initTheme } from './js/ui.js';
 
 initTheme();
 const params = new URLSearchParams(location.search);
-if (params.get('erro') === 'inativo') mostrarErro('Conta desativada. Contate o administrador.');
+if (params.get('erro') === 'inativo') mostrarErro('Sua conta está desativada. Fale com o administrador do sistema.');
 
-document.getElementById('senha').addEventListener('keydown', e => { if (e.key === 'Enter') fazerLogin(); });
+const email = document.getElementById('email');
+const senha = document.getElementById('senha');
+const btn = document.getElementById('loginBtn');
 
-window.fazerLogin = async function() {
-    const email = document.getElementById('email').value.trim();
-    const senha = document.getElementById('senha').value;
-    const btn = document.getElementById('loginBtn');
-    if (!email || !senha) { mostrarErro('Preencha e-mail e senha.'); return; }
-
-    btn.disabled = true; btn.textContent = 'Autenticando...'; esconderErro();
+document.getElementById('formLogin').addEventListener('submit', async e => {
+    e.preventDefault();
+    [email, senha].forEach(c => c.removeAttribute('aria-invalid'));
+    const vazio = !email.value.trim() ? email : !senha.value ? senha : null;
+    if (vazio) {
+        mostrarErro('Informe seu e-mail e sua senha para entrar.');
+        vazio.setAttribute('aria-invalid', 'true');
+        vazio.focus();
+        return;
+    }
+    btn.disabled = true; btn.textContent = 'Entrando…'; esconderErro();
     try {
-        await login(email, senha);
+        await login(email.value.trim(), senha.value);
         window.location.href = 'app.html';
     } catch (err) {
         mostrarErro(err.message);
-        btn.disabled = false; btn.textContent = 'Entrar no Sistema';
+        btn.disabled = false; btn.textContent = 'Entrar';
     }
-};
+});
 
 function mostrarErro(msg) { const el = document.getElementById('loginError'); el.textContent = msg; el.classList.add('visible'); }
 function esconderErro() { document.getElementById('loginError').classList.remove('visible'); }

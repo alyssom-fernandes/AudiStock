@@ -3,118 +3,19 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Relatório — AudiStock</title>
+<title>Relatório · AudiStock</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23c2410c'/%3E%3Cpath d='M23 19.5v-7a1.6 1.6 0 0 0-.8-1.4l-5.4-3.1a1.6 1.6 0 0 0-1.6 0l-5.4 3.1a1.6 1.6 0 0 0-.8 1.4v7a1.6 1.6 0 0 0 .8 1.4l5.4 3.1a1.6 1.6 0 0 0 1.6 0l5.4-3.1a1.6 1.6 0 0 0 .8-1.4zM9.2 11.6 16 15.5l6.8-3.9M16 23.8v-8.3' fill='none' stroke='white' stroke-width='1.8' stroke-linejoin='round'/%3E%3C/svg%3E"/>
+<script>try{var t=localStorage.getItem('audistock-theme');document.documentElement.dataset.theme=t==='light'||t==='dark'?t:(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){document.documentElement.dataset.theme='dark'}</script>
 <script src="js/erros.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"/>
 <link rel="stylesheet" href="css/style.css"/>
 </head>
 <body>
-
 <div class="app-shell" id="appShell">
-  <div id="pageBody">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; flex-wrap:wrap; gap:16px;">
-      <div><div class="label-tech">Relatório Oficial de Divergências</div><div class="topbar-title" id="lblAuditoria">Carregando...</div></div>
-      <div style="display:flex; gap:12px;"><button class="btn btn-ghost" onclick="window._exportarCSV()">CSV</button><button class="btn btn-primary" onclick="window._exportarPDF()">Exportar PDF</button></div>
-    </div>
-    <div class="stat-grid" id="resumoCards"><div class="stat-card"><div class="spinner" style="margin:auto"></div></div></div>
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">Detalhamento por Item</span>
-        <div style="display:flex; gap:12px; align-items:center;">
-          <span class="label-tech">Ordenar:</span>
-          <select class="form-input" style="width: auto; padding: 6px 12px; font-size: 0.85rem;" onchange="setOrdem(this.value)">
-            <option value="diferenca">Maior Diferença</option><option value="codigo">Código do Produto</option><option value="nome">Nome do Produto</option>
-          </select>
-        </div>
-      </div>
-      <div style="padding: 16px 28px; border-bottom: 1px solid var(--border);">
-        <div class="filters-bar" style="margin-bottom: 0;">
-          <button class="filter-btn active-all" data-filtro="todos" onclick="setFiltro('todos',this)">Todos</button>
-          <button class="filter-btn" data-filtro="divergencias" onclick="setFiltro('divergencias',this)">Somente Divergências</button>
-          <button class="filter-btn" data-filtro="sobras" onclick="setFiltro('sobras',this)">Sobras</button>
-          <button class="filter-btn" data-filtro="faltas" onclick="setFiltro('faltas',this)">Faltas</button>
-        </div>
-      </div>
-      <div class="tabela-container" style="border: none; border-radius: 0;">
-        <table>
-          <thead><tr><th>Código</th><th>Produto</th><th>Físico (Contado)</th><th>Sistema (ERP)</th><th>Diferença</th><th>Status</th></tr></thead>
-          <tbody id="relTable"><tr class="tr-empty"><td colspan="6"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
+  <div id="pageBody"></div>
 </div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-
-<script type="module">
-import { requireAuth } from './js/auth.js';
-import { initLayout, showToast, showLoading, hideLoading, escapeHtml, fmtNum } from './js/ui.js';
-import { gerarRelatorio, resumoAuditoria, exportarCSV, triggerDownloadCSV } from './js/relatorios.js';
-import { buscarAuditoria } from './js/auditorias.js';
-
-(async () => {
-  const auth = await requireAuth();
-  if (!auth) { window.location.href = 'login.html'; return; }
-  initLayout('Relatório de Divergências');
-
-  const params = new URLSearchParams(location.search);
-  const auditoriaId = params.get('id');
-  if (!auditoriaId) { window.location.href = 'app.html?tela=auditorias'; return; }
-
-  let filtroAtivo = 'todos', ordemAtiva = 'diferenca', auditoria = null, resumo = null;
-
-  showLoading();
-  try {
-    auditoria = await buscarAuditoria(auditoriaId);
-    document.getElementById('lblAuditoria').textContent = `${auditoria.numero_auditoria} — ${auditoria.empresas?.nome}`;
-    await Promise.all([carregarResumo(), carregarRelatorio()]);
-  } catch (err) { showToast(err.message, 'error'); } finally { hideLoading(); }
-
-  async function carregarResumo() {
-    resumo = await resumoAuditoria(auditoriaId);
-    document.getElementById('resumoCards').innerHTML = `
-      <div class="stat-card"><div class="stat-label">Total de Produtos</div><div class="stat-value">${resumo.total_produtos}</div></div>
-      <div class="stat-card"><div class="stat-label">Auditados</div><div class="stat-value" style="color:var(--primary)">${resumo.auditados}</div></div>
-      <div class="stat-card" style="border-color: rgba(16,185,129,0.3)"><div class="stat-label">Sobras</div><div class="stat-value" style="color:var(--success)">${resumo.sobras}</div></div>
-      <div class="stat-card" style="border-color: rgba(239,68,68,0.3)"><div class="stat-label">Faltas</div><div class="stat-value" style="color:var(--danger)">${resumo.faltas}</div></div>
-    `;
-  }
-
-  async function carregarRelatorio() {
-    const tbody = document.getElementById('relTable');
-    try {
-      const { itens } = await gerarRelatorio(auditoriaId, { filtro: filtroAtivo, ordem: ordemAtiva, direcao: 'desc' });
-      if (!itens.length) { tbody.innerHTML = '<tr class="tr-empty"><td colspan="6">Nenhum item atende ao filtro.</td></tr>'; return; }
-      tbody.innerHTML = itens.map(r => {
-        const diff = Number(r.diferenca ?? 0);
-        const cls = diff > 0 ? 'color:var(--success);' : diff < 0 ? 'color:var(--danger);' : 'color:var(--text-muted);';
-        const badge = diff > 0 ? '<span class="badge badge-green">Sobra</span>' : diff < 0 ? '<span class="badge badge-red">Falta</span>' : '<span class="badge badge-gray">OK</span>';
-        return `<tr><td class="mono">${escapeHtml(r.codigo_produto)}</td><td style="font-weight:600;">${escapeHtml(r.nome_produto)}</td><td class="mono">${fmtNum(r.quantidade_contada)}</td><td class="mono">${r.estoque_sistema != null ? fmtNum(r.estoque_sistema) : '—'}</td><td class="mono" style="font-weight:800; ${cls}">${diff > 0 ? '+' : ''}${fmtNum(diff)}</td><td>${badge}</td></tr>`;
-      }).join('');
-    } catch (err) { tbody.innerHTML = `<tr class="tr-empty"><td colspan="6">Erro: ${err.message}</td></tr>`; }
-  }
-
-  window.setFiltro = async (f, btn) => {
-    filtroAtivo = f; document.querySelectorAll('.filter-btn').forEach(b => b.className = 'filter-btn');
-    btn.classList.add(f==='todos'?'active-all':f==='sobras'?'active-sobra':f==='faltas'?'active-falta':'active-all');
-    await carregarRelatorio();
-  };
-  window.setOrdem = async (val) => { ordemAtiva = val; await carregarRelatorio(); };
-  window._exportarCSV = async () => { showLoading(); try { const csv = await exportarCSV(auditoriaId, filtroAtivo); triggerDownloadCSV(csv, `${auditoria.numero_auditoria}.csv`); } catch (err) { showToast(err.message, 'error'); } finally { hideLoading(); } };
-  window._exportarPDF = async () => {
-    showLoading();
-    try {
-      const { itens } = await gerarRelatorio(auditoriaId, { filtro: filtroAtivo, limit: 9999 });
-      const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'portrait' });
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.text(`Relatório - ${auditoria.numero_auditoria}`, 14, 20);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(`Empresa: ${auditoria.empresas?.nome}`, 14, 28);
-      const rows = itens.map(r => [ r.codigo_produto, r.nome_produto, String(r.quantidade_contada), String(r.estoque_sistema ?? '—'), r.diferenca > 0 ? `+${r.diferenca}` : String(r.diferenca), r.diferenca > 0 ? 'Sobra' : r.diferenca < 0 ? 'Falta' : 'OK' ]);
-      doc.autoTable({ startY: 35, head: [['Código', 'Produto', 'Contado', 'Sistema', 'Diferença', 'Status']], body: rows, headStyles: { fillColor: [249, 115, 22] } });
-      doc.save(`${auditoria.numero_auditoria}.pdf`);
-    } catch (err) { showToast(err.message, 'error'); } finally { hideLoading(); }
-  };
-})();
-</script>
+<script type="module" src="js/telas/relatorio.js"></script>
 </body>
 </html>

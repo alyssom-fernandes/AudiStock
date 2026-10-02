@@ -1,7 +1,7 @@
 // ================================================================
 //  AudiStock — js/erros.js
 //  Toda falha não tratada fica gravada no próprio navegador, com
-//  página, usuário e hora, e aparece em Configurações › Sistema.
+//  página, usuário e hora, e aparece em Configurações › Registro de erros.
 //
 //  Script clássico (não módulo), carregado antes de todos os outros
 //  para que um erro na carga deles também fique registrado.
@@ -41,7 +41,8 @@
       document.dispatchEvent(new CustomEvent('audistock:erros'));
       // Um aviso por página: quem usa precisa saber que algo falhou,
       // mas um aviso por erro em laço deixaria a tela inutilizável.
-      if (!avisado && typeof window.__avisarErro === 'function') {
+      // 'tratado' = a tela já mostrou a mensagem dela; aqui só guarda o detalhe
+      if (!avisado && tipo !== 'tratado' && typeof window.__avisarErro === 'function') {
         avisado = true;
         window.__avisarErro();
       }
@@ -51,6 +52,7 @@
   window.addEventListener('error', e => {
     // Falha ao carregar <script>/<link> chega aqui sem mensagem
     if (!e.message && e.target && e.target !== window) {
+      if (e.target.dataset && e.target.dataset.opcional) return;   // quem carregou já trata a falha
       registrar('recurso', 'Falha ao carregar ' + (e.target.src || e.target.href || e.target.tagName), '');
       return;
     }

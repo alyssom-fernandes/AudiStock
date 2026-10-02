@@ -15,7 +15,7 @@
 
 const CHAVE_MODO  = 'audistock-demo';      // 'completo' | 'vazio'
 const CHAVE_BANCO = 'audistock-demo-db';
-const VERSAO_BANCO = 1;
+const VERSAO_BANCO = 2;
 export const ID_USUARIO_DEMO = '6f1c2a90-4b7e-4d21-9c3a-0d5e8f7a1b2c';
 
 // ─────────────────────────────────────────────────────────────
@@ -86,6 +86,11 @@ export function criarClienteDemo() {
           return { data: { user: null }, error: { message: 'User already registered' } };
         }
         return { data: { user: { id: _uuidAleatorio(), email } }, error: null };
+      },
+      async updateUser({ password } = {}) {
+        await _espera();
+        if (password != null && String(password).length < 6) return { data: { user: null }, error: { message: 'Password should be at least 6 characters.' } };
+        return { data: { user: usuarioAuth() }, error: null };
       },
       onAuthStateChange() { return { data: { subscription: { unsubscribe() {} } } }; },
     },
@@ -206,6 +211,7 @@ class Consulta {
     linhas = _ordenar(linhas, this.ordens);
     if (this.de != null) linhas = linhas.slice(this.de, this.ate + 1);
     if (this.limite != null) linhas = linhas.slice(0, this.limite);
+    linhas = linhas.slice(0, MAX_LINHAS);   // como o max-rows do Supabase real
     const data = this.soCabecalho ? null : linhas.map(l => _projetar(this.banco, this.tabela, l, this.colunas));
     return this._resposta(data, this.contar ? total : null);
   }
@@ -277,6 +283,10 @@ class Consulta {
   }
 }
 
+// O Supabase entrega no máximo 1.000 linhas por consulta; o demo faz o mesmo,
+// para que uma tela que esqueça de paginar falhe aqui também.
+const MAX_LINHAS = 1000;
+
 function _erro(message, code = 'DEMO') { return { data: null, error: { message, code }, count: null, status: 400 }; }
 
 function _igual(a, b) {
@@ -335,14 +345,14 @@ function _projetar(banco, tabela, linha, colunas) {
   const saida = campos.includes('*') ? { ...linha } : {};
   for (const c of campos) {
     if (c === '*') continue;
-    const m = c.match(/^(\w+)(?:!(\w+))?\s*\(([\s\S]*)\)$/);
+    const m = c.match(/^(?:(\w+):)?(\w+)(?:!(\w+))?\s*\(([\s\S]*)\)$/);
     if (m) {
-      const [, rel, dica, sub] = m;
+      const [, apelido, rel, dica, sub] = m;
       const fkDaDica = dica?.match(new RegExp(`^${tabela}_(\\w+)_fkey$`))?.[1];
       const fk = fkDaDica ?? RELACOES[tabela]?.[rel];
-      if (!fk || !banco.tabelas[rel]) { _registrar(`Demo: relação não mapeada ${tabela} → ${c}`); saida[rel] = null; continue; }
+      if (!fk || !banco.tabelas[rel]) { _registrar(`Demo: relação não mapeada ${tabela} → ${c}`); saida[apelido ?? rel] = null; continue; }
       const alvo = banco.tabelas[rel].find(r => r.id === linha[fk]);
-      saida[rel] = alvo ? _projetar(banco, rel, alvo, sub) : null;
+      saida[apelido ?? rel] = alvo ? _projetar(banco, rel, alvo, sub) : null;
     } else saida[c] = linha[c] ?? null;
   }
   return saida;
@@ -458,11 +468,11 @@ function _semear(cenario) {
     const e = { id: id(), nome, cnpj, cidade, estado, endereco, observacoes: null, ativo, criado_em: em(entre(180, 400), 10, 0).toISOString() };
     t.empresas.push(e); return e;
   };
-  const aurora    = empresa('Distribuidora Aurora',        '12.418.337/0001-52', 'Cuiabá',     'MT', 'Av. das Torres, 1820 — Distrito Industrial');
-  const serra     = empresa('Atacado Serra Azul',          '27.904.115/0001-08', 'Goiânia',    'GO', 'Rod. GO-060, km 4,5');
-  const horizonte = empresa('Ferragens Horizonte',         '08.553.761/0001-90', 'Campo Grande','MS', 'Rua Rui Barbosa, 2245 — Centro');
-  empresa('Distribuidora Aurora — Filial Norte', '12.418.337/0002-33', 'Sinop', 'MT', 'Av. dos Tarumãs, 640');  // nova, ainda sem produtos
-  const vale      = empresa('Empório Vale Verde',          '33.120.884/0001-47', 'Rondonópolis','MT', 'Rua Fernando Corrêa, 512', false);
+  const aurora    = empresa('Distribuidora Aurora',        '12.418.337/0001-00', 'Cuiabá',     'MT', 'Av. das Torres, 1820 — Distrito Industrial');
+  const serra     = empresa('Atacado Serra Azul',          '27.904.115/0001-67', 'Goiânia',    'GO', 'Rod. GO-060, km 4,5');
+  const horizonte = empresa('Ferragens Horizonte',         '08.553.761/0001-82', 'Campo Grande','MS', 'Rua Rui Barbosa, 2245 — Centro');
+  empresa('Distribuidora Aurora — Filial Norte', '12.418.337/0002-83', 'Sinop', 'MT', 'Av. dos Tarumãs, 640');  // nova, ainda sem produtos
+  const vale      = empresa('Empório Vale Verde',          '33.120.884/0001-77', 'Rondonópolis','MT', 'Rua Fernando Corrêa, 512', false);
 
   const rafael = usuario('Rafael Antunes', 'rafael.antunes@audistock.example', 'administrador');
   const bianca = usuario('Bianca Moreira', 'bianca.moreira@audistock.example', 'auditor', aurora.id);

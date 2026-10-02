@@ -6,25 +6,25 @@
 
 import { hasRole } from '../auth.js';
 import { listarAuditorias, iniciarAuditoria, auditoriaEmAndamentoPorEmpresa } from '../auditorias.js';
-import { listarEmpresas } from '../empresas.js';
-import { escapeHtml, fmtDate, badgeStatus, vazioHtml, erroCargaHtml, abrirModal, fmConfirm, showToast,
-         normalizar, debounce, ICONS, mensagemErro } from '../ui.js';
+import { listarEmpresas, contarProdutosPorEmpresa } from '../empresas.js';
+import { escapeHtml, fmtDate, fmtInt, badgeStatus, vazioHtml, erroCargaHtml, abrirModal, fmConfirm, showToast,
+         normalizar, debounce, marcarInvalido, ICONS, mensagemErro } from '../ui.js';
 
 const FILTROS = [
-  { id: 'todas', rotulo: 'Todas' },
-  { id: 'em_andamento', rotulo: 'Em andamento' },
-  { id: 'finalizada', rotulo: 'Finalizadas' },
-  { id: 'cancelada', rotulo: 'Canceladas' },
+  { id: 'todas', rotulo: 'Todas', vazio: 'Nenhuma auditoria' },
+  { id: 'em_andamento', rotulo: 'Em andamento', vazio: 'Nenhuma auditoria em andamento' },
+  { id: 'finalizada', rotulo: 'Finalizadas', vazio: 'Nenhuma auditoria finalizada' },
+  { id: 'cancelada', rotulo: 'Canceladas', vazio: 'Nenhuma auditoria cancelada' },
 ];
+const LIMITE = 200;
 
 export async function render(el, { perfil, params }) {
   let filtro = FILTROS.some(f => f.id === params.get('status')) ? params.get('status') : 'todas';
-  let busca = '';
-  let lista = [];
+  let busca = '', lista = [], total = 0;
   const admin = hasRole('administrador');
 
   el.innerHTML = `
-    <div class="toolbar">
+    <div class="toolbar" id="audToolbar">
       <div class="seg" role="group" aria-label="Filtrar por situação" id="segFiltro"></div>
       <label class="campo-busca">${ICONS.busca}<span class="sr-only">Buscar auditoria</span>
         <input class="form-input" type="search" id="audBusca" placeholder="Número ou empresa" autocomplete="off"/></label>
@@ -41,7 +41,15 @@ export async function render(el, { perfil, params }) {
     $('#segFiltro').innerHTML = FILTROS.map(f => `<button type="button" data-f="${f.id}" aria-pressed="${f.id === filtro}">${f.rotulo}<span class="qtd">${qtd(f.id)}</span></button>`).join('');
   };
 
+  const acoes = a => {
+    const det = `href="app.html?tela=historico&id=${encodeURIComponent(a.id)}"`;
+    if (a.status === 'em_andamento') return `<a class="btn btn-secondary btn-sm" href="contagem.html?id=${encodeURIComponent(a.id)}">Continuar contagem</a><a class="btn btn-ghost btn-sm" ${det}>Detalhes</a>`;
+    if (a.status === 'finalizada') return `<a class="btn btn-secondary btn-sm" href="relatorios.html?id=${encodeURIComponent(a.id)}">Relatório</a><a class="btn btn-ghost btn-sm" ${det}>Detalhes</a>`;
+    return `<a class="btn btn-secondary btn-sm" ${det}>Detalhes</a>`;
+  };
+
   const desenhar = () => {
+    $('#audToolbar').hidden = !lista.length;
     desenharFiltros();
     const termo = normalizar(busca);
     const visiveis = lista.filter(a => (filtro === 'todas' || a.status === filtro)
@@ -56,34 +64,32 @@ export async function render(el, { perfil, params }) {
       return;
     }
     if (!visiveis.length) {
-      const nomeFiltro = FILTROS.find(f => f.id === filtro).rotulo.toLowerCase();
       card.innerHTML = vazioHtml({
-        titulo: termo ? `Nada encontrado para “${escapeHtml(busca)}”` : `Nenhuma auditoria ${filtro === 'todas' ? '' : nomeFiltro.replace(/s$/, '')}`.trim(),
-        acoes: `<button type="button" class="btn btn-secondary btn-sm" data-limpar>Mostrar todas</button>`,
+        titulo: termo ? `Nada encontrado para “${busca.trim()}”` : FILTROS.find(f => f.id === filtro).vazio,
+        acoes: `<button type="button" class="btn btn-secondary btn-sm" data-limpar>${termo ? 'Limpar busca' : 'Mostrar todas'}</button>`,
         compacto: true,
       });
       return;
     }
-    card.innerHTML = `<div class="tabela-wrap"><table class="tabela-resp">
+    card.innerHTML = `<div class="tabela-wrap"><table class="tabela-lista tabela-fixa">
+      <colgroup><col style="width:150px"><col><col style="width:110px"><col style="width:100px"><col style="width:140px"><col style="width:250px"></colgroup>
       <thead><tr><th scope="col">Número</th><th scope="col">Empresa</th><th scope="col">Início</th><th scope="col">Contagem</th><th scope="col">Situação</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead>
       <tbody>${visiveis.map(a => `<tr>
-        <td class="cel-titulo"><a class="linha-link codigo forte" href="app.html?tela=historico&id=${encodeURIComponent(a.id)}">${escapeHtml(a.numero_auditoria)}</a></td>
-        <td data-label="Empresa"><span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span></td>
-        <td data-label="Início" class="nowrap">${fmtDate(a.data_inicio)}</td>
-        <td data-label="Contagem">${a.auditoria_cega ? 'Cega' : 'Visível'}</td>
-        <td data-label="Situação">${badgeStatus(a.status)}</td>
-        <td class="cel-acoes"><div class="acoes-linha">
-          ${a.status === 'em_andamento' ? `<a class="btn btn-secondary btn-sm" href="contagem.html?id=${encodeURIComponent(a.id)}">Continuar contagem</a>` : ''}
-          ${a.status === 'finalizada' ? `<a class="btn btn-secondary btn-sm" href="relatorios.html?id=${encodeURIComponent(a.id)}">Relatório</a>` : ''}
-          <a class="btn btn-ghost btn-sm" href="app.html?tela=historico&id=${encodeURIComponent(a.id)}" aria-label="Detalhes da ${escapeHtml(a.numero_auditoria)}">Detalhes</a>
-        </div></td>
+        <td class="l-titulo"><a class="linha-link codigo forte" href="app.html?tela=historico&id=${encodeURIComponent(a.id)}">${escapeHtml(a.numero_auditoria)}</a>
+          <span class="sub so-celular-bloco"><span class="forte" style="color:var(--text)">${escapeHtml(a.empresas?.nome ?? '—')}</span> · <span class="nowrap">${fmtDate(a.data_inicio)}</span> · ${a.auditoria_cega ? 'cega' : 'visível'}</span></td>
+        <td class="so-desktop"><span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span></td>
+        <td class="so-desktop nowrap">${fmtDate(a.data_inicio)}</td>
+        <td class="so-desktop">${a.auditoria_cega ? 'Cega' : 'Visível'}</td>
+        <td>${badgeStatus(a.status)}</td>
+        <td class="l-linha"><div class="acoes-linha">${acoes(a)}</div></td>
       </tr>`).join('')}</tbody>
-    </table></div>`;
+    </table></div>
+    ${total > lista.length ? `<div class="tabela-rodape"><span>Mostrando as ${fmtInt(lista.length)} auditorias mais recentes de ${fmtInt(total)}.</span></div>` : ''}`;
   };
 
   const carregar = async () => {
     try {
-      ({ data: lista } = await listarAuditorias({ limit: 200 }));
+      ({ data: lista, count: total } = await listarAuditorias({ limit: LIMITE }));
       desenhar();
     } catch (err) {
       console.error(err);
@@ -101,7 +107,7 @@ export async function render(el, { perfil, params }) {
   });
   $('#audBusca').addEventListener('input', debounce(e => { busca = e.target.value; desenhar(); }, 200));
   card.addEventListener('click', e => {
-    if (e.target.closest('[data-limpar]')) { filtro = 'todas'; busca = ''; $('#audBusca').value = ''; desenhar(); }
+    if (e.target.closest('[data-limpar]')) { if (busca.trim()) { busca = ''; $('#audBusca').value = ''; } else filtro = 'todas'; desenhar(); }
     if (e.target.closest('[data-nova]')) abrirNovaAuditoria(perfil);
   });
   $('#btnNovaAud')?.addEventListener('click', () => abrirNovaAuditoria(perfil));
@@ -119,12 +125,12 @@ async function abrirNovaAuditoria(perfil) {
         <label class="form-label" for="audEmpresa">Empresa</label>
         <select class="form-input" id="audEmpresa" required><option value="">Carregando…</option></select>
       </div>
-      <fieldset class="form-group" style="border:0">
+      <fieldset class="form-group">
         <legend class="form-label" style="margin-bottom:6px">Tipo de contagem</legend>
         <label class="checagem" style="align-items:flex-start;color:var(--text)"><input type="radio" name="audModo" value="cega" checked style="margin-top:3px"/>
-          <span><span class="forte">Cega</span><span class="sub">A equipe conta sem consultar o saldo do sistema. Recomendado: o resultado é mais confiável.</span></span></label>
+          <span><span class="forte">Cega</span><span class="sub">Quem conta não vê nenhum saldo do sistema. Recomendado: o resultado é mais confiável.</span></span></label>
         <label class="checagem" style="align-items:flex-start;color:var(--text)"><input type="radio" name="audModo" value="visivel" style="margin-top:3px"/>
-          <span><span class="forte">Visível</span><span class="sub">A equipe pode consultar o saldo do sistema durante a contagem.</span></span></label>
+          <span><span class="forte">Visível</span><span class="sub">Quem conta vê, para cada produto, o saldo do sistema informado na auditoria anterior da empresa.</span></span></label>
       </fieldset>
       <div class="form-group">
         <label class="form-label" for="audObs">Observações <span class="opcional">(opcional)</span></label>
@@ -137,25 +143,30 @@ async function abrirNovaAuditoria(perfil) {
     aoEnviar: criar,
   });
 
+  // Empresas com auditoria aberta ou sem produtos aparecem marcadas e não podem ser escolhidas
   const sel = modal.$('#audEmpresa');
   try {
-    const emps = await listarEmpresas({ apenasAtivas: true });
-    sel.innerHTML = emps.length
-      ? '<option value="">Selecione a empresa</option>' + emps.map(e => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.nome)}</option>`).join('')
-      : '<option value="">Nenhuma empresa ativa</option>';
+    const [emps, { data: abertas }] = await Promise.all([listarEmpresas({ apenasAtivas: true }), listarAuditorias({ status: 'em_andamento', limit: 500 })]);
+    const nProdutos = await Promise.all(emps.map(e => contarProdutosPorEmpresa(e.id).catch(() => null)));
+    const aberta = new Map(abertas.map(a => [a.empresa_id, a.numero_auditoria]));
+    sel.innerHTML = !emps.length ? '<option value="">Nenhuma empresa ativa</option>'
+      : '<option value="">Selecione a empresa</option>' + emps.map((e, i) => {
+        const motivo = aberta.has(e.id) ? `${aberta.get(e.id)} em andamento` : nProdutos[i] === 0 ? 'sem produtos' : '';
+        return `<option value="${escapeHtml(e.id)}" ${motivo ? 'disabled' : ''}>${escapeHtml(e.nome)}${motivo ? ` (${motivo})` : ''}</option>`;
+      }).join('');
   } catch (err) {
     sel.innerHTML = '<option value="">Não foi possível carregar</option>';
-    showToast('Não foi possível carregar as empresas.', 'error');
+    showToast(mensagemErro(err, 'carregar empresas'), 'error');
   }
 
   async function criar(m) {
     const empresaId = sel.value;
-    if (!empresaId) { sel.setAttribute('aria-invalid', 'true'); sel.focus(); showToast('Escolha a empresa da auditoria.', 'warning'); return; }
+    if (!empresaId) { marcarInvalido(sel, 'Escolha a empresa da auditoria.'); sel.focus(); return; }
     m.ocupado(true, 'Iniciando…');
     try {
+      // Confere de novo: outra pessoa pode ter aberto uma auditoria enquanto o modal estava aberto
       const ativa = await auditoriaEmAndamentoPorEmpresa(empresaId);
       if (ativa) {
-        m.ocupado(false);
         const nomeEmp = sel.selectedOptions[0]?.textContent ?? 'Esta empresa';
         m.fechar();
         const abrir = await fmConfirm({

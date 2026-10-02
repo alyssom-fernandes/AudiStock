@@ -7,6 +7,7 @@
 // ================================================================
 
 import supabase from './supabaseClient.js';
+import { buscarTodos } from './consulta.js';
 
 // ─────────────────────────────────────────────────────────────
 //  listarProdutos(empresaId, { q, apenasAtivos, page, limit })
@@ -255,25 +256,20 @@ export async function importarProdutosExcel(empresaId, linhas, usuarioId) {
 //  Se ids não fornecido, clona TODOS os produtos ativos da origem.
 // ─────────────────────────────────────────────────────────────
 export async function clonarProdutos(origemId, destinoId, ids = null) {
-  let query = supabase
-    .from('produtos')
-    .select('codigo_produto, nome_produto, unidade_medida, codigo_barras, observacoes')
-    .eq('empresa_id', origemId)
-    .eq('ativo', true);
-
-  if (ids?.length) query = query.in('id', ids);
-
-  const { data: fonte, error: errFonte } = await query;
-  if (errFonte) throw new Error(errFonte.message);
+  const fonte = await buscarTodos(() => {
+    let q = supabase
+      .from('produtos')
+      .select('codigo_produto, nome_produto, unidade_medida, codigo_barras, observacoes')
+      .eq('empresa_id', origemId)
+      .eq('ativo', true)
+      .order('codigo_produto');
+    return ids?.length ? q.in('id', ids) : q;
+  });
 
   const novos = fonte.map(p => ({ ...p, empresa_id: destinoId, ativo: true }));
 
   // Códigos que já existem no destino serão atualizados, não criados
-  const { data: existentes, error: errDest } = await supabase
-    .from('produtos')
-    .select('codigo_produto')
-    .eq('empresa_id', destinoId);
-  if (errDest) throw new Error(errDest.message);
+  const existentes = await buscarTodos(() => supabase.from('produtos').select('codigo_produto').eq('empresa_id', destinoId).order('codigo_produto'));
   const jaExistem = new Set(existentes.map(p => p.codigo_produto));
 
   // upsert para não duplicar por código

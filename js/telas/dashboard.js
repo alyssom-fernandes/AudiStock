@@ -7,6 +7,7 @@
 import supabase from '../supabaseClient.js';
 import { hasRole } from '../auth.js';
 import { progresso } from '../auditorias.js';
+import { resumoAuditoria } from '../relatorios.js';
 import { escapeHtml, fmtDate, fmtInt, difHtml, vazioHtml, erroCargaHtml } from '../ui.js';
 
 const contar = q => q.then(({ count, error }) => { if (error) throw new Error(error.message); return count ?? 0; });
@@ -25,7 +26,7 @@ export async function render(el) {
 
   el.innerHTML = `
     <div class="kpis">
-      <div class="kpi kpi-destaque"><div class="kpi-rotulo">Em andamento</div><div class="kpi-valor">${fmtInt(emAndamento)}</div><div class="kpi-apoio">${emAndamento === 1 ? 'auditoria sendo contada' : 'auditorias sendo contadas'}</div></div>
+      <div class="kpi kpi-destaque"><div class="kpi-rotulo">Em andamento</div><div class="kpi-valor">${fmtInt(emAndamento)}</div><div class="kpi-apoio">em contagem agora</div></div>
       <div class="kpi"><div class="kpi-rotulo">Finalizadas</div><div class="kpi-valor">${fmtInt(finalizadas)}</div><div class="kpi-apoio" id="kpiUltima">&nbsp;</div></div>
       <div class="kpi"><div class="kpi-rotulo">Empresas ativas</div><div class="kpi-valor">${fmtInt(empresas)}</div></div>
       <div class="kpi"><div class="kpi-rotulo">Produtos ativos</div><div class="kpi-valor">${fmtInt(produtos)}</div></div>
@@ -40,7 +41,7 @@ export async function render(el) {
         <div class="card-body" id="dUltima"><span class="skel"></span><span class="skel" style="width:70%"></span></div>
       </section>
     </div>
-    <div class="duas-colunas" id="dTops"></div>`;
+    <div class="duas-colunas topo-alinhado" id="dTops"></div>`;
 
   const $ = s => el.querySelector(s);
   await Promise.all([
@@ -63,14 +64,14 @@ async function _andamento(alvo) {
     });
     return;
   }
-  const prog = await Promise.all(data.map(a => progresso(a.id).catch(() => null)));
+  const prog = await Promise.all(data.map(a => progresso(a.id).catch(err => { console.warn('[dashboard] progresso', err); return null; })));
   alvo.innerHTML = `<ul class="lista-andamento">${data.map((a, i) => {
     const p = prog[i];
     return `<li><a class="andamento" href="contagem.html?id=${encodeURIComponent(a.id)}">
       <span><span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span>
-        <span class="sub"><span class="codigo">${escapeHtml(a.numero_auditoria)}</span> · desde ${fmtDate(a.data_inicio)} · ${a.auditoria_cega ? 'cega' : 'visível'}</span></span>
-      <span class="andamento-pct">${p ? `${fmtInt(p.contados)} de ${fmtInt(p.totalProdutos)} · <strong>${p.pct}%</strong>` : ''}</span>
-      <span class="barra" role="progressbar" aria-valuenow="${p?.pct ?? 0}" aria-valuemin="0" aria-valuemax="100" aria-label="Progresso da contagem"><i style="width:${p?.pct ?? 0}%"></i></span>
+        <span class="sub"><span class="codigo">${escapeHtml(a.numero_auditoria)}</span> · <span class="nowrap">desde ${fmtDate(a.data_inicio)}</span> · ${a.auditoria_cega ? 'cega' : 'visível'}</span></span>
+      <span class="andamento-pct">${p ? `${fmtInt(p.contados)} de ${fmtInt(p.totalProdutos)} · <strong>${p.pct}%</strong>` : '<span class="muted">progresso indisponível</span>'}</span>
+      ${p ? `<span class="barra" role="progressbar" aria-valuenow="${p.pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Progresso da contagem"><i style="width:${p.pct}%"></i></span>` : ''}
     </a></li>`;
   }).join('')}</ul>`;
 }
@@ -90,13 +91,16 @@ async function _ultima(el) {
   $('#sUltima').innerHTML = `<span class="codigo">${escapeHtml(aud.numero_auditoria)}</span> · ${escapeHtml(aud.empresas?.nome ?? '')} · ${fmtDate(aud.data_fim)}`;
   $('#aUltima').innerHTML = `<a class="btn btn-ghost btn-sm" href="relatorios.html?id=${encodeURIComponent(aud.id)}">Ver relatório</a>`;
 
-  const { data: itens, error: e2 } = await supabase.from('vw_relatorio_divergencias')
-    .select('codigo_produto, nome_produto, unidade_medida, diferenca, status_divergencia').eq('auditoria_id', aud.id);
+  // Só os itens com divergência; os totais vêm do mesmo resumo usado no relatório
+  const [{ data: itens, error: e2 }, resumo] = await Promise.all([
+    supabase.from('vw_relatorio_divergencias').select('codigo_produto, nome_produto, unidade_medida, diferenca, estoque_sistema').eq('auditoria_id', aud.id).neq('diferenca', 0),
+    resumoAuditoria(aud.id),
+  ]);
   if (e2) throw new Error(e2.message);
 
-  const sobras = itens.filter(i => i.status_divergencia === 'sobra');
-  const faltas = itens.filter(i => i.status_divergencia === 'falta');
-  const ok = itens.length - sobras.length - faltas.length;
+  const sobras = itens.filter(i => Number(i.diferenca) > 0);
+  const faltas = itens.filter(i => Number(i.diferenca) < 0);
+  const ok = resumo.ok;
   const [pS, pF, pO] = _porcentagens([sobras.length, faltas.length, ok]);
 
   $('#dUltima').innerHTML = `
@@ -107,14 +111,20 @@ async function _ultima(el) {
       <div class="legenda-item"><span class="ponto seg-falta"></span><span class="nome">Itens com falta</span><span class="valor">${fmtInt(faltas.length)}</span><span class="pct">${pF}%</span></div>
       <div class="legenda-item"><span class="ponto seg-sobra"></span><span class="nome">Itens com sobra</span><span class="valor">${fmtInt(sobras.length)}</span><span class="pct">${pS}%</span></div>
       <div class="legenda-item"><span class="ponto seg-ok"></span><span class="nome">Sem divergência</span><span class="valor">${fmtInt(ok)}</span><span class="pct">${pO}%</span></div>
-    </div>`;
+    </div>
+    ${resumo.sem_saldo || resumo.nao_auditados ? `<p class="muted" style="font-size:13px;margin-top:14px">${[
+      resumo.sem_saldo ? `${fmtInt(resumo.sem_saldo)} sem saldo do sistema` : '',
+      resumo.nao_auditados ? `${fmtInt(resumo.nao_auditados)} ${resumo.nao_auditados === 1 ? 'produto não contado' : 'produtos não contados'}` : '',
+    ].filter(Boolean).join(' · ')}</p>` : ''}`;
 
-  const porMagnitude = (a, b) => Math.abs(b.diferenca) - Math.abs(a.diferenca);
-  $('#dTops').innerHTML = _top('Maiores faltas', faltas.sort(porMagnitude).slice(0, 5), 'Nenhuma falta nesta auditoria.', aud)
-                        + _top('Maiores sobras', sobras.sort(porMagnitude).slice(0, 5), 'Nenhuma sobra nesta auditoria.', aud);
+  // Mesma régua do relatório: diferença em proporção ao saldo do sistema
+  const peso = i => Math.abs(Number(i.diferenca)) / Math.max(Math.abs(Number(i.estoque_sistema)) || 1, 1);
+  const porMagnitude = (a, b) => peso(b) - peso(a);
+  $('#dTops').innerHTML = _top('Maiores faltas', faltas.sort(porMagnitude).slice(0, 5), 'Nenhuma falta nesta auditoria.')
+                        + _top('Maiores sobras', sobras.sort(porMagnitude).slice(0, 5), 'Nenhuma sobra nesta auditoria.');
 }
 
-function _top(titulo, lista, vazio, aud) {
+function _top(titulo, lista, vazio) {
   const corpo = !lista.length ? vazioHtml({ titulo: vazio, compacto: true }) : `
     <div class="tabela-wrap"><table>
       <thead><tr><th scope="col">Produto</th><th scope="col" class="num">Diferença</th></tr></thead>
@@ -123,7 +133,7 @@ function _top(titulo, lista, vazio, aud) {
         <td class="num">${difHtml(r.diferenca, r.unidade_medida)}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
-  return `<section class="card"><div class="card-header"><div><h2 class="card-title">${titulo}</h2><div class="card-sub">${escapeHtml(aud.numero_auditoria)}</div></div></div>${corpo}</section>`;
+  return `<section class="card"><div class="card-header"><div><h2 class="card-title">${titulo}</h2><div class="card-sub">Da última auditoria finalizada</div></div></div>${corpo}</section>`;
 }
 
 // Arredonda mantendo a soma em 100 (método do maior resto)

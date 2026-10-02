@@ -6,23 +6,13 @@
 // ================================================================
 
 import supabase from './supabaseClient.js';
-
-// O Supabase devolve no máximo 1.000 linhas por consulta: busca em páginas.
-async function _buscarTodos(montar, tamanho = 1000) {
-  const todos = [];
-  for (let de = 0; ; de += tamanho) {
-    const { data, error } = await montar().range(de, de + tamanho - 1);
-    if (error) throw new Error(error.message);
-    todos.push(...data);
-    if (data.length < tamanho) return todos;
-  }
-}
+import { buscarTodos as _buscarTodos } from './consulta.js';
 
 // ─────────────────────────────────────────────────────────────
 //  gerarRelatorio(auditoriaId, { filtro, ordem })
 //
 //  filtro: 'todos' | 'divergencias' | 'sobras' | 'faltas'
-//  ordem:  'diferenca' (maior divergência primeiro, pelo tamanho)
+//  ordem:  'diferenca' (maior divergência primeiro, em % do saldo do sistema)
 //          | 'codigo' | 'nome' (A→Z)
 //  Retorna { itens, count } com todos os itens do filtro, já ordenados.
 // ─────────────────────────────────────────────────────────────
@@ -42,7 +32,7 @@ export function ordenarItens(itens, ordem = 'diferenca') {
   const texto = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), 'pt-BR', { numeric: true, sensitivity: 'base' });
   const criterios = {
     diferenca: (a, b) => (a.diferenca == null) - (b.diferenca == null)
-      || Math.abs(Number(b.diferenca)) - Math.abs(Number(a.diferenca))
+      || _peso(b) - _peso(a)
       || Number(a.diferenca) - Number(b.diferenca)          // no empate, falta antes de sobra
       || texto(a.nome_produto, b.nome_produto),
     codigo: (a, b) => texto(a.codigo_produto, b.codigo_produto),
@@ -50,6 +40,8 @@ export function ordenarItens(itens, ordem = 'diferenca') {
   };
   return itens.sort(criterios[ordem] ?? criterios.diferenca);
 }
+// Diferença relativa ao saldo: 2 CX de 13 pesa mais que 1,288 KG de 14,442
+const _peso = i => Math.abs(Number(i.diferenca)) / Math.max(Math.abs(Number(i.estoque_sistema)) || 1, 1);
 
 // ─────────────────────────────────────────────────────────────
 //  produtosNaoAuditados(auditoriaId)
@@ -97,7 +89,8 @@ export function situacaoTexto(diferenca) {
 //  Feito para abrir certo no Excel brasileiro: separador ";",
 //  decimal com vírgula, UTF-8 com BOM (no download) e \r\n.
 // ─────────────────────────────────────────────────────────────
-export async function exportarCSV(auditoriaId, filtro = 'todos', ordem = 'diferenca') {
+//  Cada linha leva a auditoria e a empresa, para juntar arquivos depois.
+export async function exportarCSV(auditoriaId, filtro = 'todos', ordem = 'diferenca', aud = null) {
   const { itens } = await gerarRelatorio(auditoriaId, { filtro, ordem });
   const texto = v => {
     let s = String(v ?? '');
@@ -106,10 +99,10 @@ export async function exportarCSV(auditoriaId, filtro = 'todos', ordem = 'difere
   };
   const num = n => n == null || n === '' ? '' : Number(n).toLocaleString('pt-BR', { useGrouping: false, maximumFractionDigits: 3 });
 
-  const cabecalho = ['Código', 'Produto', 'Unidade', 'Sistema', 'Contado', 'Diferença', 'Situação'].join(';');
+  const cabecalho = ['Auditoria', 'Empresa', 'Código', 'Produto', 'Unidade', 'Sistema', 'Contado', 'Diferença', 'Situação'].join(';');
   const linhas = itens.map(i => [
-    texto(i.codigo_produto), texto(i.nome_produto), texto(i.unidade_medida),
-    num(i.estoque_sistema), num(i.quantidade_contada), num(i.diferenca), situacaoTexto(i.diferenca),
+    texto(aud?.numero_auditoria), texto(aud?.empresas?.nome), texto(i.codigo_produto), texto(i.nome_produto), texto(i.unidade_medida),
+    num(i.estoque_sistema), num(i.quantidade_contada), (Number(i.diferenca) > 0 ? '+' : '') + num(i.diferenca), situacaoTexto(i.diferenca),
   ].join(';'));
   return [cabecalho, ...linhas].join('\r\n') + '\r\n';
 }

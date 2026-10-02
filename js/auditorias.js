@@ -49,7 +49,8 @@ export async function buscarAuditoria(id) {
     .select(`
       *,
       empresas ( id, nome ),
-      usuarios!auditorias_criado_por_fkey ( id, nome, role )
+      usuarios!auditorias_criado_por_fkey ( id, nome, role ),
+      cancelador:usuarios!auditorias_cancelado_por_fkey ( nome )
     `)
     .eq('id', id)
     .single();
@@ -178,18 +179,20 @@ export async function excluirAuditoria(auditoriaId, usuarioId) {
 export async function progresso(auditoriaId) {
   const auditoria = await buscarAuditoria(auditoriaId);
 
-  // Total de produtos ativos da empresa
-  const { count: totalProdutos } = await supabase
+  // Total de produtos ativos da empresa e de itens já contados. Se a consulta
+  // falhar, lança: mostrar "0%" seria um número errado com cara de certo.
+  const { count: totalProdutos, error: e1 } = await supabase
     .from('produtos')
     .select('id', { count: 'exact', head: true })
     .eq('empresa_id', auditoria.empresa_id)
     .eq('ativo', true);
+  if (e1) throw new Error(e1.message);
 
-  // Total de itens já contados nesta auditoria
-  const { count: contados } = await supabase
+  const { count: contados, error: e2 } = await supabase
     .from('auditoria_itens')
     .select('id', { count: 'exact', head: true })
     .eq('auditoria_id', auditoriaId);
+  if (e2) throw new Error(e2.message);
 
   const pct = totalProdutos > 0 ? Math.round((contados / totalProdutos) * 100) : 0;
   return { contados: contados ?? 0, totalProdutos: totalProdutos ?? 0, pct };
@@ -200,12 +203,13 @@ export async function progresso(auditoriaId) {
 //  Verifica se já existe uma auditoria ativa para a empresa.
 // ─────────────────────────────────────────────────────────────
 export async function auditoriaEmAndamentoPorEmpresa(empresaId) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('auditorias')
     .select('id, numero_auditoria')
     .eq('empresa_id', empresaId)
     .eq('status', 'em_andamento')
     .maybeSingle();
+  if (error) throw new Error(error.message);
 
   return data;  // null se nenhuma
 }

@@ -116,6 +116,6 @@ export async function contarProdutosPorEmpresa(empresaId) {
     .eq('empresa_id', empresaId)
     .eq('ativo', true);
 
-  if (error) return 0;
+  if (error) throw new Error(error.message);
   return count ?? 0;
 }

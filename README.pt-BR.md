@@ -24,10 +24,11 @@ Este README também está em [inglês](README.md).
 ## Em 30 segundos
 
 1. Abra a [demonstração](https://alyssom-fernandes.github.io/AudiStock/app.html?demo=1).
-2. Em **Auditorias**, continue a contagem da AUD-2026-0007: digite
-   "arroz", escolha o produto, informe a quantidade e tecle Enter.
-3. Em **Relatórios**, abra a AUD-2026-0006, filtre as faltas e baixe o
-   PDF ou a planilha.
+2. Em **Auditorias**, abra a contagem em andamento da Distribuidora
+   Aurora: digite "arroz", escolha o produto, informe a quantidade e
+   tecle Enter.
+3. Em **Relatórios**, abra o do Atacado Serra Azul, filtre as faltas e
+   baixe a planilha ou o PDF.
 
 ## Telas
 
@@ -47,40 +48,49 @@ Capturadas do modo demonstração.
 
 ### Contagem
 
-- Uma auditoria por empresa por vez, com número sequencial
-  (AUD-2026-0007), tipo de contagem (cega ou visível) e observações.
+- Uma auditoria por empresa por vez, com número sequencial por ano
+  (AUD-2026-0007), tipo de contagem e observações. Na contagem **cega**,
+  quem conta não vê saldo nenhum; na **visível**, vê o último saldo do
+  sistema de cada produto, o da auditoria finalizada anterior.
 - Três formas de registrar: **teclado**, com busca por código, nome ou
   código de barras e sugestões navegáveis pelas setas; **leitor** USB ou
-  Bluetooth, em que cada leitura soma uma unidade; e **câmera** do celular,
-  onde o navegador oferece leitura de código de barras.
+  Bluetooth, em que cada leitura soma uma unidade e o campo já fica pronto
+  para a próxima; e **câmera** do celular, onde o navegador oferece leitura
+  de código de barras.
 - Produto já contado: o sistema pergunta se soma ou substitui e mostra o
   resultado de cada opção. Somar é o padrão, porque o mesmo produto
   costuma estar em mais de um lugar.
 - Correções ficam no histórico da auditoria, com o valor anterior, quem
   corrigiu, quando e por quê.
-- Sem internet, as contagens ficam guardadas no aparelho (IndexedDB) e
-  são enviadas sozinhas quando a rede volta.
+- Sem internet, as contagens ficam guardadas no aparelho (IndexedDB). Com
+  a contagem ou o fechamento abertos, elas são enviadas assim que há
+  conexão: ao abrir a página, quando a rede volta e a cada 30 segundos.
+  O fechamento não é finalizado com contagens ainda no aparelho.
 
 ### Fechamento e relatório
 
 - No fechamento, o saldo do sistema é digitado ao lado do contado, com a
-  diferença calculada na hora. A auditoria só é concluída depois disso,
+  diferença calculada na hora. A auditoria só é finalizada depois disso,
   com aviso se algum saldo ficou em branco. Também dá para cancelar uma
   auditoria, com o motivo registrado.
 - O relatório mostra itens contados, sem divergência, com falta, com
-  sobra e os produtos que ninguém contou.
+  sobra, sem saldo do sistema e os produtos que ninguém contou. Em
+  auditoria em andamento ou cancelada, ele mostra só a contagem: sem
+  saldo do sistema, não há divergência para calcular.
 - Filtros por divergência, falta ou sobra, e ordem pela maior
   divergência (pelo tamanho, seja falta ou sobra), por nome ou por código.
 - Toda quantidade vem com a unidade. Unidades fracionadas (kg, L, m)
   sempre com três casas: "1,288 kg" nunca é lido como mil e duzentos.
-- **PDF** para arquivar e assinar: identificação da auditoria, resumo,
-  tabela com faltas e sobras destacadas, "Página X de Y" e linhas de
-  assinatura.
 - **Excel** com números de verdade (não texto), diferença e situação por
-  fórmula, filtro, cabeçalho fixo e uma aba com os não contados.
+  fórmula, filtro, cabeçalho fixo, datas no horário local e uma aba com
+  os não contados.
+- **PDF** para arquivar e assinar: identificação da auditoria, resumo,
+  tabela com faltas e sobras destacadas, produtos não contados, "Página X
+  de Y" e linhas de assinatura, que nunca ficam sozinhas numa folha.
 - **CSV** pronto para o Excel brasileiro: ponto e vírgula, vírgula
-  decimal e acentos certos.
-- **Impressão** com folha própria em A4, sempre no tema claro.
+  decimal, acentos certos e, em cada linha, a auditoria e a empresa.
+- **Impressão** com folha própria em A4, sempre no tema claro, com o mesmo
+  desenho do PDF.
 
 ### Cadastros e acesso
 
@@ -89,7 +99,8 @@ Capturadas do modo demonstração.
   baixar, ou são copiados do cadastro de outra empresa.
 - Quatro perfis: **supremo** (tudo, inclusive excluir auditorias),
   **administrador** (cadastros, criar e cancelar auditorias),
-  **auditor** (registra contagens) e **visualizador** (só consulta).
+  **auditor** (registra contagens e faz o fechamento) e **visualizador**
+  (só consulta). Cada pessoa troca a própria senha em Configurações.
 
 ### Interface
 
@@ -99,7 +110,9 @@ Capturadas do modo demonstração.
 - Pelo teclado: janelas prendem o foco e fecham com Esc; em ação
   perigosa, o foco começa em "Cancelar".
 - Falhas não tratadas ficam registradas no navegador e aparecem em
-  **Configurações**. No console, `errosRegistrados()` lista as da página.
+  **Configurações**, com um atalho no aviso de erro. No console,
+  `errosRegistrados()` lista as 30 mais recentes deste navegador, de todas
+  as páginas.
 
 ## Modo demonstração
 
@@ -142,6 +155,12 @@ ou importa.
 - O esquema do banco (tabelas, as views `vw_relatorio_divergencias` e
   `vw_produtos_nao_auditados` e a função `gerar_numero_auditoria`) não está
   neste repositório.
+- O número de página e a identificação no rodapé da folha impressa usam
+  `@page` com caixas de margem, que o Chrome e o Edge suportam; no Firefox
+  a folha sai sem esse rodapé. O PDF não tem essa dependência.
+- O PDF usa a Helvetica do jsPDF, e não a IBM Plex da tela.
+- A lista de Relatórios mostra as 200 auditorias finalizadas mais
+  recentes; para as anteriores, filtre por empresa.
 - A interface é só em português.
 
 ## Como usar a sua cópia

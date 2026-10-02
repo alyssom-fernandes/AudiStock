@@ -34,11 +34,13 @@ initLayout('Dashboard');
 const pageBody = document.getElementById('pageBody');
 let _seq = 0;
 
-export function irPara(tela, params = {}) {
+// substituir: troca a entrada atual do histórico (o Voltar não cai, por
+// exemplo, nos detalhes de uma auditoria que acabou de ser excluída)
+export function irPara(tela, params = {}, { substituir = false } = {}) {
   const url = new URL('app.html', location.href);
   url.searchParams.set('tela', tela);
   Object.entries(params).forEach(([k, v]) => v != null && url.searchParams.set(k, v));
-  history.pushState({}, '', url);
+  history[substituir ? 'replaceState' : 'pushState']({}, '', url);
   rotear();
 }
 

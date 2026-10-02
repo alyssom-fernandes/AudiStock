@@ -8,7 +8,8 @@ import { logout, getPerfil } from './auth.js';
 import { demoAtivo } from './demo.js';
 
 // erros.js chama isto no primeiro erro não tratado da página
-window.__avisarErro = () => showToast('Algo falhou nesta tela e ficou registrado em Configurações › Sistema.', 'error', 8000);
+window.__avisarErro = () => showToast('Algo falhou nesta tela. Os detalhes ficaram no registro de erros, em Configurações.', 'error', 9000,
+    { acao: { texto: 'Ver registro', href: 'app.html?tela=config#tErros' } });
 
 const svg = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
 
@@ -27,6 +28,7 @@ export const ICONS = {
     menu:       svg('<path d="M4 6h16M4 12h16M4 18h16"/>'),
     fechar:     svg('<path d="M18 6 6 18M6 6l12 12"/>'),
     voltar:     svg('<path d="m15 18-6-6 6-6"/>'),
+    chevron:    svg('<path d="m6 9 6 6 6-6"/>'),
     mais:       svg('<path d="M12 5v14M5 12h14"/>'),
     ok:         svg('<path d="M20 6 9 17l-5-5"/>'),
     alerta:     svg('<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>'),
@@ -91,13 +93,16 @@ export function initLayout(titulo, { ativa = null } = {}) {
         </aside>
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="window.__layoutFecharSidebar()"></div>`;
 
-    const demo = demoAtivo() ? `
+    if (demoAtivo() && !document.querySelector('.demo-bar')) {
+        document.body.classList.add('com-demo');
+        document.body.insertAdjacentHTML('afterbegin', `
         <div class="demo-bar" role="note">
             <span><strong>Demonstração</strong><span class="demo-bar-longo"> · dados fictícios, nada é gravado de verdade</span></span>
             <button type="button" class="link" onclick="window.__layoutLogout()">Sair da demonstração</button>
-        </div>` : '';
+        </div>`);
+    }
 
-    const topo = `${demo}
+    const topo = `
         <div class="offline-bar" id="offlineBar" role="status" aria-live="polite"></div>
         <header class="topbar">
             <button type="button" class="btn-icone btn-hamburger" id="btnMenu" onclick="window.__layoutToggleSidebar()" aria-label="Abrir menu" aria-expanded="false" aria-controls="sidebar">${ICONS.menu}</button>
@@ -110,7 +115,9 @@ export function initLayout(titulo, { ativa = null } = {}) {
         shell.insertAdjacentHTML('afterbegin', sidebar);
         const main = document.createElement('div');
         main.className = 'main';
-        main.innerHTML = topo + '<main class="page-content" id="pageContent"></main>';
+        main.innerHTML = topo + '<main class="page-content" id="pageContent" tabindex="-1"></main>';
+        // Pelo teclado, pula o menu e vai direto ao conteúdo
+        document.body.insertAdjacentHTML('afterbegin', '<a class="pular" href="#pageContent">Pular para o conteúdo</a>');
         shell.appendChild(main);
         const corpo = document.getElementById('pageBody');
         if (corpo) document.getElementById('pageContent').appendChild(corpo);
@@ -165,7 +172,19 @@ export function fecharSidebar() {
     if (aberta && window.innerWidth <= 900) btn?.focus();
 }
 document.addEventListener('click', e => { if (window.innerWidth <= 900 && e.target.closest('.nav-item')) fecharSidebar(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.querySelector('.modal-backdrop') && document.getElementById('sidebar')?.classList.contains('open')) fecharSidebar(); });
+document.addEventListener('keydown', e => {
+    const s = document.getElementById('sidebar');
+    if (!s?.classList.contains('open') || document.querySelector('.modal-backdrop')) return;
+    if (e.key === 'Escape') { fecharSidebar(); return; }
+    // Menu do celular aberto: o Tab fica dentro dele
+    if (e.key === 'Tab' && window.innerWidth <= 900) {
+        const focaveis = [...s.querySelectorAll('a[href], button:not([disabled])')].filter(x => x.offsetParent !== null);
+        const [primeiro, ultimo] = [focaveis[0], focaveis[focaveis.length - 1]];
+        if (e.shiftKey && document.activeElement === primeiro) { e.preventDefault(); ultimo.focus(); }
+        else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primeiro.focus(); }
+        else if (!s.contains(document.activeElement)) { e.preventDefault(); primeiro.focus(); }
+    }
+});
 
 // ─────────────────────────────────────────────────────────────
 //  Tema: o salvo; na primeira visita, o do sistema operacional
@@ -198,13 +217,14 @@ function _applyTheme(tema) {
 // ─────────────────────────────────────────────────────────────
 const TIPO_TOAST = { success: ['sucesso', ICONS.ok], error: ['erro', ICONS.erro], warning: ['aviso', ICONS.alerta], info: ['info', ICONS.info] };
 
-export function showToast(msg, tipo = 'success', duracao = 4000) {
+export function showToast(msg, tipo = 'success', duracao = 4000, { acao = null } = {}) {
     _garantirCamadas();
     const [classe, icone] = TIPO_TOAST[tipo] ?? TIPO_TOAST.info;
     const el = document.createElement('div');
     el.className = `toast toast-${classe}`;
     if (tipo === 'error') el.setAttribute('role', 'alert');
-    el.innerHTML = `<span class="toast-icone">${icone}</span><span class="toast-msg">${escapeHtml(msg)}</span>
+    const link = acao ? `<a href="${escapeHtml(acao.href)}">${escapeHtml(acao.texto)}</a>` : '';
+    el.innerHTML = `<span class="toast-icone">${icone}</span><span class="toast-msg">${escapeHtml(msg)}${link}</span>
         <button type="button" class="btn-icone toast-fechar" aria-label="Fechar aviso">${ICONS.fechar}</button>`;
     const sair = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 200); };
     el.querySelector('.toast-fechar').onclick = sair;
@@ -279,16 +299,28 @@ export function abrirModal({ titulo, subtitulo = '', corpo = '', acoes = [], lar
         },
     };
 
+    // Esc, X e clique fora perguntam antes de descartar o que foi digitado
+    let alterado = false;
+    form.addEventListener('input', () => { alterado = true; });
+    modal.semAlteracoes = () => { alterado = false; };
+    modal.dispensar = async () => {
+        if (alterado && !form.querySelector('[type=submit]:disabled')) {
+            const ok = await fmConfirm({ titulo: 'Descartar o que foi preenchido?', msg: 'O que você digitou nesta janela será perdido.', confirmTxt: 'Descartar', cancelTxt: 'Continuar editando', tipo: 'perigo' });
+            if (!ok) return;
+        }
+        modal.fechar(false);
+    };
+
     form.addEventListener('submit', e => { e.preventDefault(); aoEnviar?.(modal); });
     form.addEventListener('click', e => {
-        if (e.target.closest('[data-fechar]')) { modal.fechar(false); return; }
+        if (e.target.closest('[data-fechar]')) { modal.dispensar(); return; }
         const b = e.target.closest('.modal-rodape [data-i]');
         if (b && b.type !== 'submit') acoes[b.dataset.i].acao?.(modal);
     });
     // Fecha pelo fundo só se o clique começou e terminou nele (arrastar seleção de texto não fecha)
     let inicioNoFundo = false;
     fundo.addEventListener('mousedown', e => { inicioNoFundo = e.target === fundo; });
-    fundo.addEventListener('click', e => { if (e.target === fundo && inicioNoFundo) modal.fechar(false); });
+    fundo.addEventListener('click', e => { if (e.target === fundo && inicioNoFundo) modal.dispensar(); });
 
     document.body.appendChild(fundo);
     _pilha.push(modal);
@@ -303,7 +335,7 @@ export function abrirModal({ titulo, subtitulo = '', corpo = '', acoes = [], lar
 document.addEventListener('keydown', e => {
     const topo = _pilha[_pilha.length - 1];
     if (!topo) return;
-    if (e.key === 'Escape') { e.preventDefault(); topo.fechar(false); return; }
+    if (e.key === 'Escape') { e.preventDefault(); topo.dispensar(); return; }
     if (e.key === 'Tab') {
         const focaveis = [...topo.el.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(x => x.offsetParent !== null);
         if (!focaveis.length) return;
@@ -350,10 +382,11 @@ export function badgeSituacao(diferenca) {
 // ─────────────────────────────────────────────────────────────
 //  Estado vazio
 // ─────────────────────────────────────────────────────────────
-export function vazioHtml({ titulo, texto = '', acoes = '', compacto = false }) {
+export function vazioHtml({ titulo, texto = '', textoHtml = '', acoes = '', compacto = false }) {
+    const corpo = textoHtml || escapeHtml(texto);
     return `<div class="vazio${compacto ? ' vazio-compacto' : ''}">
         <p class="vazio-titulo">${escapeHtml(titulo)}</p>
-        ${texto ? `<p class="vazio-texto">${texto}</p>` : ''}
+        ${corpo ? `<p class="vazio-texto">${corpo}</p>` : ''}
         ${acoes ? `<div class="vazio-acoes">${acoes}</div>` : ''}
     </div>`;
 }
@@ -426,7 +459,7 @@ export function carregarScript(url, global) {
     if (global && window[global]) return Promise.resolve(window[global]);
     _scripts[url] ??= new Promise((ok, falha) => {
         const s = document.createElement('script');
-        s.src = url; s.crossOrigin = 'anonymous';
+        s.src = url; s.crossOrigin = 'anonymous'; s.dataset.opcional = '1';
         s.onload = () => ok(global ? window[global] : true);
         s.onerror = () => { delete _scripts[url]; s.remove(); falha(new Error('Não foi possível carregar um componente necessário. Verifique a conexão e tente de novo.')); };
         document.head.appendChild(s);
@@ -446,5 +479,36 @@ export function mensagemErro(err, contexto = '') {
     ];
     const achado = mapa.find(([re]) => re.test(m));
     if (achado) { console.warn('[AudiStock]', contexto, m); return achado[1]; }
-    return m || 'Não foi possível concluir. Tente de novo.';
+    // Erro de programação (TypeError, ReferenceError…) ou texto técnico em inglês
+    // não vai para a tela: fica no registro de erros e no console.
+    const tecnico = err instanceof TypeError || err instanceof ReferenceError || err instanceof SyntaxError
+        || !/[áàâãéêíóôõúç]|\b(não|nao|já|para|com|sem|de)\b/i.test(m);
+    if (tecnico) {
+        console.error('[AudiStock]', contexto, err);
+        window.__registrarErro?.('tratado', `${contexto ? contexto + ': ' : ''}${m}`, err?.stack ?? '');
+        return 'Ocorreu um erro inesperado. Os detalhes ficaram no registro de erros, em Configurações.';
+    }
+    return m;
+}
+
+// Erro de validação junto do campo (e não num aviso que some e cobre os botões no celular)
+export function marcarInvalido(campo, msg) {
+    campo.setAttribute('aria-invalid', 'true');
+    const grupo = campo.closest('.form-group') ?? campo.parentElement;
+    let erro = grupo.querySelector(':scope > .form-erro');
+    if (!erro) {
+        erro = document.createElement('span');
+        erro.className = 'form-erro';
+        erro.id = `${campo.id || 'campo'}Erro`;
+        grupo.appendChild(erro);
+    }
+    erro.textContent = msg;
+    campo.setAttribute('aria-describedby', [campo.getAttribute('aria-describedby'), erro.id].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' '));
+    campo.addEventListener('input', () => limparInvalido(campo), { once: true });
+    campo.addEventListener('change', () => limparInvalido(campo), { once: true });
+}
+export function limparInvalido(campo) {
+    campo.removeAttribute('aria-invalid');
+    const erro = (campo.closest('.form-group') ?? campo.parentElement).querySelector(':scope > .form-erro');
+    if (erro) erro.textContent = '';
 }

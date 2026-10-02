@@ -12,8 +12,9 @@
 <body>
 <main class="tela-central"><span class="spinner" role="status" aria-label="Carregando"></span></main>
 <script type="module">
-import { getSession } from './js/auth.js';
-const session = await getSession();
+// Sem sessão, ou se algo falhar ao consultar, o login explica o que houve
+let session = null;
+try { session = await (await import('./js/auth.js')).getSession(); } catch (_) {}
 window.location.replace(session ? 'app.html' : 'login.html');
 </script>
 </body>

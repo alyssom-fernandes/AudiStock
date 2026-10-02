@@ -35,6 +35,10 @@ export async function login(email, senha) {
   _currentUser = data.user;
   _currentPerfil = await carregarPerfil(data.user.id);
   window.__usuarioAtual = _currentPerfil;
+  if (!_currentPerfil || !_currentPerfil.ativo) {
+    await supabase.auth.signOut();
+    throw new Error(_currentPerfil ? 'Sua conta está desativada. Fale com o administrador do sistema.' : 'Seu acesso ainda não foi configurado. Fale com o administrador do sistema.');
+  }
 
   // Atualiza último acesso
   await supabase
@@ -81,10 +85,10 @@ export async function requireAuth() {
   }
   window.__usuarioAtual = _currentPerfil;
 
-  // Usuário inativo
-  if (_currentPerfil && !_currentPerfil.ativo) {
+  // Conta sem perfil configurado, ou inativa: não entra
+  if (!_currentPerfil || !_currentPerfil.ativo) {
     await supabase.auth.signOut();
-    window.location.href = 'login.html?erro=inativo';
+    window.location.href = `login.html?erro=${_currentPerfil ? 'inativo' : 'sem-perfil'}`;
     return null;
   }
 
@@ -144,6 +148,7 @@ function traduzirErroAuth(msg) {
     'Email not confirmed':        'Confirme seu e-mail antes de entrar.',
     'User not found':             'Usuário não encontrado.',
     'Too many requests':          'Muitas tentativas. Aguarde alguns minutos.',
+    'Failed to fetch':            'Sem conexão com o servidor. Verifique a internet e tente de novo.',
   };
   for (const [en, pt] of Object.entries(map)) {
     if (msg.includes(en)) return pt;

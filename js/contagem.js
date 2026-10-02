@@ -11,6 +11,7 @@
 // ================================================================
 
 import supabase from './supabaseClient.js';
+import { buscarTodos } from './consulta.js';
 
 // ─────────────────────────────────────────────────────────────
 //  buscarItemContado(auditoriaId, produtoId)
@@ -109,10 +110,8 @@ export async function editarContagem(itemId, novaQtd, usuarioId, motivo = '') {
     throw new Error('Não é possível editar uma auditoria já finalizada ou cancelada.');
   }
 
-  // 3. Grava histórico
-  await _gravarHistorico(itemId, item.quantidade_contada, novaQtd, usuarioId, motivo);
-
-  // 4. Atualiza
+  // 3. Atualiza e só então grava o histórico: se a atualização falhar,
+  //    não fica registrada uma correção que não aconteceu.
   const { data, error } = await supabase
     .from('auditoria_itens')
     .update({
@@ -124,30 +123,27 @@ export async function editarContagem(itemId, novaQtd, usuarioId, motivo = '') {
     .single();
 
   if (error) throw new Error(error.message);
+  await _gravarHistorico(itemId, item.quantidade_contada, novaQtd, usuarioId, motivo);
   return data;
 }
 
 // ─────────────────────────────────────────────────────────────
-//  listarItensContados(auditoriaId, { page, limit })
-//  Lista todos os itens já contados, com dados do produto.
+//  listarItensContados(auditoriaId)
+//  Todos os itens já contados, com dados do produto, do mais recente
+//  (em páginas de 1.000, o limite do Supabase por consulta).
 // ─────────────────────────────────────────────────────────────
-export async function listarItensContados(auditoriaId, { page = 1, limit = 100 } = {}) {
-  const from = (page - 1) * limit;
-  const to   = from + limit - 1;
-
-  const { data, count, error } = await supabase
+export async function listarItensContados(auditoriaId) {
+  const data = await buscarTodos(() => supabase
     .from('auditoria_itens')
     .select(`
       id, produto_id, quantidade_contada, estoque_sistema, diferenca, data_registro, atualizado_em,
       produtos ( id, codigo_produto, nome_produto, unidade_medida ),
       usuarios!auditoria_itens_registrado_por_fkey ( nome )
-    `, { count: 'exact' })
+    `)
     .eq('auditoria_id', auditoriaId)
     .order('data_registro', { ascending: false })
-    .range(from, to);
-
-  if (error) throw new Error(error.message);
-  return { data: data ?? [], count: count ?? 0 };
+    .order('id'));
+  return { data, count: data.length };
 }
 
 // ─────────────────────────────────────────────────────────────

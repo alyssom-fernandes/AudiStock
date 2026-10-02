@@ -18,6 +18,7 @@ com empresas, produtos e auditorias fictícias, em que nada é gravado.
 ![Sem build](https://img.shields.io/badge/etapa_de_build-nenhuma-success?style=flat-square)
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL_e_Auth-3ecf8e?style=flat-square&logo=supabase&logoColor=white)
 ![Tema](https://img.shields.io/badge/tema-claro_e_escuro-c2410c?style=flat-square)
+![Licença](https://img.shields.io/badge/licen%C3%A7a-MIT-blue?style=flat-square)
 
 Este README também está em [inglês](README.md).
 
@@ -207,4 +208,6 @@ js/
 docs/telas/             imagens deste README
 ```
 
-Feito por [Alyssom Fernandes](https://github.com/alyssom-fernandes), AFN Systems.
+## Licença
+
+[MIT](LICENSE). Feito por [Alyssom Fernandes](https://github.com/alyssom-fernandes), AFN Systems.

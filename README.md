@@ -18,6 +18,7 @@ with fictional companies, products and audits, where nothing is saved.
 ![No build](https://img.shields.io/badge/build_step-none-success?style=flat-square)
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL_and_Auth-3ecf8e?style=flat-square&logo=supabase&logoColor=white)
 ![Theme](https://img.shields.io/badge/theme-light_and_dark-c2410c?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
 This README is also available in [Portuguese](README.pt-BR.md).
 
@@ -201,4 +202,6 @@ js/
 docs/telas/             images for this README
 ```
 
-Made by [Alyssom Fernandes](https://github.com/alyssom-fernandes), AFN Systems.
+## License
+
+[MIT](LICENSE). Made by [Alyssom Fernandes](https://github.com/alyssom-fernandes), AFN Systems.

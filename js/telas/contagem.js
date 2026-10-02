@@ -357,8 +357,9 @@ async function iniciar() {
         limparProduto();
         showToast(`Registrado: ${qtdTxt} de ${produto.nome_produto}${entrada.situacao === 'fila' ? ' (guardado no aparelho)' : ''}.`, 'success', 2500);
       } else {
-        // Leitor e câmera: o campo fica vazio para a próxima leitura
-        inp.value = ''; estado.produto = null;
+        // Leitor e câmera: o campo já foi limpo no Enter. Limpar aqui
+        // apagaria a próxima leitura, que o leitor pode estar digitando.
+        estado.produto = null;
         const ul = $('#ultimaLeitura');
         ul.innerHTML = `Última leitura: <strong>${escapeHtml(produto.nome_produto)}</strong> · agora ${qtdHtml(entrada.qtd, un)}${entrada.situacao === 'fila' ? ' (na fila)' : ''}`;
         ul.hidden = false;
@@ -373,13 +374,20 @@ async function iniciar() {
   }
 
   // ── Leitor e câmera: cada leitura soma 1 ───────────────────
-  async function lerCodigo(codigo) {
+  // O leitor físico pode mandar várias leituras antes de a primeira
+  // terminar: o campo é limpo na hora e as leituras entram numa fila,
+  // processadas na ordem em que chegaram.
+  let filaLeituras = Promise.resolve();
+  function lerCodigo(codigo) {
     const c = String(codigo).trim();
     inp.value = '';
-    if (!c) return;
-    const p = await buscarProdutoPorBarras(aud.empresa_id, c) ?? await buscarProdutoPorCodigo(aud.empresa_id, c);
-    if (!p) { showToast(`Código ${c} não encontrado nesta empresa.`, 'warning'); return; }
-    await persistir(p, 1, 'somar');
+    if (!c) return filaLeituras;
+    filaLeituras = filaLeituras.then(async () => {
+      const p = await buscarProdutoPorBarras(aud.empresa_id, c) ?? await buscarProdutoPorCodigo(aud.empresa_id, c);
+      if (!p) { showToast(`Código ${c} não encontrado nesta empresa.`, 'warning'); return; }
+      await persistir(p, 1, 'somar');
+    }).catch(err => showToast(mensagemErro(err, 'leitura do código'), 'error'));
+    return filaLeituras;
   }
 
   const temCamera = 'BarcodeDetector' in window && !!navigator.mediaDevices?.getUserMedia;

@@ -6,6 +6,7 @@
 
 import supabase from '../supabaseClient.js';
 import { isSupremo } from '../auth.js';
+import { criarUsuario } from '../usuarios.js';
 import { listarEmpresas } from '../empresas.js';
 import { escapeHtml, fmtDateTime, badgeRole, vazioHtml, erroCargaHtml, abrirModal, fmConfirm, showToast, normalizar,
          debounce, delegarAcoes, marcarInvalido, ICONS, NOMES_PAPEL, mensagemErro } from '../ui.js';
@@ -156,16 +157,16 @@ function abrirUsuario(u, { papeis, empresas, perfil, aoSalvar }) {
           const { error } = await supabase.from('usuarios').update({ nome: nome.value.trim(), role, empresa_id }).eq('id', u.id);
           if (error) throw new Error(error.message);
         } else {
-          const emailNorm = email.value.trim().toLowerCase();
-          const { data: auth, error: eAuth } = await supabase.auth.signUp({ email: emailNorm, password: senha.value });
-          if (eAuth) throw new Error(/registered/i.test(eAuth.message) ? 'Já existe um usuário com este e-mail.' : eAuth.message);
-          const { error } = await supabase.from('usuarios').insert([{ id: auth.user.id, nome: nome.value.trim(), email: emailNorm, role, empresa_id, senha_hash: 'auth-supabase', ativo: true }]);
-          if (error) throw new Error(error.message);
+          await criarUsuario({ nome: nome.value, email: email.value, senha: senha.value, role, empresa_id });
         }
         mm.fechar();
         showToast(editando ? `Dados de ${nome.value.trim()} atualizados.` : `Cadastro de ${nome.value.trim()} criado (${NOMES_PAPEL[role].toLowerCase()}).`, 'success');
         await aoSalvar();
-      } catch (err) { mm.ocupado(false); showToast(mensagemErro(err, 'salvar usuário'), 'error'); }
+      } catch (err) {
+        mm.ocupado(false);
+        const msg = mensagemErro(err, 'salvar usuário');
+        if (!editando && /e-mail/i.test(msg)) invalido(email, msg); else showToast(msg, 'error');
+      }
     },
   });
   const dica = () => { m.$('#usrPapelDica').textContent = DESCRICAO_PAPEL[m.$('#usrRole').value] ?? ''; };

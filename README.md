@@ -19,6 +19,7 @@ with fictional companies, products and audits, where nothing is saved.
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL_and_Auth-3ecf8e?style=flat-square&logo=supabase&logoColor=white)
 ![Theme](https://img.shields.io/badge/theme-light_and_dark-c2410c?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
+[![Tests](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml/badge.svg)](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml)
 
 This README is also available in [Portuguese](README.pt-BR.md).
 
@@ -100,6 +101,11 @@ Captured from the demo mode.
   **administrador** (records, creating and cancelling audits),
   **auditor** (records counts and does the closing) and **visualizador**
   (read only). Everyone changes their own password under Configurações.
+- Permissions are enforced by the database, not just the screens: RLS
+  policies per role and per company, and nobody can change their own
+  access level.
+- New users are created through an Edge Function holding the service
+  key, which never reaches the browser.
 
 ### Interface
 
@@ -133,10 +139,49 @@ silently.
 | Offline counting | IndexedDB |
 | PDF | jsPDF and jsPDF-AutoTable |
 | Excel | ExcelJS to write, SheetJS to read the product sheet |
-| Fonts | IBM Plex Sans and IBM Plex Mono (Google Fonts) |
+| Fonts | IBM Plex Sans and IBM Plex Mono (Google Fonts); IBM Plex Sans embedded in the PDF |
+| Tests | `node:test`, PGlite (Postgres in WebAssembly) and Playwright |
 
 The PDF and spreadsheet libraries are only downloaded when someone exports
-or imports.
+or imports, and the browser checks each one against its hash (SRI) first.
+
+## Database and permissions
+
+[`supabase/schema.sql`](supabase/schema.sql) creates everything the app
+uses: tables, the two report views, AUD-YYYY-NNNN numbering (never
+repeated, even with two people creating audits at once) and the
+`registrar_contagem` function, which adds up a count in a single
+transaction. Before it, 20 simultaneous scans of the same product
+recorded 2; a test now checks they record 20.
+
+Permissions live in the database: each role only sees its company, an
+auditor counts and finishes but cannot cancel, only the supremo deletes,
+and triggers stop anyone from promoting themselves or changing a finished
+count. [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql)
+signs in as each role and checks 28 of these rules; it runs in any
+project's SQL Editor and deletes what it creates.
+
+## Tests
+
+```bash
+npm install
+npm test            # unit (Node) and database (PGlite): 30 tests
+npm run test:e2e    # end to end in the browser (Playwright): 25 tests
+```
+
+- **Unit:** the real `js/` code running on Node against the demo
+  database: scan totals, history, batched import, CSV, report numbers,
+  user-creation rules.
+- **Database:** `schema.sql` and `permissoes.sql` on a real Postgres
+  (PGlite), with nothing to install.
+- **End to end:** keyboard and scanner counting, offline counts that are
+  sent when the page is reopened, closing, exports (the PDF must embed
+  the font), spreadsheet import, records, keyboard and phone. Every test
+  ends by checking that `errosRegistrados()` is empty.
+
+Everything runs on GitHub Actions on every push. The checklist for a
+test against a real Supabase project is in
+[`docs/teste-real.md`](docs/teste-real.md) (in Portuguese).
 
 ## Known limitations
 
@@ -145,33 +190,31 @@ or imports.
 - Camera scanning depends on `BarcodeDetector`, available in Chrome and
   Edge on Android, macOS and ChromeOS. On Windows and iPhone, use a scanner
   or the keyboard.
-- Creating a user calls `signUp` in the administrator's browser. With email
-  confirmation turned off in Supabase, the session may switch to the newly
-  created user. The proper fix is an Edge Function using the service key.
-- The database schema (tables, the `vw_relatorio_divergencias` and
-  `vw_produtos_nao_auditados` views and the `gerar_numero_auditoria`
-  function) is not in this repository.
+- `supabase/schema.sql` was rebuilt from what the code uses and validated
+  on a local Postgres; for an existing project, compare before applying
+  (`docs/teste-real.md` explains how).
 - The page number and footer on the printed sheet use `@page` margin
-  boxes, supported by Chrome and Edge; Firefox prints without that footer.
-  The PDF does not depend on it.
-- The PDF uses jsPDF's Helvetica, not the IBM Plex used on screen.
+  boxes, which Chrome and Edge support and Firefox does not yet; there the
+  sheet prints without that footer. The PDF does not depend on it.
+- The Supabase library comes from a CDN through `import()`, which cannot
+  be checked by hash; its version is pinned so it never changes silently.
 - The Relatórios list shows the 200 most recent finished audits; filter by
   company to reach older ones.
 - The interface is Portuguese only.
 
 ## Running your own copy
 
-1. Create a [Supabase](https://supabase.com) project with the tables, views
-   and function listed above, plus access policies (RLS) for authenticated
-   users.
+1. Create a [Supabase](https://supabase.com) project and run
+   `supabase/schema.sql` in the SQL Editor.
 2. In `js/supabaseClient.js`, replace the URL and public key with your
    project's (Supabase › Project Settings › API).
 3. Create the first user under Authentication › Users and insert their
    profile into the `usuarios` table with the `supremo` role.
-4. Serve the files over HTTP (ES modules do not load from `file://`):
+4. Deploy the user-creation function: `supabase functions deploy criar-usuario`.
+5. Serve the files over HTTP (ES modules do not load from `file://`):
 
 ```bash
-npx serve .
+npm run servir
 ```
 
 To just see it working, none of this is needed: open `app.html?demo=1`.
@@ -197,9 +240,16 @@ js/
   erros.js              unhandled-error log
   auditorias.js, contagem.js, produtos.js, empresas.js, relatorios.js
                         data access
+  usuarios.js           user creation (Edge Function or a separate client)
   exportacao.js         PDF and Excel
   offline.js            offline counting queue
-docs/telas/             images for this README
+supabase/
+  schema.sql            tables, views, functions and permissions (RLS)
+  testes/permissoes.sql checks the permissions by signing in as each role
+  functions/criar-usuario/  user-creation Edge Function and its rules
+fontes/                 IBM Plex Sans for the PDF (OFL license)
+testes/                 unit, database and end-to-end tests
+docs/                   README images and the real-world test checklist
 ```
 
 ## License

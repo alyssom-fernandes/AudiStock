@@ -2,7 +2,8 @@
 //  AudiStock — js/exportacao.js
 //  Relatório da auditoria em PDF (jsPDF + AutoTable) e em Excel
 //  (ExcelJS). As bibliotecas só são baixadas na hora de exportar.
-//  O PDF segue o desenho da folha impressa (css/style.css, @media print).
+//  O PDF segue o desenho da folha impressa (css/style.css, @media print),
+//  com a mesma fonte da tela (IBM Plex Sans).
 //
 //  doc = { aud, resumo, itens, naoContados, filtroRotulo, emissor }
 // ================================================================
@@ -34,17 +35,33 @@ export function nomeArquivo(aud, ext) {
 }
 
 // Números como no resto do sistema: vírgula decimal e casas fixas nas unidades fracionadas.
-// Só caracteres do WinAnsi (fontes padrão do PDF): sinal "-" comum, nunca "−".
 function qtd(n, un) {
   if (n == null || n === '') return '—';
   const c = casasDaUnidade(un), inteiro = c === 0 && !Number.isInteger(Number(n));
   return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: inteiro ? 0 : c, maximumFractionDigits: inteiro ? 3 : c });
 }
 const comUn = (txt, un) => txt === '—' || !un ? txt : `${txt} ${String(un).toUpperCase()}`;
-function dif(n, un) {
+// Com a Helvetica (fonte padrão do PDF, só WinAnsi) o sinal é "-"; com a IBM Plex, "−", como na tela
+function dif(n, un, menos = '-') {
   if (n == null) return '—';
   if (Number(n) === 0) return '0';
-  return comUn((n > 0 ? '+' : '-') + qtd(Math.abs(n), un), un);
+  return comUn((n > 0 ? '+' : menos) + qtd(Math.abs(n), un), un);
+}
+
+// IBM Plex Sans, a mesma fonte da tela, embutida no PDF (pasta fontes/,
+// licença OFL). Baixada uma vez por sessão; se falhar, o PDF sai em Helvetica.
+const FONTES = [['IBMPlexSans-Regular.ttf', 'normal'], ['IBMPlexSans-SemiBold.ttf', 'bold']];
+let _fontes = null;
+function _carregarFontes() {
+  _fontes ??= Promise.all(FONTES.map(async ([arquivo, estilo]) => {
+    const r = await fetch(new URL(`../fontes/${arquivo}`, import.meta.url));
+    if (!r.ok) throw new Error(`${arquivo}: HTTP ${r.status}`);
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return { arquivo, estilo, base64: btoa(bin) };
+  })).catch(err => { console.warn('[pdf] IBM Plex indisponível; o PDF sai em Helvetica.', err); _fontes = null; return null; });
+  return _fontes;
 }
 
 // ── PDF ─────────────────────────────────────────────────────
@@ -54,12 +71,15 @@ export async function gerarPDF(dados) {
   const { jsPDF } = window.jspdf;
   // Se as assinaturas não couberem na última página, monta de novo levando
   // as últimas linhas da tabela junto: nunca uma folha só com as assinaturas.
-  const doc = _montarPDF(jsPDF, dados, 0) ?? _montarPDF(jsPDF, dados, 3);
+  const fontes = await _carregarFontes();
+  const doc = _montarPDF(jsPDF, dados, fontes, 0) ?? _montarPDF(jsPDF, dados, fontes, 3);
   doc.save(nomeArquivo(dados.aud, 'pdf'));
 }
 
-function _montarPDF(jsPDF, { aud, resumo, itens, naoContados = [], filtroRotulo, emissor }, segurar) {
+function _montarPDF(jsPDF, { aud, resumo, itens, naoContados = [], filtroRotulo, emissor }, fontes, segurar) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  fontes?.forEach(f => { doc.addFileToVFS(f.arquivo, f.base64); doc.addFont(f.arquivo, 'IBMPlexSans', f.estilo); });
+  const FONTE = fontes ? 'IBMPlexSans' : 'helvetica', MENOS = fontes ? '−' : '-';
   const L = 14, R = 196, LARG = R - L, emitidoEm = fmtDateTime(new Date().toISOString());
   const TINTA = [28, 27, 25], CINZA = [100, 96, 88], LINHA = [214, 210, 202], ACENTO = [154, 52, 18];
   const VERDE = [21, 128, 61], VERMELHO = [185, 28, 28];
@@ -75,7 +95,7 @@ function _montarPDF(jsPDF, { aud, resumo, itens, naoContados = [], filtroRotulo,
   doc.setProperties({ title: `${titulo} ${aud.numero_auditoria}`, subject: empresa, creator: 'AudiStock', author: emissor ?? '' });
 
   // Cabeçalho: título e marca, linha fina embaixo (como na folha impressa)
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...TINTA);
+  doc.setFont(FONTE, 'bold'); doc.setFontSize(15); doc.setTextColor(...TINTA);
   doc.text(caber(titulo, LARG - 30), L, 18);
   doc.setFontSize(10); doc.setTextColor(...ACENTO);
   doc.text('AudiStock', R, 18, { align: 'right' });
@@ -93,7 +113,7 @@ function _montarPDF(jsPDF, { aud, resumo, itens, naoContados = [], filtroRotulo,
     let altura = 1;
     campos.slice(i, i + 4).forEach(([rot, val], j) => {
       const x = L + j * colW;
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...CINZA); doc.text(rot, x, yLinha);
+      doc.setFont(FONTE, 'normal'); doc.setFontSize(7.5); doc.setTextColor(...CINZA); doc.text(rot, x, yLinha);
       doc.setFontSize(9.5); doc.setTextColor(...TINTA);
       let linhas = doc.splitTextToSize(String(val), colW - 4);
       if (linhas.length > 2) linhas = [linhas[0], caber(linhas.slice(1).join(' '), colW - 4)];
@@ -133,23 +153,23 @@ function _montarPDF(jsPDF, { aud, resumo, itens, naoContados = [], filtroRotulo,
   doc.line(L, yR, R, yR); doc.line(L, yR + 14, R, yR + 14);
   celulas.forEach(([rot, val, cor], i) => {
     const x = L + i * cw + (i ? 3 : 0);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...CINZA); doc.text(caber(rot, cw - 4), x, yR + 5);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(val.length > 12 ? 9 : 11.5); doc.setTextColor(...cor); doc.text(caber(val, cw - 4), x, yR + 11);
+    doc.setFont(FONTE, 'normal'); doc.setFontSize(7.5); doc.setTextColor(...CINZA); doc.text(caber(rot, cw - 4), x, yR + 5);
+    doc.setFont(FONTE, 'bold'); doc.setFontSize(val.length > 12 ? 9 : 11.5); doc.setTextColor(...cor); doc.text(caber(val, cw - 4), x, yR + 11);
   });
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(FONTE, 'normal');
 
   // Tabelas
   const estilo = {
     theme: 'plain',
     margin: { left: L, right: 210 - R, bottom: 18, top: 16 },
-    styles: { font: 'helvetica', fontSize: 8.5, textColor: TINTA, cellPadding: { top: 1.7, bottom: 1.7, left: 1.5, right: 1.5 }, lineColor: [221, 221, 221], lineWidth: { bottom: 0.2 } },
+    styles: { font: FONTE, fontSize: 8.5, textColor: TINTA, cellPadding: { top: 1.7, bottom: 1.7, left: 1.5, right: 1.5 }, lineColor: [221, 221, 221], lineWidth: { bottom: 0.2 } },
     headStyles: { fillColor: [236, 235, 231], textColor: [34, 34, 34], fontStyle: 'normal', fontSize: 8, lineColor: [153, 153, 153], lineWidth: { bottom: 0.3 } },
   };
   const tabelas = [];
   if (comparado) {
     tabelas.push({
       head: ['Código', 'Produto', 'Sistema', 'Contado', 'Diferença', 'Situação'],
-      linhas: itens.map(r => ({ dif: r.diferenca, cel: [r.codigo_produto, r.nome_produto, comUn(qtd(r.estoque_sistema, r.unidade_medida), r.unidade_medida), comUn(qtd(r.quantidade_contada, r.unidade_medida), r.unidade_medida), dif(r.diferenca, r.unidade_medida), situacaoTexto(r.diferenca)] })),
+      linhas: itens.map(r => ({ dif: r.diferenca, cel: [r.codigo_produto, r.nome_produto, comUn(qtd(r.estoque_sistema, r.unidade_medida), r.unidade_medida), comUn(qtd(r.quantidade_contada, r.unidade_medida), r.unidade_medida), dif(r.diferenca, r.unidade_medida, MENOS), situacaoTexto(r.diferenca)] })),
       colunas: { 0: { cellWidth: 22, textColor: CINZA }, 2: { halign: 'right', cellWidth: 24 }, 3: { halign: 'right', cellWidth: 24 }, 4: { halign: 'right', cellWidth: 24 }, 5: { cellWidth: 19 } },
       direita: [2, 3, 4], colorir: [4, 5],
     });
@@ -198,9 +218,9 @@ function _montarPDF(jsPDF, { aud, resumo, itens, naoContados = [], filtroRotulo,
     if (t.titulo) {
       y += 10;
       if (y > 250 || corte === 0) { doc.addPage(); y = 20; }
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...TINTA);
+      doc.setFont(FONTE, 'bold'); doc.setFontSize(10); doc.setTextColor(...TINTA);
       doc.text(t.titulo, L, y);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(FONTE, 'normal');
       y += 3;
     } else if (corte === 0 && segurar) { doc.addPage(); y = 20; }
     desenhar(t, t.linhas.slice(0, corte), y);

@@ -19,6 +19,7 @@ com empresas, produtos e auditorias fictícias, em que nada é gravado.
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL_e_Auth-3ecf8e?style=flat-square&logo=supabase&logoColor=white)
 ![Tema](https://img.shields.io/badge/tema-claro_e_escuro-c2410c?style=flat-square)
 ![Licença](https://img.shields.io/badge/licen%C3%A7a-MIT-blue?style=flat-square)
+[![Testes](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml/badge.svg)](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml)
 
 Este README também está em [inglês](README.md).
 
@@ -102,6 +103,10 @@ Capturadas do modo demonstração.
   **administrador** (cadastros, criar e cancelar auditorias),
   **auditor** (registra contagens e faz o fechamento) e **visualizador**
   (só consulta). Cada pessoa troca a própria senha em Configurações.
+- As permissões valem no banco, não só na tela: políticas de RLS por
+  perfil e por empresa, e ninguém altera o próprio perfil de acesso.
+- O cadastro de pessoas passa por uma Edge Function com a chave de
+  serviço, que nunca vai para o navegador.
 
 ### Interface
 
@@ -136,10 +141,49 @@ cadastros. Uma chamada que o banco de mentira não conhece vira registro em
 | Contagem sem internet | IndexedDB |
 | PDF | jsPDF e jsPDF-AutoTable |
 | Excel | ExcelJS para gerar, SheetJS para ler a planilha de produtos |
-| Fontes | IBM Plex Sans e IBM Plex Mono (Google Fonts) |
+| Fontes | IBM Plex Sans e IBM Plex Mono (Google Fonts); IBM Plex Sans embutida no PDF |
+| Testes | `node:test`, PGlite (Postgres em WebAssembly) e Playwright |
 
 As bibliotecas de PDF e de planilha só são baixadas quando alguém exporta
-ou importa.
+ou importa, e o navegador confere cada uma pelo hash (SRI) antes de rodar.
+
+## Banco e permissões
+
+[`supabase/schema.sql`](supabase/schema.sql) cria tudo o que o app usa:
+tabelas, as duas visões do relatório, a numeração AUD-AAAA-NNNN (sem
+número repetido, mesmo com duas pessoas criando ao mesmo tempo) e a função
+`registrar_contagem`, que soma a contagem numa só transação. Antes dela,
+20 leituras simultâneas do mesmo produto registravam 2; hoje um teste
+confere que registram 20.
+
+As permissões ficam no banco: cada perfil só vê a sua empresa, o auditor
+conta e finaliza mas não cancela, só o supremo exclui, e gatilhos impedem
+que alguém promova a si mesmo ou altere uma contagem já finalizada.
+[`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql) entra
+como cada perfil e confere 28 dessas regras; dá para rodar no SQL Editor
+de qualquer projeto, e ele apaga o que criou.
+
+## Testes
+
+```bash
+npm install
+npm test            # unidade (Node) e banco (PGlite): 30 testes
+npm run test:e2e    # ponta a ponta no navegador (Playwright): 25 testes
+```
+
+- **Unidade:** o código real de `js/` rodando no Node sobre o banco do
+  modo demonstração: soma das leituras, histórico, importação em lotes,
+  CSV, números do relatório, regras de cadastro.
+- **Banco:** `schema.sql` e `permissoes.sql` num Postgres de verdade
+  (PGlite), sem instalar nada.
+- **Ponta a ponta:** contagem pelo teclado e pelo leitor, contagem sem
+  internet que sobe ao reabrir a página, fechamento, exportações (o PDF
+  precisa sair com a fonte embutida), importação de planilha, cadastros,
+  teclado e celular. Cada teste termina conferindo que
+  `errosRegistrados()` está vazio.
+
+Tudo roda no GitHub Actions a cada push. O roteiro para o teste com o
+Supabase de verdade está em [`docs/teste-real.md`](docs/teste-real.md).
 
 ## Limitações conhecidas
 
@@ -149,34 +193,32 @@ ou importa.
 - A leitura pela câmera depende do `BarcodeDetector`, que existe no Chrome
   e no Edge para Android, macOS e ChromeOS. No Windows e no iPhone, use o
   leitor ou o teclado.
-- O cadastro de usuário usa `signUp` no navegador de quem administra. Com
-  a confirmação de e-mail desligada no Supabase, a sessão pode passar para
-  o usuário recém-criado. O caminho certo é uma Edge Function com a chave
-  de serviço.
-- O esquema do banco (tabelas, as views `vw_relatorio_divergencias` e
-  `vw_produtos_nao_auditados` e a função `gerar_numero_auditoria`) não está
-  neste repositório.
+- `supabase/schema.sql` foi reconstruído a partir do que o código usa e
+  validado num Postgres local; num projeto que já existe, compare antes
+  de aplicar (o roteiro em `docs/teste-real.md` explica).
 - O número de página e a identificação no rodapé da folha impressa usam
-  `@page` com caixas de margem, que o Chrome e o Edge suportam; no Firefox
-  a folha sai sem esse rodapé. O PDF não tem essa dependência.
-- O PDF usa a Helvetica do jsPDF, e não a IBM Plex da tela.
+  `@page` com caixas de margem, que o Chrome e o Edge suportam e o
+  Firefox ainda não; lá a folha sai sem esse rodapé. O PDF não tem essa
+  dependência.
+- A biblioteca do Supabase vem de CDN por `import()`, que não aceita
+  conferência por hash; a versão é fixa para não mudar sem aviso.
 - A lista de Relatórios mostra as 200 auditorias finalizadas mais
   recentes; para as anteriores, filtre por empresa.
 - A interface é só em português.
 
 ## Como usar a sua cópia
 
-1. Crie um projeto no [Supabase](https://supabase.com) com as tabelas, as
-   views e a função citadas acima, e políticas de acesso (RLS) para
-   usuários autenticados.
+1. Crie um projeto no [Supabase](https://supabase.com) e rode
+   `supabase/schema.sql` no SQL Editor.
 2. Em `js/supabaseClient.js`, troque a URL e a chave pública pelas do seu
    projeto (Supabase › Project Settings › API).
 3. Crie o primeiro usuário em Authentication › Users e insira o perfil
    dele na tabela `usuarios` com o papel `supremo`.
-4. Sirva os arquivos por HTTP (módulos ES não abrem direto do disco):
+4. Publique a função de cadastro: `supabase functions deploy criar-usuario`.
+5. Sirva os arquivos por HTTP (módulos ES não abrem direto do disco):
 
 ```bash
-npx serve .
+npm run servir
 ```
 
 Para só ver o sistema funcionando, nada disso é preciso: abra
@@ -203,9 +245,16 @@ js/
   erros.js              registro de falhas não tratadas
   auditorias.js, contagem.js, produtos.js, empresas.js, relatorios.js
                         acesso aos dados
+  usuarios.js           cadastro de pessoas (Edge Function ou cliente à parte)
   exportacao.js         PDF e Excel
   offline.js            fila de contagens sem internet
-docs/telas/             imagens deste README
+supabase/
+  schema.sql            tabelas, visões, funções e permissões (RLS)
+  testes/permissoes.sql confere as permissões entrando como cada perfil
+  functions/criar-usuario/  Edge Function de cadastro e as regras dela
+fontes/                 IBM Plex Sans para o PDF (licença OFL)
+testes/                 unidade, banco e ponta a ponta
+docs/                   imagens deste README e o roteiro do teste real
 ```
 
 ## Licença

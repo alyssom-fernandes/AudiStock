@@ -1,0 +1,18 @@
+{
+  "name": "audistock",
+  "private": true,
+  "description": "Auditoria de estoque: contagem cega, divergências e relatórios. O app não tem build; este arquivo existe só para os testes.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"testes/unidade/*.test.mjs\" \"testes/banco/*.test.mjs\"",
+    "test:e2e": "playwright test",
+    "servir": "node testes/servidor.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@playwright/test": "^1.63.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -455,11 +455,21 @@ export function renderUserCard(perfil) {
 
 // Bibliotecas pesadas (planilha, PDF) só são baixadas quando usadas
 const _scripts = {};
+// Hash de cada biblioteca baixada na hora (os oficiais do cdnjs): se o
+// arquivo no CDN mudar, o navegador recusa e nada roda.
+const INTEGRIDADE = {
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js': 'sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==',
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js': 'sha512-2/YdOMV+YNpanLCF5MdQwaoFRVbTmrJ4u4EpqS/USXAQNUDgI5uwYi6J98WVtJKcfe1AbgerygzDFToxAlOGEQ==',
+    'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js': 'sha512-dlPw+ytv/6JyepmelABrgeYgHI0O+frEwgfnPdXDTOIZz+eDgfW07QXG02/O8COfivBdGNINy+Vex+lYmJ5rxw==',
+    'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js': 'sha512-r22gChDnGvBylk90+2e/ycr3RVrDi8DIOkIGNhJlKfuyQM4tIRAI062MaV8sfjQKYVGjOBaZBOA87z+IhZE9DA==',
+};
+
 export function carregarScript(url, global) {
     if (global && window[global]) return Promise.resolve(window[global]);
     _scripts[url] ??= new Promise((ok, falha) => {
         const s = document.createElement('script');
         s.src = url; s.crossOrigin = 'anonymous'; s.dataset.opcional = '1';
+        if (INTEGRIDADE[url]) s.integrity = INTEGRIDADE[url];
         s.onload = () => ok(global ? window[global] : true);
         s.onerror = () => { delete _scripts[url]; s.remove(); falha(new Error('Não foi possível carregar um componente necessário. Verifique a conexão e tente de novo.')); };
         document.head.appendChild(s);

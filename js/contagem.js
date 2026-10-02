@@ -7,7 +7,6 @@
 //  - gravar histórico de edições (auditoria_itens_historico)
 //  - detectar conflito (produto já contado)
 //  - suporte ao modo scanner (cada leitura soma +1)
-//  - cache local durante a sessão para performance
 // ================================================================
 
 import supabase from './supabaseClient.js';
@@ -34,14 +33,14 @@ export async function buscarItemContado(auditoriaId, produtoId) {
 //
 //  acao: 'novo' | 'sobrescrever' | 'somar'
 //
-//  Fluxo:
-//  1. Busca se já existe registro para esse produto nessa auditoria
-//  2. Se não existe → INSERT direto
-//  3. Se existe:
-//     - 'sobrescrever': UPDATE + histórico
-//     - 'somar':        UPDATE (soma) + histórico
-//  4. Retorna o item salvo
+//  Usa a função registrar_contagem do banco (supabase/schema.sql), que
+//  soma e grava o histórico numa só transação: leituras seguidas do
+//  leitor, ou dois aparelhos no mesmo produto, nunca perdem unidades.
+//  Num banco sem essa função, faz em duas etapas (ler e gravar).
 // ─────────────────────────────────────────────────────────────
+let _semFuncaoNoBanco = false;
+const _funcaoAusente = e => e?.code === 'PGRST202' || /could not find the function|function .*registrar_contagem.* does not exist/i.test(e?.message ?? '');
+
 export async function registrarContagem({
   auditoriaId,
   produtoId,
@@ -49,23 +48,21 @@ export async function registrarContagem({
   usuarioId,
   acao = 'novo',   // 'novo' | 'sobrescrever' | 'somar'
 }) {
-  if (quantidade < 0) throw new Error('Quantidade não pode ser negativa.');
+  if (!(quantidade >= 0)) throw new Error('Quantidade não pode ser negativa.');
+
+  if (!_semFuncaoNoBanco) {
+    const { data, error } = await supabase.rpc('registrar_contagem', {
+      p_auditoria_id: auditoriaId, p_produto_id: produtoId, p_quantidade: quantidade, p_acao: acao,
+    });
+    if (!error) return Array.isArray(data) ? data[0] : data;
+    if (!_funcaoAusente(error)) throw new Error(error.message);
+    _semFuncaoNoBanco = true;
+    console.warn('[contagem] O banco não tem a função registrar_contagem; usando o caminho em duas etapas. Veja supabase/schema.sql.');
+  }
 
   const existente = await buscarItemContado(auditoriaId, produtoId);
-
-  if (!existente) {
-    // ── INSERT ──
-    return await _inserirItem(auditoriaId, produtoId, quantidade, usuarioId);
-  }
-
-  // ── UPDATE ──
-  let novaQtd;
-  if (acao === 'somar') {
-    novaQtd = Number(existente.quantidade_contada) + quantidade;
-  } else {
-    novaQtd = quantidade;  // sobrescrever
-  }
-
+  if (!existente) return await _inserirItem(auditoriaId, produtoId, quantidade, usuarioId);
+  const novaQtd = acao === 'somar' ? Number(existente.quantidade_contada) + quantidade : quantidade;
   return await _atualizarItem(existente, novaQtd, usuarioId);
 }
 
@@ -173,16 +170,17 @@ export async function historicoItem(itemId) {
 //  O campo `diferenca` é gerado automaticamente pelo PostgreSQL.
 // ─────────────────────────────────────────────────────────────
 export async function preencherEstoquesSistema(auditoriaId, estoques) {
-  // Upsert em lote usando update individual (Supabase não suporta bulk update por condição complexa)
-  const promises = estoques.map(({ produto_id, quantidade }) =>
-    supabase
-      .from('auditoria_itens')
-      .update({ estoque_sistema: quantidade })
-      .eq('auditoria_id', auditoriaId)
-      .eq('produto_id',   produto_id)
-  );
-
-  const results = await Promise.all(promises);
+  // Um update por item, no máximo 8 de cada vez: uma auditoria de 2.000
+  // itens não dispara 2.000 pedidos de uma vez contra o servidor.
+  const results = [];
+  for (let i = 0; i < estoques.length; i += 8) {
+    results.push(...await Promise.all(estoques.slice(i, i + 8).map(({ produto_id, quantidade }) =>
+      supabase
+        .from('auditoria_itens')
+        .update({ estoque_sistema: quantidade })
+        .eq('auditoria_id', auditoriaId)
+        .eq('produto_id',   produto_id))));
+  }
   const erros = results.filter(r => r.error);
   if (erros.length > 0) {
     console.error('[contagem] Erros ao preencher estoques:', erros);
@@ -214,9 +212,6 @@ async function _inserirItem(auditoriaId, produtoId, quantidade, usuarioId) {
 }
 
 async function _atualizarItem(existente, novaQtd, usuarioId) {
-  // Grava histórico primeiro
-  await _gravarHistorico(existente.id, existente.quantidade_contada, novaQtd, usuarioId);
-
   const { data, error } = await supabase
     .from('auditoria_itens')
     .update({
@@ -231,6 +226,8 @@ async function _atualizarItem(existente, novaQtd, usuarioId) {
     .single();
 
   if (error) throw new Error(error.message);
+  // Histórico só depois que a mudança foi gravada
+  await _gravarHistorico(existente.id, existente.quantidade_contada, novaQtd, usuarioId);
   return data;
 }
 

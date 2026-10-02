@@ -67,3 +67,8 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# Saídas dos testes (Playwright)
+test-results/
+playwright-report/
+blob-report/

@@ -14,13 +14,14 @@ const SUPABASE_ANON_KEY = 'sb_publishable_vNiX8UtjrXR4AdcUr-5jyA_4oYwIEEk';
 
 export let clienteIndisponivel = false;
 
-let supabase;
+let supabase, _createClient = null;
 if (demoAtivo()) {
   supabase = criarClienteDemo();
 } else {
   try {
-    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-    supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    // Versão fixa: uma atualização da biblioteca não muda o sistema sem aviso
+    ({ createClient: _createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm'));
+    supabase = _createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
         persistSession:     true,
         autoRefreshToken:   true,
@@ -45,6 +46,7 @@ function _clienteSemConexao() {
   return {
     from: () => cadeia,
     rpc: async () => resposta,
+    functions: { invoke: async () => ({ data: null, error: Object.assign(new Error('Failed to fetch'), { name: 'FunctionsFetchError' }) }) },
     auth: {
       getSession: async () => ({ data: { session: null }, error: erro }),
       getUser: falha, signInWithPassword: falha, signUp: falha, updateUser: falha,
@@ -52,6 +54,15 @@ function _clienteSemConexao() {
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     },
   };
+}
+
+// Um cliente à parte, que não guarda sessão: um cadastro feito por ele
+// (signUp) não troca a sessão de quem está logado no cliente principal.
+export function criarClienteIsolado() {
+  if (!_createClient) return supabase;
+  return _createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'audistock-cadastro' },
+  });
 }
 
 export default supabase;

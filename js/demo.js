@@ -13,6 +13,8 @@
 //  errosRegistrados(), para a falta não passar despercebida.
 // ================================================================
 
+import { normalizarPedido, validarPedido } from '../supabase/functions/criar-usuario/regras.js';
+
 const CHAVE_MODO  = 'audistock-demo';      // 'completo' | 'vazio'
 const CHAVE_BANCO = 'audistock-demo-db';
 const VERSAO_BANCO = 2;
@@ -72,7 +74,17 @@ export function criarClienteDemo() {
           .reduce((m, a) => Math.max(m, Number(a.numero_auditoria.slice(prefixo.length)) || 0), 0);
         return { data: prefixo + String(maior + 1).padStart(4, '0'), error: null };
       }
+      if (nome === 'registrar_contagem') return _registrarContagem(banco, args);
       return _falhaNaoSuportada(`rpc('${nome}')`);
+    },
+
+    // Edge Functions (supabase/functions/)
+    functions: {
+      async invoke(nome, { body } = {}) {
+        await _espera();
+        if (nome === 'criar-usuario') return _criarUsuario(banco, body);
+        return _falhaNaoSuportada(`functions.invoke('${nome}')`);
+      },
     },
 
     auth: {
@@ -97,6 +109,55 @@ export function criarClienteDemo() {
 
     channel: () => _comGuarda({}, 'channel()'),
   };
+}
+
+const NIVEL = { supremo: 4, administrador: 3, auditor: 2, visualizador: 1 };
+const _eu = banco => banco.tabelas.usuarios.find(u => u.id === ID_USUARIO_DEMO);
+
+// Igual à função registrar_contagem do banco (supabase/schema.sql): soma
+// ou substitui e grava o histórico de uma vez, sem perder leituras.
+function _registrarContagem(banco, { p_auditoria_id, p_produto_id, p_quantidade, p_acao = 'somar' } = {}) {
+  const t = banco.tabelas, eu = _eu(banco);
+  if (!(Number(p_quantidade) >= 0)) return _erro('Quantidade não pode ser negativa.', '22023');
+  if (!['novo', 'somar', 'sobrescrever'].includes(p_acao)) return _erro(`Ação inválida: ${p_acao}`, '22023');
+  if (!eu?.ativo || (NIVEL[eu.role] ?? 0) < NIVEL.auditor) return _erro('new row violates row-level security policy for table "auditoria_itens"', '42501');
+  if (t.auditorias.find(a => a.id === p_auditoria_id)?.status !== 'em_andamento') {
+    return _erro('A auditoria não está em andamento: a contagem não pode mais mudar.', '42501');
+  }
+  let item = t.auditoria_itens.find(i => i.auditoria_id === p_auditoria_id && i.produto_id === p_produto_id);
+  if (!item) {
+    item = _completar('auditoria_itens', { auditoria_id: p_auditoria_id, produto_id: p_produto_id, quantidade_contada: _arred(Number(p_quantidade)), registrado_por: ID_USUARIO_DEMO, atualizado_em: null });
+    t.auditoria_itens.push(item);
+  } else {
+    const anterior = item.quantidade_contada;
+    item.quantidade_contada = _arred(p_acao === 'somar' ? Number(anterior) + Number(p_quantidade) : Number(p_quantidade));
+    item.atualizado_em = new Date().toISOString();
+    _recalcular('auditoria_itens', item);
+    t.auditoria_itens_historico.push(_completar('auditoria_itens_historico', {
+      auditoria_item_id: item.id, usuario_id: ID_USUARIO_DEMO, quantidade_anterior: anterior, quantidade_nova: item.quantidade_contada, motivo: null,
+    }));
+  }
+  _salvar(banco);
+  return { data: { ...item }, error: null };
+}
+
+// Igual à Edge Function criar-usuario, com as mesmas regras (regras.js)
+function _criarUsuario(banco, corpo) {
+  const pedido = normalizarPedido(corpo);
+  const recusa = validarPedido(_eu(banco), pedido);
+  if (recusa) return _falhaFuncao(recusa.status, recusa.erro);
+  if (banco.tabelas.usuarios.some(u => u.email === pedido.email)) return _falhaFuncao(409, 'Já existe um usuário com este e-mail.');
+  const u = _completar('usuarios', { nome: pedido.nome, email: pedido.email, role: pedido.role, empresa_id: pedido.empresa_id, ativo: true, senha_hash: 'auth-supabase', ultimo_acesso: null });
+  banco.tabelas.usuarios.push(u);
+  _salvar(banco);
+  return { data: { id: u.id }, error: null };
+}
+// Como o supabase-js devolve a resposta de erro de uma Edge Function
+function _falhaFuncao(status, erro) {
+  const e = new Error('Edge Function returned a non-2xx status code');
+  e.name = 'FunctionsHttpError';
+  e.context = new Response(JSON.stringify({ erro }), { status, headers: { 'Content-Type': 'application/json' } });
+  return { data: null, error: e };
 }
 
 // Embrulha o objeto para que um método que o demo não conhece vire

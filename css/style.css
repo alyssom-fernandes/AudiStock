@@ -227,6 +227,9 @@ details[open] .detalhes-rotulo svg { transform: rotate(180deg); }
 /* ── BARRAS ─────────────────────────────────────────────── */
 .barra { height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
 .barra > i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.importando { margin-bottom: 14px; }
+.importando-linha { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+.importando-linha strong { color: var(--text); font-variant-numeric: tabular-nums; }
 .barra-empilhada { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--surface-3); gap: 2px; }
 .barra-empilhada > i { display: block; height: 100%; }
 .seg-ok { background: var(--text-faint); opacity: .45; }
@@ -258,6 +261,12 @@ details[open] .detalhes-rotulo svg { transform: rotate(180deg); }
 
 /* ── TABELAS ────────────────────────────────────────────── */
 .tabela-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* Telas largas: em listas longas o cabeçalho da tabela fica preso sob o
+   topo ao rolar. "clip" não cria área de rolagem, então o sticky segue a página. */
+@media screen and (min-width: 1101px) {
+    .tabela-wrap { overflow-x: clip; }
+    .tabela-wrap > table > thead th { position: sticky; top: var(--topo); z-index: 2; }
+}
 table { width: 100%; border-collapse: collapse; }
 th { padding: 10px 16px; text-align: left; font-size: 12px; font-weight: 500; color: var(--text-muted); background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
 td { padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
@@ -607,6 +616,7 @@ details[open] .detalhes-rotulo::after { content: 'Ocultar'; }
     .card, .kpis { border: 0; border-radius: 0; margin-bottom: 12px; }
     .card-header { display: none; }
     .tabela-wrap { overflow: visible; }
+    th { position: static !important; }
     table { font-size: 9pt; }
     thead { display: table-header-group; }
     tr { break-inside: avoid; }

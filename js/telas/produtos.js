@@ -275,8 +275,17 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
     if (concluido) { mm.fechar(); return; }
     const empresaId = mm.$('#impEmpresa').value;
     mm.ocupado(true, 'Importando…');
+    const previa = mm.$('#impPrevia');
+    previa.insertAdjacentHTML('afterbegin', `<div class="importando" id="impProgresso"><div class="importando-linha"><span>Gravando os produtos…</span><strong id="impPct">0%</strong></div>
+      <div class="barra" role="progressbar" aria-label="Progresso da importação" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i style="width:0%"></i></div></div>`);
+    const progredir = (feitos, total) => {
+      const pct = total ? Math.round(feitos / total * 100) : 100;
+      mm.$('#impPct').textContent = `${pct}%`;
+      mm.$('#impProgresso .barra').setAttribute('aria-valuenow', pct);
+      mm.$('#impProgresso .barra i').style.width = `${pct}%`;
+    };
     try {
-      const r = await importarProdutosExcel(empresaId, linhas.filter(l => !l.ignorar), perfil.id);
+      const r = await importarProdutosExcel(empresaId, linhas.filter(l => !l.ignorar), perfil.id, { aoProgredir: progredir });
       concluido = true; empresaFeita = empresaId;
       mm.semAlteracoes();
       const nomeEmp = empresas.find(e => e.id === empresaId)?.nome ?? '';
@@ -288,7 +297,7 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
       mm.ocupado(false);
       btnImp.textContent = 'Ver produtos';
       mm.$('.modal-rodape .btn-secondary').hidden = true;
-    } catch (err) { mm.ocupado(false); showToast(mensagemErro(err, 'importar planilha'), 'error'); }
+    } catch (err) { mm.$('#impProgresso')?.remove(); mm.ocupado(false); showToast(mensagemErro(err, 'importar planilha'), 'error'); }
   }
 }
 

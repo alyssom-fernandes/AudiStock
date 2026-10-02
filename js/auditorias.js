@@ -5,6 +5,7 @@
 // ================================================================
 
 import supabase from './supabaseClient.js';
+import { buscarTodos } from './consulta.js';
 
 // ─────────────────────────────────────────────────────────────
 //  listarAuditorias({ empresaId, status, limit })
@@ -143,11 +144,12 @@ export async function excluirAuditoria(auditoriaId, usuarioId) {
   // 1. Busca snapshot completo
   const auditoria = await buscarAuditoria(auditoriaId);
 
-  // 2. Busca itens para incluir no snapshot
-  const { data: itens } = await supabase
+  // 2. Busca todos os itens para incluir no snapshot (em páginas de 1.000)
+  const itens = await buscarTodos(() => supabase
     .from('auditoria_itens')
     .select('*')
-    .eq('auditoria_id', auditoriaId);
+    .eq('auditoria_id', auditoriaId)
+    .order('id'));
 
   // 3. Salva log
   const { error: logErr } = await supabase

@@ -112,17 +112,17 @@ test('cadastra usuário pela Edge Function; e-mail repetido é apontado no campo
   await abrir(page, 'app.html?tela=usuarios');
   const novo = page.locator('.toolbar [data-acao="novo"], [data-acao="novo"]').first();
   await novo.click();
-  await page.fill('#usrNome', 'Carla Souza');
-  await page.fill('#usrEmail', 'carla.souza@exemplo.com');
-  await page.fill('#usrSenha', 'segredo1');
-  await page.selectOption('#usrRole', 'auditor');
+  await page.locator(`${MODAL} #usrNome`).fill('Carla Souza');
+  await page.locator(`${MODAL} #usrEmail`).fill('carla.souza@exemplo.com');
+  await page.locator(`${MODAL} #usrSenha`).fill('segredo1');
+  await page.locator(`${MODAL} #usrRole`).selectOption('auditor');
   await page.locator(`${MODAL} .btn-primary`).click();
   await expect(page.locator('.toast')).toContainText('Carla Souza');
 
   await novo.click();
-  await page.fill('#usrNome', 'Outra Carla');
-  await page.fill('#usrEmail', 'CARLA.SOUZA@exemplo.com');
-  await page.fill('#usrSenha', 'segredo1');
+  await page.locator(`${MODAL} #usrNome`).fill('Outra Carla');
+  await page.locator(`${MODAL} #usrEmail`).fill('CARLA.SOUZA@exemplo.com');
+  await page.locator(`${MODAL} #usrSenha`).fill('segredo1');
   await page.locator(`${MODAL} .btn-primary`).click();
   await expect(page.locator(`${MODAL} .form-erro`)).toContainText('Já existe um usuário com este e-mail');
 });

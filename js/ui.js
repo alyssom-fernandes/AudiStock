@@ -303,6 +303,7 @@ export function hideLoading() {
 //  dentro dele e volta ao botão que o abriu.
 // ─────────────────────────────────────────────────────────────
 const _pilha = [];
+const _saindo = new Set();   // fechadas, ainda na animação de saída
 let _seqModal = 0;
 
 // Com um modal aberto, o resto da página fica inerte: fora do Tab, do
@@ -371,7 +372,8 @@ export function abrirModal({ titulo, subtitulo = '', corpo = '', acoes = [], lar
             fundo.classList.remove('active');
             fundo.inert = true;                 // some do leitor de tela já, não depois da animação
             _atualizarFundo();
-            setTimeout(() => fundo.remove(), 150);
+            _saindo.add(fundo);
+            setTimeout(() => { fundo.remove(); _saindo.delete(fundo); }, 150);
             if (!semFoco) _devolverFoco(origem);
             aoFechar?.(resultado);
         },
@@ -412,11 +414,16 @@ export function abrirModal({ titulo, subtitulo = '', corpo = '', acoes = [], lar
     fundo.addEventListener('mousedown', e => { inicioNoFundo = e.target === fundo; });
     fundo.addEventListener('click', e => { if (e.target === fundo && inicioNoFundo) modal.dispensar(); });
 
+    // A janela anterior que ainda está saindo sai já: as duas teriam campos com
+    // os mesmos ids, e um rótulo da nova apontaria para o campo da que está saindo
+    _saindo.forEach(f => f.remove()); _saindo.clear();
     document.body.appendChild(fundo);
     _pilha.push(modal);
     _atualizarFundo();
     requestAnimationFrame(() => fundo.classList.add('active'));
     setTimeout(() => {
+        // Se alguém já está num campo da janela (digitação rápida, leitor de código), não rouba o foco
+        if (form.contains(document.activeElement)) return;
         const alvo = form.querySelector('[data-foco]') || form.querySelector('input:not([type=hidden]):not([disabled]):not([readonly]), select:not([disabled]), textarea') || form.querySelector('.modal-rodape [type=submit]') || form.querySelector('.modal-rodape .btn');
         alvo?.focus();
     }, 60);

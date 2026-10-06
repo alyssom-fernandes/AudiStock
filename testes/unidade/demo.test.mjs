@@ -41,7 +41,8 @@ test('auditoria nova: número que nunca volta, horários do banco e uma em andam
   await supabase.from('auditorias').delete().eq('id', a1.id);
   const { data: a2 } = await supabase.from('auditorias').insert([{ empresa_id: emp.id, status: 'em_andamento' }]).select().single();
   assert.notEqual(a2.numero_auditoria, a1.numero_auditoria);
-  assert.ok(a2.numero_auditoria > a1.numero_auditoria);
+  // A inserção recusada (segunda em andamento) não gastou número, como no banco
+  assert.equal(Number(a2.numero_auditoria.slice(-4)), Number(a1.numero_auditoria.slice(-4)) + 1);
 });
 
 test('correção de contagem diz por que foi recusada', async () => {

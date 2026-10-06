@@ -68,8 +68,9 @@ Captured from the demo mode.
   soon as there is a connection: when the page opens, when the network
   comes back and every 30 seconds. Each one carries an id, so a count sent
   twice is applied once, and each one belongs to the person who recorded
-  it: signing out warns about counts not yet sent. An audit cannot be
-  finished with counts still on the device.
+  it: signing out warns about counts not yet sent. Closing waits for your
+  counts still on the device; someone else's and the ones the server
+  refused are left out, with a notice.
 
 ### Closing and report
 
@@ -167,40 +168,44 @@ a product for the first time, the second one gets the add-or-replace
 question instead of overwriting the first. Closing an audit is a single
 function as well (`finalizar_auditoria`): it saves the system balances and
 finishes the audit together, and refuses if someone counted a product the
-closing screen was not showing yet.
+closing screen was not showing yet, or recounted one it was showing (the
+difference that was reviewed is the one that goes into the report).
 
-`schema.sql` can be run again on an existing database: it creates what is
-missing, updates functions, triggers and permissions, and deletes no data.
+`schema.sql` can be run again on a database created by an earlier version
+of this repository: it creates what is missing, updates functions,
+triggers and permissions, and deletes no data.
 
 Permissions live in the database: each role only sees its company, an
 auditor counts and finishes but cannot cancel, only the supremo deletes,
 and triggers stop anyone from promoting themselves or changing a finished
 count. [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql)
-signs in as each role and checks 48 of these rules; it runs in any
+signs in as each role and checks 54 of these rules; it runs in any
 project's SQL Editor and deletes what it creates.
 
 ## Tests
 
 ```bash
 npm install
-npm test            # unit (Node) and database (PGlite): 56 tests
-npm run test:e2e    # end to end in the browser (Playwright): 31 runs
+npm test            # unit (Node) and database (PGlite): 70 tests
+npm run test:e2e    # end to end in the browser (Playwright): 39 runs
 ```
 
 - **Unit:** the real `js/` code running on Node against the demo
   database: scan totals, a repeated send applied once, history, quantity
   parsing ("1.234" is one thousand two hundred thirty-four), batched
   import that never erases missing columns, CSV, report numbers,
-  closing, user-creation rules.
+  closing, the offline queue (on an in-memory IndexedDB), user-creation
+  rules.
 - **Database:** `schema.sql` and `permissoes.sql` on a real Postgres
   (PGlite), with nothing to install, including running the schema again
   over a database from the previous version.
 - **End to end:** keyboard and scanner counting, offline counts that are
-  sent when the page is reopened, closing (including a product counted
-  on another device meanwhile), exports (the PDF must embed
+  sent when the page is reopened, closing (including a product counted or
+  recounted on another device meanwhile, and an audit finished by someone
+  else), exports (the PDF must embed
   the font and every CDN script must carry its hash), spreadsheet import,
   records, focus after saving, tables at tablet widths, keyboard and
-  phone: 26 runs at desktop size (one phone-only test is skipped there)
+  phone: 34 runs at desktop size (one phone-only test is skipped there)
   and 5 on a phone. Every test ends by checking that `errosRegistrados()`
   is empty.
 
@@ -227,8 +232,13 @@ test against a real Supabase project is in
   Edge on Android, macOS and ChromeOS. On Windows and iPhone, use a scanner
   or the keyboard.
 - `supabase/schema.sql` was rebuilt from what the code uses and validated
-  on a local Postgres; for an existing project, compare before applying
-  (`docs/teste-real.md` explains how).
+  on a local Postgres. Run the whole file and then `permissoes.sql`; on a
+  database created outside this repository, first check `pg_policies` for
+  policies with other names, which the file does not remove.
+- Concurrency between devices (two people counting or closing at the same
+  time) relies on Postgres locks that the automated tests do not exercise,
+  since they run on a single connection; the proof is the two-device
+  checklist in `docs/teste-real.md`.
 - The page number and footer on the printed sheet use `@page` margin
   boxes, which Chrome and Edge support and Firefox does not yet; there the
   sheet prints without that footer. The PDF does not depend on it.

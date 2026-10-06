@@ -7,7 +7,8 @@
 
 import { hasRole, isSupremo } from '../auth.js';
 import { buscarAuditoria, progresso, cancelarAuditoria, excluirAuditoria } from '../auditorias.js';
-import { listarItensContados, historicoItem } from '../contagem.js';
+import { listarItensContados, historicoItem, aplicarRetrato } from '../contagem.js';
+import { porcentagem } from '../relatorios.js';
 import { escapeHtml, fmtDateTime, fmtInt, plural, badgeStatus, qtdHtml, difHtml, vazioHtml, abrirModal,
          fmConfirm, showToast, showLoading, hideLoading, normalizar, debounce, delegarAcoes, ICONS, mensagemErro, partesHtml } from '../ui.js';
 
@@ -24,7 +25,15 @@ export async function render(el, { perfil, params, irPara }) {
     el.innerHTML = `<a class="voltar" href="app.html?tela=auditorias">${ICONS.voltar}Auditorias</a><div class="card">${vazioHtml({ titulo: 'Auditoria não encontrada', texto: 'Ela pode ter sido excluída, ou o link está incompleto.', acoes: '<a class="btn btn-secondary" href="app.html?tela=auditorias">Ver auditorias</a>' })}</div>`;
     return;
   }
-  const [{ data: itens }, prog] = await Promise.all([listarItensContados(id), progresso(id).catch(() => null)]);
+  let [{ data: itens }, prog] = await Promise.all([listarItensContados(id), progresso(id).catch(() => null)]);
+  // Encerrada: nome, código, unidade e total de produtos do encerramento, como no relatório
+  if (aud.status !== 'em_andamento') {
+    const retrato = await aplicarRetrato(id, itens).catch(() => null);
+    if (retrato?.total_produtos != null) {
+      const total = retrato.total_produtos;
+      prog = { contados: itens.length, totalProdutos: total, pct: porcentagem(itens.length, total) };
+    }
+  }
 
   const andamento = aud.status === 'em_andamento', finalizada = aud.status === 'finalizada';
   const corrigidos = itens.filter(i => i.atualizado_em).length;
@@ -93,7 +102,7 @@ export async function render(el, { perfil, params, irPara }) {
         return `<tr>
           <td class="l-titulo"><span class="forte">${escapeHtml(i.produtos?.nome_produto ?? '—')}</span>${i.atualizado_em ? ' <span class="badge badge-calmo">corrigido</span>' : ''}
             <span class="sub">${partesHtml([`<span class="codigo">${escapeHtml(i.produtos?.codigo_produto ?? '')}</span>`, ...detalhe.map(html => ({ html, classe: 'so-celular' }))])}</span>
-            <span class="sub so-medio-bloco">${partesHtml([escapeHtml(i.usuarios?.nome ?? '—'), fmtDateTime(i.data_registro)])}</span></td>
+            <span class="sub so-medio-bloco${finalizada ? ' so-celular-bloco' : ''}">${partesHtml([escapeHtml(i.usuarios?.nome ?? '—'), fmtDateTime(i.data_registro)])}</span></td>
           ${finalizada ? `<td class="num so-desktop">${qtdHtml(i.estoque_sistema, un)}</td>` : ''}
           <td class="num${finalizada ? ' so-desktop' : ''}">${qtdHtml(i.quantidade_contada, un)}</td>
           ${finalizada ? `<td class="num">${difHtml(i.diferenca, un)}</td>` : ''}

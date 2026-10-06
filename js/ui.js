@@ -5,7 +5,7 @@
 // ================================================================
 
 import { logout, getPerfil } from './auth.js';
-import { demoAtivo } from './demo.js';
+import { demoAtivo, avisosDaDemo } from './demo.js';
 
 // erros.js chama isto no primeiro erro não tratado da página
 window.__avisarErro = () => showToast('Algo falhou nesta tela. Os detalhes ficaram no registro de erros, em Configurações.', 'error', 9000,
@@ -101,6 +101,15 @@ export function initLayout(titulo, { ativa = null } = {}) {
             <button type="button" class="link" onclick="window.__layoutLogout()">Sair da demonstração</button>
         </div>`);
     }
+    // Avisos da demonstração: cópia do banco que não coube na aba nova,
+    // banco que passou do espaço do navegador
+    if (demoAtivo()) {
+        setTimeout(() => avisosDaDemo().forEach(m => showToast(m, 'warning', 10000)), 0);
+        if (!window.__avisoDemoLigado) {
+            window.__avisoDemoLigado = true;
+            window.addEventListener('audistock:demo-aviso', e => showToast(e.detail, 'warning', 10000));
+        }
+    }
 
     const topo = `
         <div class="offline-bar" id="offlineBar" role="status" aria-live="polite"></div>
@@ -150,7 +159,17 @@ async function _sair() {
     } catch (_) {}
     // Sem internet a tela de entrada não carrega: a demonstração segue funcionando
     if (demo && !navigator.onLine) { showToast('Sem internet agora: a tela de entrada não carrega. A demonstração continua funcionando aqui.', 'warning', 6000); return; }
-    if (!demo && !navigator.onLine) showToast('Você saiu deste aparelho. A tela de entrada abre quando a internet voltar.', 'warning', 10000);
+    if (!demo && !navigator.onLine) {
+        // A tela de entrada não carrega sem internet: a página fica, mas
+        // sem nada para usar, para ninguém contar em nome de quem saiu
+        await logout();
+        document.querySelectorAll('.modal-backdrop').forEach(m => m.remove());
+        document.querySelector('.sidebar')?.setAttribute('inert', '');
+        const corpo = document.getElementById('pageBody');
+        if (corpo) corpo.innerHTML = `<div class="card">${vazioHtml({ titulo: 'Você saiu deste aparelho', texto: 'A tela de entrada abre sozinha quando a internet voltar. As contagens guardadas aqui continuam esperando você entrar de novo.' })}</div>`;
+        document.getElementById('offlineBar')?.classList.remove('visible');
+        return;
+    }
     logout();
 }
 
@@ -337,23 +356,38 @@ function _devolverFoco(origem) {
     const seletor = _seletorDe(origem);
     if (origem?.isConnected) origem.focus({ preventScroll: true });
     const perdido = () => !document.activeElement || document.activeElement === document.body;
-    let n = 0, vigia = null;
-    // A pessoa clicou ou teclou: o foco agora é dela
-    const parar = () => { clearInterval(vigia); document.removeEventListener('pointerdown', parar, true); document.removeEventListener('keydown', parar, true); };
+    let n = 0, vigia = null, rolou = false;
+    // Clicou, ou teclou com o foco num elemento que escolheu: o foco agora é
+    // da pessoa. Rolou a página (roda, toque, teclas de rolagem): o foco
+    // ainda volta para a linha, mas sem rolar a página de volta até ela.
+    const rolar = () => { rolou = true; };
+    const tecla = e => {
+        if (/^(Arrow|Page)|^(Home|End| )$/.test(e.key)) rolou = true;
+        else if (!perdido() && document.activeElement !== origem) parar();
+    };
+    const parar = () => {
+        clearInterval(vigia);
+        document.removeEventListener('pointerdown', parar, true);
+        document.removeEventListener('keydown', tecla, true);
+        document.removeEventListener('wheel', rolar, true);
+        document.removeEventListener('touchmove', rolar, true);
+    };
     document.addEventListener('pointerdown', parar, true);
-    document.addEventListener('keydown', parar, true);
+    document.addEventListener('keydown', tecla, true);
+    document.addEventListener('wheel', rolar, { capture: true, passive: true });
+    document.addEventListener('touchmove', rolar, { capture: true, passive: true });
     vigia = setInterval(() => {
         if (_pilha.length || ++n > 40) { parar(); return; }
         if (!perdido()) return;
         const novo = seletor && document.querySelector(seletor);
-        if (novo) { novo.focus({ preventScroll: true }); novo.scrollIntoView({ block: 'nearest' }); }
+        if (novo) { novo.focus({ preventScroll: true }); if (!rolou) novo.scrollIntoView({ block: 'nearest' }); }
         else if (n >= 10) document.getElementById('topbarTitle')?.focus({ preventScroll: true });   // a linha saiu da lista
     }, 50);
 }
 
 // Fecha tudo (troca de tela pelo menu ou pelo Voltar do navegador)
 export function fecharModais() {
-    while (_pilha.length) _pilha[_pilha.length - 1].fechar(false, { semFoco: true });
+    while (_pilha.length) _pilha[_pilha.length - 1].fechar(false, { semFoco: true, navegando: true });
 }
 
 // Antes de trocar de tela com uma janela aberta: a que está gravando não
@@ -398,7 +432,9 @@ export function abrirModal({ titulo, subtitulo = '', corpo = '', acoes = [], lar
     const form = fundo.querySelector('form');
     const modal = {
         el: form, fundo,
-        fechar(resultado, { semFoco = false } = {}) {
+        // navegando: fechada pela troca de tela (o aoFechar não deve mexer
+        // no endereço nem na tela que está saindo)
+        fechar(resultado, { semFoco = false, navegando = false } = {}) {
             const i = _pilha.indexOf(modal);
             if (!fundo.isConnected || i < 0) return;
             _pilha.splice(i, 1);
@@ -408,7 +444,7 @@ export function abrirModal({ titulo, subtitulo = '', corpo = '', acoes = [], lar
             _saindo.add(fundo);
             setTimeout(() => { fundo.remove(); _saindo.delete(fundo); }, 150);
             if (!semFoco) _devolverFoco(origem);
-            aoFechar?.(resultado);
+            aoFechar?.(resultado, { navegando });
         },
         $: sel => form.querySelector(sel),
         // Durante a gravação, nada fecha a janela: nem Cancelar, nem o X, nem Esc ou clique fora
@@ -552,6 +588,8 @@ export function lerQuantidade(txt, un) {
     const formato = 'Use só números, com vírgula para decimais.';
     if (!/^[0-9.,]+$/.test(b) || (b.match(/,/g) ?? []).length > 1) return { erro: formato };
     const milhar = !b.includes(',') && /^\d{1,3}(\.\d{3})+$/.test(b);
+    // Com vírgula, o ponto só pode separar milhares: "1.2,5" é erro de digitação, não 12,5
+    if (b.includes(',') && b.includes('.') && !/^\d{1,3}(\.\d{3})+,\d*$/.test(b)) return { erro: 'O ponto só separa milhares (1.234,5). Confira o número.' };
     if (milhar && b.split('.').length === 2 && un && casasDaUnidade(un) > 0) return { erro: `Use vírgula para decimais (${b.replace('.', ',')}) ou escreva sem ponto (${b.replace('.', '')}).` };
     const n = b.includes(',') ? Number(b.replace(/\./g, '').replace(',', '.'))
         : milhar ? Number(b.replace(/\./g, ''))

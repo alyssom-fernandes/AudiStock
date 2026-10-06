@@ -21,7 +21,11 @@ import { listarCatalogo, buscarNoCatalogo, acharNoCatalogo, buscarProdutoUnifica
 import { buscarAuditoria, progresso, listarAuditorias } from '../auditorias.js';
 import { registrarContagem, buscarItemContado, editarContagem, listarItensContados, JA_CONTADO } from '../contagem.js';
 import { initOfflineSync, isOnline, ehErroDeRede, ehFalhaPassageira, registrarOffline, resumoFila, listarFila, descartarRegistro, tentarDeNovo } from '../offline.js';
+
+// Código de barras lido no campo de quantidade: 8, 12, 13 ou 14 dígitos sem separador
+const pareceCodigoDeBarras = txt => /^(\d{8}|\d{12,14})$/.test(String(txt ?? '').trim());
 import supabase from '../supabaseClient.js';
+import { porcentagem } from '../relatorios.js';
 
 const auth = await requireAuth();
 if (auth) {
@@ -47,11 +51,25 @@ async function iniciar() {
 
   if (aud.status !== 'em_andamento') {
     const finalizada = aud.status === 'finalizada';
-    el.innerHTML = `<a class="voltar" href="app.html?tela=auditorias">${ICONS.voltar}Auditorias</a><div class="card">${vazioHtml({
+    // Contagens deste aparelho que não chegaram antes do encerramento: nunca
+    // vão subir, e quem contou precisa saber que ficaram de fora
+    const presas = await listarFila(auditoriaId).catch(() => []);
+    el.innerHTML = `<a class="voltar" href="app.html?tela=auditorias">${ICONS.voltar}Auditorias</a>
+      ${presas.length ? `<div class="aviso aviso-aviso" role="alert">${ICONS.alerta}<div><p>${presas.length === 1 ? 'Uma contagem guardada neste aparelho não chegou' : `${fmtInt(presas.length)} contagens guardadas neste aparelho não chegaram`} ao servidor antes do encerramento e ${presas.length === 1 ? 'ficou' : 'ficaram'} de fora ${finalizada ? 'do relatório' : 'da auditoria'}:</p>
+        <ul class="lista-simples">${presas.map(r => `<li>${escapeHtml(r.produto?.nome ?? 'Produto')}: ${r.acao === 'somar' ? '+' : ''}${fmtQtd(r.quantidade, r.produto?.un)} ${escapeHtml(String(r.produto?.un ?? '').toUpperCase())}${r.usuario_id !== perfil.id ? ' <span class="muted">(de outra pessoa)</span>' : ''}</li>`).join('')}</ul>
+        <p><button type="button" class="btn btn-secondary btn-sm" id="btnDescartarPresas">Descartar do aparelho</button></p></div></div>` : ''}
+      <div class="card">${vazioHtml({
       titulo: `A auditoria ${aud.numero_auditoria} já foi ${finalizada ? 'finalizada' : 'cancelada'}`,
       texto: 'Não é possível registrar novas contagens nela.',
       acoes: `${finalizada ? `<a class="btn btn-primary" href="relatorios.html?id=${encodeURIComponent(aud.id)}">Ver relatório</a>` : ''}<a class="btn btn-secondary" href="app.html?tela=historico&id=${encodeURIComponent(aud.id)}">Ver detalhes</a>`,
     })}</div>`;
+    el.querySelector('#btnDescartarPresas')?.addEventListener('click', async () => {
+      const ok = await fmConfirm({ titulo: 'Descartar do aparelho?', msg: `${presas.length === 1 ? 'Essa contagem não pode mais ser enviada e vai ser apagada' : 'Essas contagens não podem mais ser enviadas e vão ser apagadas'} deste aparelho. Se ${presas.length === 1 ? 'ela fazia' : 'elas faziam'} falta no resultado, anote antes.`, confirmTxt: 'Descartar', tipo: 'perigo' });
+      if (!ok) return;
+      for (const r of presas) await descartarRegistro(r.id);
+      el.querySelector('.aviso-aviso')?.remove();
+      showToast('Contagens descartadas do aparelho.', 'success');
+    });
     return;
   }
 
@@ -65,6 +83,15 @@ async function iniciar() {
     podeContar ? listarCatalogo(aud.empresa_id).catch(err => { console.warn('[contagem] catálogo', err); return null; }) : null,
   ]);
   estado.prog = prog; estado.catalogo = catalogo;
+  // Recarrega o catálogo de tempos em tempos (e se ele não carregou ao
+  // abrir): entram os produtos cadastrados depois e saem os inativados
+  let catalogoEm = Date.now();
+  async function atualizarCatalogo() {
+    if (!podeContar || !isOnline() || (estado.catalogo && Date.now() - catalogoEm < 5 * 60e3)) return;
+    catalogoEm = Date.now();
+    try { estado.catalogo = await listarCatalogo(aud.empresa_id); }
+    catch (err) { console.warn('[contagem] catálogo', err); }
+  }
   const semProdutos = estado.prog?.totalProdutos === 0;
 
   el.innerHTML = `
@@ -141,15 +168,21 @@ async function iniciar() {
     const noServidor = new Map(estado.servidor.map(i => [i.produtoId, i]));
     const dados = r => ({ produtoId: r.produto_id, codigo: r.produto?.codigo ?? '', nome: r.produto?.nome ?? 'Produto', un: r.produto?.un ?? '', hora: r.criado_em });
     const projetadas = new Map();
+    // qtd: o total quando a fila inteira subir; qtdMinha: o servidor mais
+    // só as minhas (é o "já contado" de quem está registrando agora)
+    const aplicar = (base, r) => Math.round((r.acao === 'somar' ? Number(base ?? 0) + Number(r.quantidade) : Number(r.quantidade)) * 1000) / 1000;
     for (const r of fila.filter(r => r.status === 'pending')) {
-      const antes = projetadas.get(r.produto_id);
-      const base = Number(antes?.qtd ?? noServidor.get(r.produto_id)?.qtd ?? 0);
+      const antes = projetadas.get(r.produto_id), doServidor = noServidor.get(r.produto_id)?.qtd ?? null;
+      const meu = r.usuario_id === perfil.id;
       projetadas.delete(r.produto_id);
       projetadas.set(r.produto_id, {
         ...dados(r), id: `fila-${r.produto_id}`, situacao: 'fila',
-        qtd: Math.round((r.acao === 'somar' ? base + Number(r.quantidade) : Number(r.quantidade)) * 1000) / 1000,
+        qtd: aplicar(antes ? antes.qtd : doServidor, r),
+        qtdMinha: meu ? aplicar(antes ? antes.qtdMinha : doServidor, r) : (antes ? antes.qtdMinha : doServidor),
+        somaOutros: Math.round(((antes?.somaOutros ?? 0) + (meu ? 0 : Number(r.quantidade))) * 1000) / 1000,
         filaIds: [...(antes?.filaIds ?? []), r.id],
-        deOutros: (antes?.deOutros ?? false) || r.usuario_id !== perfil.id,
+        meusIds: [...(antes?.meusIds ?? []), ...(meu ? [r.id] : [])],
+        deOutros: (antes?.deOutros ?? false) || !meu,
       });
     }
     const recusadas = fila.filter(r => r.status === 'error').reverse()
@@ -161,8 +194,10 @@ async function iniciar() {
   const produtosContados = () => new Set(estado.lista.filter(i => i.situacao !== 'erro').map(i => i.produtoId)).size;
 
   const hora = iso => iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
-  const rotuloSituacao = i => i.situacao === 'fila' ? (i.deOutros ? 'na fila, de outra pessoa' : 'na fila') : i.situacao === 'erro' ? 'não enviada' : hora(i.hora);
-  const podeDescartarFila = i => !i.deOutros || hasRole('administrador');
+  const rotuloFila = i => !i.deOutros ? 'na fila' : i.meusIds.length ? 'na fila, com outra pessoa' : 'na fila, de outra pessoa';
+  const rotuloSituacao = i => i.situacao === 'fila' ? rotuloFila(i) : i.situacao === 'erro' ? 'não enviada' : hora(i.hora);
+  // Cada um descarta as próprias; o administrador, também as de outra pessoa
+  const podeDescartarFila = i => i.meusIds.length > 0 || hasRole('administrador');
   const desenharLista = (destacar = null, { rolar = true } = {}) => {
     $('#qtdItens').textContent = fmtInt(produtosContados());
     $('#buscaLista').hidden = !estado.lista.length;
@@ -187,7 +222,7 @@ async function iniciar() {
         <td class="l-titulo"><span class="forte">${escapeHtml(i.nome)}</span><span class="sub">${partesHtml([`<span class="codigo">${escapeHtml(i.codigo)}</span>`, { html: rotuloSituacao(i), classe: 'so-celular' }])}</span>
           ${i.situacao === 'erro' && i.erro ? `<span class="sub motivo-recusa">Recusada: ${escapeHtml(i.erro)}</span>` : ''}</td>
         <td class="num"><span class="forte">${i.situacao === 'erro' && i.acao === 'somar' ? '+' : ''}${fmtQtd(i.qtd, i.un)}</span>${unHtml(i.un)}</td>
-        <td class="so-desktop">${i.situacao === 'fila' ? `<span class="badge badge-aviso">${i.deOutros ? 'Na fila · outra pessoa' : 'Na fila'}</span>` : i.situacao === 'erro' ? '<span class="badge badge-perigo">Não enviada</span>' : `<span class="muted">${hora(i.hora)}</span>`}</td>
+        <td class="so-desktop">${i.situacao === 'fila' ? `<span class="badge badge-aviso">${!i.deOutros ? 'Na fila' : i.meusIds.length ? 'Na fila · com outra pessoa' : 'Na fila · outra pessoa'}</span>` : i.situacao === 'erro' ? '<span class="badge badge-perigo">Não enviada</span>' : `<span class="muted">${hora(i.hora)}</span>`}</td>
         <td>${!podeContar ? '' : i.situacao === 'ok' ? `<div class="acoes-linha"><button type="button" class="btn btn-ghost btn-sm" data-acao="editar" data-id="${escapeHtml(i.id)}" aria-label="Corrigir ${escapeHtml(i.nome)}">Corrigir</button></div>`
           : i.situacao === 'erro' ? `<div class="acoes-linha">
               <button type="button" class="btn btn-ghost btn-sm" data-acao="reenviar" data-id="${escapeHtml(i.id)}" aria-label="Tentar enviar de novo ${escapeHtml(i.nome)}">Tentar de novo</button>
@@ -204,7 +239,7 @@ async function iniciar() {
     if (!p || !$('#progPct')) return;
     // Um produto contado e inativado depois não faz o texto passar do total
     const contados = Math.min(Math.max(p.contados, produtosContados()), p.totalProdutos || Infinity);
-    const pct = p.totalProdutos ? Math.min(100, Math.round(contados / p.totalProdutos * 100)) : 0;
+    const pct = Math.min(100, porcentagem(contados, p.totalProdutos));
     $('#progTexto').textContent = `${fmtInt(contados)} de ${plural(p.totalProdutos, 'produto', 'produtos')}`;
     $('#progPct').textContent = `${pct}%`;
     $('#progBarra').setAttribute('aria-valuenow', pct);
@@ -223,12 +258,13 @@ async function iniciar() {
   desenharLista();
   $('#filtroLista').addEventListener('input', debounce(e => { estado.filtro = e.target.value; desenharLista(); }, 150));
 
-  const offline = initOfflineSync(async ({ online, pendentes, deOutros, enviados }) => {
+  const offline = initOfflineSync(async ({ online, pendentes, deOutros, enviados, recusados }) => {
     const c = $('#conexao'); if (!c) return;
     c.classList.toggle('off', !online || pendentes > 0);
     c.textContent = !online ? `Sem internet${pendentes ? ` · ${pendentes} na fila` : ''}` : pendentes ? `Enviando ${pendentes}…` : 'Online';
     c.title = deOutros ? `${deOutros} de outra pessoa esperando o login dela` : '';
-    if (enviados) { await recarregarLista(); desenharLista(); atualizarProgresso(); }
+    if (enviados || recusados) { await recarregarLista({ doServidor: enviados > 0 }); desenharLista(); if (enviados) atualizarProgresso(); }
+    if (online) atualizarCatalogo();
   }, { auditoriaId });
 
   delegarAcoes(el, {
@@ -253,10 +289,11 @@ async function iniciar() {
     // errado, quantidade trocada): sai da fila antes de ser enviado
     descartarFila: async ({ id }) => {
       const item = estado.lista.find(i => i.id === id); if (!item) return;
-      const n = item.filaIds?.length ?? 0;
-      const ok = await fmConfirm({ titulo: 'Descartar da fila?', msg: `${n === 1 ? 'A contagem guardada' : `As ${fmtInt(n)} contagens guardadas`} de ${item.nome} neste aparelho ${n === 1 ? 'não vai' : 'não vão'} ser ${n === 1 ? 'enviada' : 'enviadas'}.${item.deOutros ? ' Elas são de outra pessoa.' : ''} Se precisar, registre o produto de novo.`, confirmTxt: 'Descartar', tipo: 'perigo' });
+      const ids = hasRole('administrador') ? item.filaIds ?? [] : item.meusIds ?? [];
+      const n = ids.length, deOutra = ids.length - (item.meusIds ?? []).filter(x => ids.includes(x)).length;
+      const ok = await fmConfirm({ titulo: 'Descartar da fila?', msg: `${n === 1 ? 'A contagem guardada' : `As ${fmtInt(n)} contagens guardadas`} de ${item.nome} neste aparelho ${n === 1 ? 'não vai' : 'não vão'} ser ${n === 1 ? 'enviada' : 'enviadas'}.${deOutra ? ` ${deOutra === n ? (n === 1 ? 'Ela é' : 'Elas são') : `${fmtInt(deOutra)} delas ${deOutra === 1 ? 'é' : 'são'}`} de outra pessoa.` : ''} Se precisar, registre o produto de novo.`, confirmTxt: 'Descartar', tipo: 'perigo' });
       if (!ok) return;
-      for (const filaId of item.filaIds ?? []) await descartarRegistro(filaId);
+      for (const filaId of ids) await descartarRegistro(filaId);
       await recarregarLista({ doServidor: false }); desenharLista(); desenharProgresso();
     },
   });
@@ -271,7 +308,7 @@ async function iniciar() {
     const contados = produtosContados(), total = estado.prog?.totalProdutos;
     const ok = await fmConfirm({
       titulo: 'Ir para o fechamento?',
-      msg: `${total ? `Foram contados ${fmtInt(contados)} de ${plural(total, 'produto', 'produtos')} (${Math.min(100, Math.round(contados / total * 100))}%). ` : ''}${recusadas ? `${plural(recusadas, 'contagem não enviada continua', 'contagens não enviadas continuam')} na lista e não entram no fechamento. ` : ''}Na próxima etapa você informa o saldo do sistema de cada item; a auditoria só é finalizada quando você confirmar.`,
+      msg: `${total ? `Foram contados ${fmtInt(contados)} de ${plural(total, 'produto', 'produtos')} (${Math.min(100, porcentagem(contados, total))}%). ` : ''}${recusadas ? `${plural(recusadas, 'contagem não enviada continua', 'contagens não enviadas continuam')} na lista e não entram no fechamento. ` : ''}Na próxima etapa você informa o saldo do sistema de cada item; a auditoria só é finalizada quando você confirmar.`,
       confirmTxt: 'Ir para o fechamento',
     });
     if (ok) location.href = `estoque-sistema.html?id=${encodeURIComponent(auditoriaId)}`;
@@ -289,11 +326,8 @@ async function iniciar() {
     estado.catalogo.push(...ps.filter(p => p && !ids.has(p.id)));
     return ps;
   };
-  const procurar = async termo => {
-    const locais = estado.catalogo ? buscarNoCatalogo(estado.catalogo, termo) : [];
-    if (estado.catalogo && (locais.length || !isOnline())) return locais;
-    return guardarNoCatalogo(await buscarProdutoUnificado(aud.empresa_id, termo));
-  };
+  const juntar = (...listas) => { const vistos = new Set(); return listas.flat().filter(p => p && !vistos.has(p.id) && vistos.add(p.id)); };
+  const exatoEm = (lista, termo) => { const t = termo.trim(); return lista.find(p => p.codigo_produto === t || p.codigo_barras === t) ?? null; };
   const achar = async codigo => {
     const local = estado.catalogo ? acharNoCatalogo(estado.catalogo, codigo) : null;
     if (local || (estado.catalogo && !isOnline())) return local;
@@ -312,18 +346,40 @@ async function iniciar() {
     if (estado.sugIdx >= 0) { inp.setAttribute('aria-activedescendant', `sug${estado.sugIdx}`); sug.querySelector(`#sug${estado.sugIdx}`)?.scrollIntoView({ block: 'nearest' }); }
   };
 
-  const buscar = debounce(async termo => {
+  // Mostra primeiro o que está no aparelho. Com rede e sem um código exato
+  // nele, pergunta também ao servidor: um produto cadastrado depois de a
+  // tela abrir pode ter o código contido no de outro ("10100" e "101002").
+  // O que vier do servidor entra na lista, com o código exato no topo.
+  const mostrarSug = (lista, termo) => {
+    const escolhido = estado.sug[estado.sugIdx];
+    estado.sug = lista; estado.termoSug = termo;
+    const n = escolhido && estado.sugIdx > 0 ? lista.findIndex(p => p.id === escolhido.id) : -1;
+    estado.sugIdx = n >= 0 ? n : lista.length ? 0 : -1;
+    desenharSug();
+  };
+  async function executarBusca(termo) {
     if (estado.modo !== 'manual') return;
     if (termo.trim().length < 2) { fecharSug(); return; }
-    try {
-      estado.sug = await procurar(termo);
-      if (inp.value !== termo) return;
-      estado.sugIdx = estado.sug.length ? 0 : -1;
-      desenharSug();
-    } catch (err) {
-      sug.innerHTML = `<li class="sug-vazia" role="option" aria-disabled="true">${ehErroDeRede(err) ? 'Sem conexão para buscar. Tente de novo.' : 'Não foi possível buscar. Tente de novo.'}</li>`; sug.hidden = false;
-    }
-  }, estado.catalogo ? 80 : 220);
+    atualizarCatalogo();
+    const locais = estado.catalogo ? buscarNoCatalogo(estado.catalogo, termo) : null;
+    if (locais && (locais.length || !isOnline())) mostrarSug(locais, termo);
+    if (!locais && !isOnline()) { sug.innerHTML = '<li class="sug-vazia" role="option" aria-disabled="true">Sem conexão para buscar. Tente de novo.</li>'; sug.hidden = false; return; }
+    if (!isOnline() || (locais && exatoEm(locais, termo))) return;
+    const pergunta = (async () => {
+      try {
+        const remotos = guardarNoCatalogo(await buscarProdutoUnificado(aud.empresa_id, termo));
+        if (inp.value !== termo) return;
+        mostrarSug(juntar(exatoEm(remotos, termo), locais ?? [], remotos), termo);
+      } catch (err) {
+        if (inp.value !== termo || locais?.length) return;
+        sug.innerHTML = `<li class="sug-vazia" role="option" aria-disabled="true">${ehErroDeRede(err) ? 'Sem conexão para buscar. Tente de novo.' : 'Não foi possível buscar. Tente de novo.'}</li>`; sug.hidden = false;
+      }
+    })();
+    estado.buscaPendente = pergunta;
+    await pergunta;
+    if (estado.buscaPendente === pergunta) estado.buscaPendente = null;
+  }
+  const buscar = debounce(executarBusca, estado.catalogo ? 80 : 220);
 
   inp.addEventListener('input', () => { if (estado.modo === 'manual') { limparProduto(false); buscar(inp.value); } });
   inp.addEventListener('keydown', async e => {
@@ -334,12 +390,19 @@ async function iniciar() {
     else if (e.key === 'Enter') {
       e.preventDefault();
       if (estado.modo === 'scanner') { await lerCodigo(inp.value); return; }
-      if (aberta && estado.sugIdx >= 0) { await escolher(estado.sug[estado.sugIdx]); return; }
       if (estado.produto) { qtd.focus(); return; }
-      const t = inp.value.trim(); if (!t) return;
+      const termo = inp.value, t = termo.trim(); if (!t) return;
+      // A resposta do servidor pode trazer o código exato: espera por ela
+      if (estado.buscaPendente) await estado.buscaPendente;
+      if (inp.value !== termo) return;
+      // Sugestões do que está digitado agora (não de um trecho anterior)
+      if (!sug.hidden && estado.sug.length && estado.termoSug === termo && estado.sugIdx >= 0) { await escolher(estado.sug[estado.sugIdx]); return; }
       try {
         const p = await achar(t);
-        if (p) await escolher(p); else showToast(`Nenhum produto com o código “${t}” nesta empresa.`, 'warning');
+        if (p) { await escolher(p); return; }
+        // Sem código exato: mostra as sugestões, sem escolher sozinho
+        await executarBusca(termo);
+        if (!estado.sug.length || estado.termoSug !== termo) showToast(`Nenhum produto com o código “${t}” nesta empresa.`, 'warning');
       } catch (err) { showToast(mensagemErro(err, 'buscar produto'), 'error'); }
     }
   });
@@ -369,13 +432,18 @@ async function iniciar() {
     estado.produto = p;
     if (estado.modo === 'manual') inp.value = `${p.codigo_produto} · ${p.nome_produto}`;
     $('#qtdUn').textContent = (p.unidade_medida ?? '').toUpperCase();
+    // Já contado: o servidor mais as minhas guardadas. As de outra pessoa
+    // ainda não chegaram e aparecem à parte.
     const local = estado.lista.find(i => i.produtoId === p.id && i.situacao !== 'erro');
-    estado.existente = local ? { quantidade_contada: local.qtd } : null;
+    const jaMinha = local?.situacao === 'fila' ? local.qtdMinha : local?.qtd;
+    estado.existente = jaMinha != null ? { quantidade_contada: jaMinha } : null;
+    const deOutra = local?.situacao === 'fila' && local.somaOutros ? local.somaOutros : 0;
     if (estado.modo !== 'manual') return;
     const desenharPreview = anterior => {
       const ex = estado.existente;
       $('#preview').innerHTML = `<span>${[p.codigo_barras ? `EAN <span class="codigo">${escapeHtml(p.codigo_barras)}</span>` : '', p.unidade_medida ? `unidade ${escapeHtml(p.unidade_medida)}` : ''].filter(Boolean).join(' · ')}</span>
         <span class="ref ${ex ? 'prod-preview-estado ja' : ''}">${ex ? `Já contado nesta auditoria: ${qtdHtml(ex.quantidade_contada, p.unidade_medida)}` : 'Ainda não contado nesta auditoria'}</span>
+        ${deOutra ? `<span class="ref">${ex ? 'Mais ' : ''}${qtdHtml(deOutra, p.unidade_medida)} de outra pessoa, guardados neste aparelho esperando envio</span>` : ''}
         ${visivel ? `<span class="ref">${anterior ? `Saldo do sistema na ${escapeHtml(anterior.numero)} (${fmtDate(anterior.data)}): <strong>${qtdHtml(anterior.saldo, p.unidade_medida)}</strong>` : anterior === null ? 'Sem saldo anterior do sistema para este produto' : 'Buscando o último saldo do sistema…'}</span>` : ''}`;
       $('#preview').hidden = false;
     };
@@ -384,7 +452,7 @@ async function iniciar() {
     if (!isOnline()) return;
     const [doServidor, anterior] = await Promise.all([buscarItemContado(auditoriaId, p.id).catch(() => undefined), saldoAnterior(p.id).catch(() => null)]);
     if (minha !== escolhaAtual || estado.produto !== p) return;
-    if (doServidor !== undefined && !local) estado.existente = doServidor;
+    if (doServidor !== undefined && (!local || (local.situacao === 'fila' && !local.meusIds.length))) estado.existente = doServidor;
     desenharPreview(anterior ?? null);
   }
 
@@ -400,6 +468,7 @@ async function iniciar() {
     e.preventDefault();
     if (estado.modo !== 'manual') return;
     if (!estado.produto) { marcarInvalido(inp, 'Escolha o produto primeiro.'); inp.focus(); return; }
+    if (pareceCodigoDeBarras(qtd.value)) { marcarInvalido(qtd, 'Isso parece um código de barras, não uma quantidade. Se a quantidade é essa mesma, digite com os pontos de milhar (12.345.678).'); qtd.focus(); qtd.select(); return; }
     const lida = lerQuantidade(qtd.value, estado.produto.unidade_medida);
     if (lida.vazio || lida.erro) { marcarInvalido(qtd, lida.erro ?? 'Informe a quantidade contada.'); qtd.focus(); return; }
     if (estado.existente) { conflito(estado.produto, estado.existente, lida.valor); return; }
@@ -424,6 +493,8 @@ async function iniciar() {
   }
 
   async function persistir(produto, valor, acao) {
+    // Saiu deste aparelho sem internet: nada é registrado em nome de quem saiu
+    if (!getPerfil()) { showToast('Você saiu deste aparelho. Entre de novo para registrar contagens.', 'warning'); return; }
     const btn = $('#saveBtn'); btn.disabled = true;
     const un = produto.unidade_medida;
     const idCliente = crypto.randomUUID();
@@ -432,9 +503,16 @@ async function iniciar() {
       await recarregarLista({ doServidor: false });
       return estado.lista.find(i => i.id === `fila-${produto.id}`);
     };
+    // Com registros meus deste produto ainda na fila, este também vai por
+    // ela, para subir depois deles: "Substituir" enviado direto ao servidor
+    // ficaria por baixo do "somar" que a fila mandasse em seguida
+    const comFila = (estado.lista.find(i => i.id === `fila-${produto.id}`)?.meusIds.length ?? 0) > 0;
     try {
       let entrada;
-      if (isOnline()) {
+      if (isOnline() && comFila) {
+        entrada = await guardar();
+        offline.enviar();
+      } else if (isOnline()) {
         try {
           const item = await registrarContagem({ auditoriaId, produtoId: produto.id, quantidade: valor, usuarioId: perfil.id, acao, idCliente });
           entrada = { ...paraEntrada({ ...item, produtos: produto }), produtoId: produto.id };

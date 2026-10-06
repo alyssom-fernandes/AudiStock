@@ -13,21 +13,22 @@
 //  * só uma aba envia por vez (Web Locks);
 //  * só sobem os registros de quem está logado; os de outra pessoa
 //    esperam o login dela;
-//  * só o que é passageiro (rede, servidor fora do ar, sessão vencida)
-//    fica esperando na fila. Qualquer outra recusa do banco vira "Não
-//    enviada", com Tentar de novo e Descartar, e não segura os registros
-//    seguintes.
+//  * só o que é passageiro (rede, servidor fora do ar, sessão vencida ou
+//    perdida) fica esperando na fila. Qualquer outra recusa do banco vira
+//    "Não enviada", com o motivo em português, Tentar de novo e Descartar,
+//    e não segura os registros seguintes;
+//  * um registro descartado enquanto a fila sobe não é enviado.
 //
-//  A demonstração usa uma fila separada, para nunca misturar contagens
-//  fictícias com as de verdade.
+//  A demonstração usa filas separadas, uma por aba, para nunca misturar
+//  contagens fictícias com as de verdade nem os bancos de duas abas.
 // ================================================================
 
 import { registrarContagem } from './contagem.js';
 import { getPerfil } from './auth.js';
-import { showToast } from './ui.js';
-import { demoAtivo } from './demo.js';
+import { showToast, mensagemErro } from './ui.js';
+import { demoAtivo, filaDaDemo } from './demo.js';
 
-const DB_NAME    = demoAtivo() ? 'audistock-offline-demo' : 'audistock-offline';
+const DB_NAME    = demoAtivo() ? filaDaDemo() : 'audistock-offline';
 const DB_VERSION = 1;
 const STORE      = 'fila_contagem';
 
@@ -74,13 +75,24 @@ export function ehErroDeRede(err) {
 
 // Falha que passa sozinha: tentar de novo depois resolve. Rede, servidor
 // fora do ar ou sobrecarregado (5xx, 408, 429, resposta em HTML de um
-// proxy) e sessão vencida, que o supabase-js renova.
+// proxy) e sessão vencida ou perdida (401: o pedido foi sem login; sobe
+// quando a pessoa entrar de novo).
 export function ehFalhaPassageira(err) {
   const msg = String(err?.message ?? err ?? '');
   return ehErroDeRede(err)
-    || (Number(err?.status) >= 500 || [408, 429].includes(Number(err?.status)))
-    || err?.code === 'PGRST301' || /jwt|token.*expir/i.test(msg)
+    || (Number(err?.status) >= 500 || [401, 408, 429].includes(Number(err?.status)))
+    || err?.code === 'PGRST301' || /jwt|token.*expir|permission denied for function/i.test(msg)
     || /service unavailable|bad gateway|gateway time|upstream|unexpected token <|<html/i.test(msg);
+}
+
+// O motivo de uma recusa, em português, para a lista da contagem. O texto
+// original do banco fica em erro_tecnico (e no console).
+export function motivoRecusa(err) {
+  const msg = String(err?.message ?? '');
+  if (err?.code === '22003' || /numeric field overflow|out of range/i.test(msg)) return 'Quantidade grande demais.';
+  if (err?.code === '23514' || /check constraint/i.test(msg)) return 'Quantidade inválida.';
+  if (/row-level security|permission denied/i.test(msg)) return 'Sem permissão para contar nesta auditoria: o perfil ou a empresa de quem contou mudou.';
+  return mensagemErro(err, 'enviar contagem guardada');
 }
 
 // O banco recusou por já ter aplicado este envio (banco sem a trava por
@@ -170,6 +182,9 @@ export function sincronizar() {
     const porAuditoria = {};
     const contar = (item, campo) => { (porAuditoria[item.auditoria_id] ??= { ok: 0, erros: 0 })[campo]++; };
     for (const item of pendentes) {
+      // Descartado (ou já resolvido em outra aba) depois que a lista foi lida
+      const atual = await _ler(item.id);
+      if (atual?.status !== 'pending') continue;
       try {
         await registrarContagem({
           auditoriaId: item.auditoria_id, produtoId: item.produto_id, quantidade: item.quantidade,
@@ -180,33 +195,35 @@ export function sincronizar() {
       } catch (err) {
         if (_jaAplicado(err)) { await _alterar(item.id, null); ok++; contar(item, 'ok'); continue; }
         if (ehFalhaPassageira(err)) break;   // tenta depois, sem perder nada
-        await _alterar(item.id, x => ({ ...x, status: 'error', erro: err.message }));
+        await _alterar(item.id, x => ({ ...x, status: 'error', erro: motivoRecusa(err), erro_tecnico: err.message }));
         erros++; contar(item, 'erros');
       }
     }
     return { ok, erros, porAuditoria };
   };
-  _enviando ??= (navigator.locks?.request ? navigator.locks.request('audistock-fila', enviar) : enviar())
+  _enviando ??= (navigator.locks?.request ? navigator.locks.request(`audistock-fila:${DB_NAME}`, enviar) : enviar())
     .finally(() => { _enviando = null; });
   return _enviando;
 }
 
 // ─────────────────────────────────────────────────────────────
-//  initOfflineSync(aoMudar, { auditoriaId })
+//  initOfflineSync(aoMudar, { auditoriaId, textoRecusa })
 //  Mostra a faixa de conexão, envia a fila sempre que possível e chama
-//  aoMudar({ online, pendentes, deOutros, comErro, enviados }) a cada
-//  mudança. Os números e os avisos são os da auditoria aberta.
+//  aoMudar({ online, pendentes, deOutros, comErro, enviados, recusados })
+//  a cada mudança. Os números são os da auditoria aberta; uma recusa de
+//  outra auditoria (encerrada nesse meio-tempo, por exemplo) também é
+//  avisada, com o link para a contagem dela.
 // ─────────────────────────────────────────────────────────────
 let _aoMudarGlobal = null;
 function _avisarMudanca() { _aoMudarGlobal?.(); }
 
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
-export function initOfflineSync(aoMudar, { auditoriaId = null } = {}) {
+export function initOfflineSync(aoMudar, { auditoriaId = null, textoRecusa = 'Elas aparecem na lista como “Não enviada”.' } = {}) {
   const bar = document.getElementById('offlineBar');
   let timer = null;
 
-  async function atualizar(enviados = 0) {
+  async function atualizar(enviados = 0, recusados = 0) {
     const online = isOnline();
     const { meus: pendentes, deOutros, comErro } = await resumoFila(auditoriaId);
     if (bar) {
@@ -219,7 +236,7 @@ export function initOfflineSync(aoMudar, { auditoriaId = null } = {}) {
     }
     clearInterval(timer);
     if (online && pendentes) timer = setInterval(enviar, 30000);
-    aoMudar?.({ online, pendentes, deOutros, comErro, enviados });
+    aoMudar?.({ online, pendentes, deOutros, comErro, enviados, recusados });
   }
 
   async function enviar() {
@@ -228,8 +245,16 @@ export function initOfflineSync(aoMudar, { auditoriaId = null } = {}) {
     const r = await sincronizar();
     const aqui = auditoriaId ? (r.porAuditoria[auditoriaId] ?? { ok: 0, erros: 0 }) : r;
     if (aqui.ok) showToast(`${aqui.ok} ${aqui.ok === 1 ? 'contagem guardada foi enviada' : 'contagens guardadas foram enviadas'}.`, 'success');
-    if (aqui.erros) showToast(`${aqui.erros} ${aqui.erros === 1 ? 'contagem foi recusada pelo servidor' : 'contagens foram recusadas pelo servidor'}. Elas aparecem na lista como “Não enviada”.`, 'error', 9000);
-    await atualizar(aqui.ok + aqui.erros);
+    if (aqui.erros) showToast(`${aqui.erros} ${aqui.erros === 1 ? 'contagem foi recusada pelo servidor' : 'contagens foram recusadas pelo servidor'}. ${textoRecusa}`, 'error', 9000);
+    // Recusas de outras auditorias: sem este aviso, ninguém ficaria sabendo
+    if (auditoriaId) {
+      for (const [outra, n] of Object.entries(r.porAuditoria)) {
+        if (outra === auditoriaId || !n.erros) continue;
+        showToast(`${n.erros} ${n.erros === 1 ? 'contagem guardada de outra auditoria foi recusada' : 'contagens guardadas de outra auditoria foram recusadas'} pelo servidor.`, 'error', 12000,
+          { acao: { href: `contagem.html?id=${encodeURIComponent(outra)}`, texto: 'Ver o motivo' } });
+      }
+    }
+    await atualizar(aqui.ok, aqui.erros);
   }
 
   _aoMudarGlobal = () => atualizar();
@@ -238,6 +263,14 @@ export function initOfflineSync(aoMudar, { auditoriaId = null } = {}) {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') enviar(); });
   enviar();
   return { enviar, atualizar };
+}
+
+function _ler(id) {
+  return openDB().then(db => new Promise((resolve) => {
+    const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(id);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => resolve(null);
+  }));
 }
 
 // Altera (ou apaga, com fn nula) um registro da fila

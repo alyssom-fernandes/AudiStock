@@ -63,7 +63,8 @@ export async function render(el) {
       <thead><tr><th scope="col">Auditoria</th><th scope="col">Empresa</th><th scope="col">Finalizada em</th><th scope="col">Resultado</th><th scope="col" class="col-larga">Criada por</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead>
       <tbody>${visiveis.map(a => `<tr>
           <td class="l-titulo"><a class="linha-link cobre codigo forte" href="relatorios.html?id=${encodeURIComponent(a.id)}">${escapeHtml(a.numero_auditoria)}</a>
-            <span class="sub so-celular-bloco">${partesHtml([`<span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span>`, fmtDate(a.data_fim)])}</span></td>
+            <span class="sub so-celular-bloco">${partesHtml([`<span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span>`, fmtDate(a.data_fim)])}</span>
+            <span class="sub so-medio-bloco">criada por ${escapeHtml(a.usuarios?.nome ?? '—')}</span></td>
           <td class="so-desktop"><span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span></td>
           <td class="so-desktop nowrap">${fmtDate(a.data_fim)}</td>
           <td>${resultadoHtml(resumo.get(a.id))}</td>

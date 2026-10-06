@@ -9,7 +9,7 @@
 // ================================================================
 
 import { carregarScript, casasDaUnidade, fmtDateTime, fmtInt } from './ui.js';
-import { situacaoTexto } from './relatorios.js';
+import { situacaoTexto, porcentagem } from './relatorios.js';
 
 const CDN = 'https://cdnjs.cloudflare.com/ajax/libs';
 const STATUS = { em_andamento: 'Em andamento (parcial)', finalizada: 'Finalizada', cancelada: 'Cancelada' };
@@ -291,7 +291,7 @@ export async function gerarExcel({ aud, resumo, itens, naoContados, filtroRotulo
       ['Sem divergência', resumo.ok], ['Itens com falta', resumo.faltas], ['Itens com sobra', resumo.sobras],
       ...(resumo.sem_saldo ? [['Sem saldo do sistema', resumo.sem_saldo]] : []),
       // Arredondado para baixo, como na tela: 299 de 300 é 99,6%, nunca 100% ao lado de uma falta
-      ['Acerto da contagem', (resumo.auditados - resumo.sem_saldo) ? Math.floor(resumo.ok / (resumo.auditados - resumo.sem_saldo) * 1000) / 1000 : 0],
+      ['Acerto da contagem', porcentagem(resumo.ok, resumo.auditados - resumo.sem_saldo, 1) / 100],
     ] : [['Divergências', semDivergenciaMotivo(aud).replace(/^./, c => c.toUpperCase())]]),
   ];
   linhasResumo.forEach((l, i) => {

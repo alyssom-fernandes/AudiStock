@@ -70,8 +70,9 @@ Capturadas do modo demonstração.
   enviadas assim que há conexão: ao abrir a página, quando a rede volta e
   a cada 30 segundos. Cada uma leva uma identificação, então um envio
   repetido conta uma vez só, e cada uma pertence a quem registrou: sair
-  com contagens não enviadas mostra um aviso. O fechamento não é
-  finalizado com contagens ainda no aparelho.
+  com contagens não enviadas mostra um aviso. O fechamento espera as suas
+  contagens ainda no aparelho; as de outra pessoa e as recusadas pelo
+  servidor ficam de fora, com aviso.
 
 ### Fechamento e relatório
 
@@ -168,40 +169,45 @@ verdade está no roteiro do teste real. Quando dois aparelhos contam um
 produto pela primeira vez, o segundo recebe a pergunta somar ou
 substituir, em vez de apagar o primeiro. O fechamento também é uma função
 só (`finalizar_auditoria`): grava os saldos e encerra junto, e recusa se
-alguém contou um produto que a tela de fechamento ainda não mostrava.
+alguém contou um produto que a tela de fechamento ainda não mostrava, ou
+recontou um que ela mostrava (a diferença revisada é a que vai para o
+relatório).
 
-O `schema.sql` pode ser rodado de novo num banco que já existe: ele cria o
-que falta, atualiza funções, gatilhos e permissões e não apaga dados.
+O `schema.sql` pode ser rodado de novo num banco criado por uma versão
+anterior deste repositório: ele cria o que falta, atualiza funções,
+gatilhos e permissões e não apaga dados.
 
 As permissões ficam no banco: cada perfil só vê a sua empresa, o auditor
 conta e finaliza mas não cancela, só o supremo exclui, e gatilhos impedem
 que alguém promova a si mesmo ou altere uma contagem já finalizada.
 [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql) entra
-como cada perfil e confere 48 dessas regras; dá para rodar no SQL Editor
+como cada perfil e confere 54 dessas regras; dá para rodar no SQL Editor
 de qualquer projeto, e ele apaga o que criou.
 
 ## Testes
 
 ```bash
 npm install
-npm test            # unidade (Node) e banco (PGlite): 56 testes
-npm run test:e2e    # ponta a ponta no navegador (Playwright): 31 execuções
+npm test            # unidade (Node) e banco (PGlite): 70 testes
+npm run test:e2e    # ponta a ponta no navegador (Playwright): 39 execuções
 ```
 
 - **Unidade:** o código real de `js/` rodando no Node sobre o banco do
   modo demonstração: soma das leituras, envio repetido que conta uma vez,
   histórico, leitura das quantidades ("1.234" é mil duzentos e trinta e
   quatro), importação em lotes que não apaga as colunas ausentes, CSV,
-  números do relatório, fechamento, regras de cadastro.
+  números do relatório, fechamento, a fila sem internet (num IndexedDB
+  em memória), regras de cadastro.
 - **Banco:** `schema.sql` e `permissoes.sql` num Postgres de verdade
   (PGlite), sem instalar nada, inclusive rodando o esquema de novo sobre
   um banco da versão anterior.
 - **Ponta a ponta:** contagem pelo teclado e pelo leitor, contagem sem
   internet que sobe ao reabrir a página, fechamento (inclusive com um
-  produto contado em outro aparelho no meio), exportações (o PDF
+  produto contado ou recontado em outro aparelho no meio, e finalizado
+  por outra pessoa), exportações (o PDF
   precisa sair com a fonte embutida, e todo script de CDN, com o hash),
   importação de planilha, cadastros, foco depois de salvar, tabelas em
-  largura de tablet, teclado e celular: 26 execuções em tela de
+  largura de tablet, teclado e celular: 34 execuções em tela de
   computador (um teste só de celular é pulado nela) e 5 no celular. Cada
   teste termina conferindo que `errosRegistrados()` está vazio.
 
@@ -227,8 +233,14 @@ Supabase de verdade está em [`docs/teste-real.md`](docs/teste-real.md).
   e no Edge para Android, macOS e ChromeOS. No Windows e no iPhone, use o
   leitor ou o teclado.
 - `supabase/schema.sql` foi reconstruído a partir do que o código usa e
-  validado num Postgres local; num projeto que já existe, compare antes
-  de aplicar (o roteiro em `docs/teste-real.md` explica).
+  validado num Postgres local. Rode o arquivo inteiro e depois o
+  `permissoes.sql`; num banco criado fora deste repositório, confira
+  antes em `pg_policies` se há políticas com outros nomes, que o arquivo
+  não remove.
+- A concorrência entre aparelhos (duas pessoas contando ou finalizando ao
+  mesmo tempo) é garantida por travas do Postgres que os testes
+  automáticos não exercitam, porque rodam numa conexão só; a prova é o
+  roteiro com dois aparelhos em `docs/teste-real.md`.
 - O número de página e a identificação no rodapé da folha impressa usam
   `@page` com caixas de margem, que o Chrome e o Edge suportam e o
   Firefox ainda não; lá a folha sai sem esse rodapé. O PDF não tem essa

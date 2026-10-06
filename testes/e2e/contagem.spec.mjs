@@ -136,6 +136,84 @@ test('fechamento: produto contado em outro aparelho entra na lista, sem perder o
   expect(await campos.evaluateAll(xs => xs.map(x => x.value).filter(Boolean))).toEqual(['12', '7']);
 });
 
+// Outra pessoa age no banco da demonstração com a tela aberta (os mesmos módulos que a tela usa)
+const outroAparelho = (page, fn, arg) => page.evaluate(async ([corpo, a]) => {
+  const url = c => new URL(c, location.href).href;
+  const m = { ...(await import(url('js/contagem.js'))), ...(await import(url('js/demo.js'))), supabase: (await import(url('js/supabaseClient.js'))).default };
+  return new Function('m', 'a', `return (async () => { ${corpo} })()`)(m, a);
+}, [fn, arg]);
+
+async function abrirFechamentoPreenchido(page) {
+  await abrir(page);
+  const id = await idAuditoria(page, '0008');
+  await page.goto(`estoque-sistema.html?id=${id}`);
+  await esperarCarregar(page);
+  const campos = page.locator('.saldo-input');
+  const n = await campos.count();
+  for (let i = 0; i < n; i++) await campos.nth(i).fill('10');
+  await page.click('#btnFinalizar');
+  await expect(page.locator(MODAL)).toContainText('Finalizar a auditoria?');
+  return { id, campos, n };
+}
+
+test('fechamento: item recontado com a confirmação aberta não é finalizado', async ({ page }) => {
+  const { id, campos } = await abrirFechamentoPreenchido(page);
+  await outroAparelho(page, `
+    const { data } = await m.listarItensContados(a);
+    await m.registrarContagem({ auditoriaId: a, produtoId: data[0].produto_id, quantidade: 5, usuarioId: m.ID_USUARIO_DEMO, acao: 'somar' });`, id);
+  await page.locator(`${MODAL} .modal-rodape .btn-primary`).click();
+  await expect(page.locator('.toast')).toContainText('1 item foi recontado enquanto você confirmava, e nada foi finalizado');
+  await page.waitForEvent('load');
+  await esperarCarregar(page);
+  expect(await banco(page, 'return t.auditorias.find(x => x.id === a).status', id)).toBe('em_andamento');
+  await expect(campos.first()).toHaveValue('10');
+});
+
+test('fechamento: finalizada por outra pessoa com outros saldos, a tela avisa e não some com os digitados', async ({ page }) => {
+  const { id, campos } = await abrirFechamentoPreenchido(page);
+  await outroAparelho(page, `
+    const { data } = await m.listarItensContados(a);
+    await m.finalizarComSaldos(a, Object.fromEntries(data.map(i => [i.id, null])));`, id);
+  await page.locator(`${MODAL} .modal-rodape .btn-primary`).click();
+  await expect(page.locator('.aviso[role="alert"]')).toContainText('Outra pessoa finalizou esta auditoria antes');
+  await expect(campos.first()).toBeDisabled();
+  await expect(campos.first()).toHaveValue('10');
+  await expect(page.locator('#btnFinalizar')).toBeDisabled();
+  expect(page.url()).toContain('estoque-sistema.html');
+});
+
+test('quantidade com cara de código de barras não é registrada', async ({ page }) => {
+  await abrirContagem(page);
+  const produto = await naoContado(page);
+  await escolherProduto(page, produto.codigo);
+  await page.fill('#qtdInput', '78901234');
+  await page.click('#saveBtn');
+  await expect(page.locator('#qtdInput')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#grupoQtd .form-erro')).toContainText('código de barras');
+});
+
+test('contagem guardada de auditoria encerrada nesse meio-tempo aparece, com Descartar', async ({ page, context }) => {
+  const id = await abrirContagem(page);
+  await context.setOffline(true);
+  const produto = await naoContado(page);
+  await escolherProduto(page, produto.codigo);
+  await page.fill('#qtdInput', '4');
+  await page.click('#saveBtn');
+  await expect(page.locator('#lista .badge', { hasText: 'Na fila' })).toBeVisible();
+  // Outra pessoa cancela a auditoria antes de a fila subir
+  await outroAparelho(page, `await m.supabase.from('auditorias').update({ status: 'cancelada', motivo_cancelamento: 'teste' }).eq('id', a);`, id);
+  await page.goto('about:blank');
+  await context.setOffline(false);
+  await page.goto(`contagem.html?id=${id}`);
+  await esperarCarregar(page);
+  const aviso = page.locator('.aviso-aviso');
+  await expect(aviso).toContainText('não chegou ao servidor antes do encerramento');
+  await expect(aviso).toContainText(produto.nome);
+  await page.click('#btnDescartarPresas');
+  await page.locator(MODAL).getByRole('button', { name: 'Descartar' }).click();
+  await expect(aviso).toHaveCount(0);
+});
+
 test('saldo inválido não deixa finalizar', async ({ page }) => {
   await abrir(page);
   await page.goto(`estoque-sistema.html?id=${await idAuditoria(page, '0008')}`);

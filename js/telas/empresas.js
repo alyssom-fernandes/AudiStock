@@ -54,12 +54,13 @@ export async function render(el, { params, perfil }) {
       return;
     }
     card.innerHTML = `<div class="tabela-wrap"><table class="tabela-lista">
-      <thead><tr><th scope="col">Empresa</th><th scope="col">CNPJ</th><th scope="col">Cidade</th><th scope="col" class="num">Produtos ativos</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead>
+      <thead><tr><th scope="col">Empresa</th><th scope="col" class="col-larga">CNPJ</th><th scope="col" class="col-larga">Cidade</th><th scope="col" class="num">Produtos ativos</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead>
       <tbody>${visiveis.map(e => `<tr class="${e.ativo ? '' : 'inativa'}">
         <td class="l-titulo"><span class="forte">${escapeHtml(e.nome)}</span>${e.ativo ? '' : ' <span class="badge badge-neutro">Inativa</span>'}
-          <span class="sub so-celular-bloco">${partesHtml([e.cnpj ? `<span class="codigo">${escapeHtml(e.cnpj)}</span>` : '', local(e), `${nProdutos(e)} ${contagens.get(e.id) === 1 ? 'produto ativo' : 'produtos ativos'}`])}</span></td>
-        <td class="codigo so-desktop">${escapeHtml(e.cnpj || '—')}</td>
-        <td class="so-desktop">${local(e) || '—'}</td>
+          <span class="sub so-celular-bloco">${partesHtml([e.cnpj ? `<span class="codigo">${escapeHtml(e.cnpj)}</span>` : '', local(e), `${nProdutos(e)} ${contagens.get(e.id) === 1 ? 'produto ativo' : 'produtos ativos'}`])}</span>
+          <span class="sub so-medio-bloco">${partesHtml([e.cnpj ? `<span class="codigo">${escapeHtml(e.cnpj)}</span>` : '', local(e)])}</span></td>
+        <td class="codigo so-desktop col-larga">${escapeHtml(e.cnpj || '—')}</td>
+        <td class="so-desktop col-larga">${local(e) || '—'}</td>
         <td class="num so-desktop">${nProdutos(e)}</td>
         <td class="l-linha"><div class="acoes-linha">
           <button type="button" class="btn btn-ghost btn-sm" data-acao="editar" data-id="${escapeHtml(e.id)}" aria-label="Editar ${escapeHtml(e.nome)}">Editar</button>

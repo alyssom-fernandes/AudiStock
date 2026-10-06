@@ -54,6 +54,20 @@ test('reimportar só código e nome não apaga a unidade nem o código de barras
   assert.equal(depois.codigo_barras, p.codigo_barras);
 });
 
+test('na mesma planilha, um produto novo completo não apaga a unidade de um existente que veio só com código e nome', async () => {
+  // As duas linhas iriam no mesmo lote; no PostgREST, a coluna que falta numa
+  // linha vai como vazia. Por isso a importação agrupa as linhas pelos campos que têm.
+  const emp = empresa('Ferragens Horizonte');
+  const p = banco().produtos.find(x => x.empresa_id === emp.id && x.ativo && x.codigo_barras && x.unidade_medida && x.codigo_produto !== 'MISTO-1');
+  const r = await importarProdutosExcel(emp.id, [
+    { codigo: 'MISTO-1', nome: 'Produto novo completo', unidade: 'CX', codigo_barras: '2999999999991', n: 2 },
+    { codigo: p.codigo_produto, nome: p.nome_produto, n: 3 },
+  ], ID_USUARIO_DEMO);
+  assert.deepEqual([r.criados, r.atualizados, r.erros], [1, 1, []]);
+  const depois = banco().produtos.find(x => x.id === p.id);
+  assert.deepEqual([depois.unidade_medida, depois.codigo_barras], [p.unidade_medida, p.codigo_barras]);
+});
+
 test('os erros apontam a linha da planilha, e o código de barras de outro produto é explicado', async () => {
   const emp = empresa('Ferragens Horizonte');
   const outro = banco().produtos.find(x => x.empresa_id === emp.id && x.ativo && x.codigo_barras);
@@ -120,6 +134,44 @@ test('clonar não copia o código de barras que no destino já é de outro produ
   assert.deepEqual([r.criados, r.semEan], [1, 1]);
   const copia = banco().produtos.find(p => p.empresa_id === destino.id && p.codigo_produto === fonte.codigo_produto);
   assert.equal(copia.codigo_barras, null);
+});
+
+test('clonar reativa um produto inativo do destino sem o código de barras que lá já é de outro', async () => {
+  const origem = empresa('Ferragens Horizonte'), destino = empresa('Distribuidora Aurora');
+  const fonte = banco().produtos.find(p => p.empresa_id === origem.id && p.ativo && p.codigo_barras);
+  // No destino: o mesmo código, inativo e com o mesmo EAN, e outro produto ativo com esse EAN
+  await supabase.from('produtos').insert([
+    { empresa_id: destino.id, codigo_produto: fonte.codigo_produto, nome_produto: 'Antigo inativo', codigo_barras: fonte.codigo_barras, ativo: false },
+    { empresa_id: destino.id, codigo_produto: 'DONO-DO-EAN', nome_produto: 'Dono do EAN', codigo_barras: fonte.codigo_barras, ativo: true },
+  ]);
+  const r = await clonarProdutos(origem.id, destino.id, [fonte.id]);
+  assert.deepEqual([r.criados, r.atualizados, r.semEan, r.erros], [0, 1, 1, []]);
+  const reativado = banco().produtos.find(p => p.empresa_id === destino.id && p.codigo_produto === fonte.codigo_produto);
+  assert.deepEqual([reativado.ativo, reativado.codigo_barras], [true, null]);
+  assert.equal(banco().produtos.find(p => p.empresa_id === destino.id && p.codigo_produto === 'DONO-DO-EAN').codigo_barras, fonte.codigo_barras);
+});
+
+test('clonar: um lote recusado é refeito linha a linha, e só a linha com problema fica de fora', async () => {
+  const origem = empresa('Ferragens Horizonte'), destino = empresa('Atacado Serra Azul');
+  const fontes = banco().produtos.filter(p => p.empresa_id === origem.id && p.ativo).slice(0, 5);
+  const ruim = fontes[2].codigo_produto;
+  const original = supabase.from;
+  supabase.from = tabela => {
+    const q = original.call(supabase, tabela);
+    if (tabela !== 'produtos') return q;
+    const upsert = q.upsert.bind(q);
+    q.upsert = (itens, op) => itens.some(i => i.codigo_produto === ruim)
+      ? Promise.resolve({ data: null, error: { code: '23514', message: 'new row violates check constraint "produtos_nome_check"' } })
+      : upsert(itens, op);
+    return q;
+  };
+  let r;
+  try { r = await clonarProdutos(origem.id, destino.id, fontes.map(p => p.id)); }
+  finally { supabase.from = original; }
+  assert.deepEqual(r.erros.map(e => e.codigo), [ruim]);
+  assert.equal(r.criados + r.atualizados, 4);
+  const noDestino = new Set(banco().produtos.filter(p => p.empresa_id === destino.id).map(p => p.codigo_produto));
+  assert.ok(fontes.filter(p => p.codigo_produto !== ruim).every(p => noDestino.has(p.codigo_produto)));
 });
 
 test('nenhum erro registrado pelo app', () => assert.deepEqual(globalThis.errosDoApp, []));

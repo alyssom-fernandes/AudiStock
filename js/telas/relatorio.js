@@ -10,7 +10,7 @@ import { requireAuth, getPerfil } from '../auth.js';
 import { initLayout, definirTitulo, escapeHtml, fmtDateTime, fmtInt, plural, qtdHtml, difHtml, badgeStatus, badgeSituacao,
          vazioHtml, showToast, showLoading, hideLoading, ICONS, mensagemErro, partesHtml } from '../ui.js';
 import { buscarAuditoria } from '../auditorias.js';
-import { gerarRelatorio, ordenarItens, resumoAuditoria, produtosNaoAuditados, exportarCSV, baixarArquivo } from '../relatorios.js';
+import { gerarRelatorio, ordenarItens, resumoAuditoria, produtosNaoAuditados, exportarCSV, baixarArquivo, porcentagem } from '../relatorios.js';
 import { gerarPDF, gerarExcel, nomeArquivo, tituloRelatorio, temComparacao, semDivergenciaMotivo, fimRotulo } from '../exportacao.js';
 
 const FILTROS = [
@@ -55,8 +55,8 @@ async function iniciar() {
   let filtro = 'todos', ordem = comparado ? 'diferenca' : 'nome', limite = POR_PAGINA;
   const emissor = getPerfil()?.nome ?? '';
   const comSaldo = resumo.auditados - resumo.sem_saldo;
-  const pctOk = comSaldo ? Math.floor(resumo.ok / comSaldo * 1000) / 10 : 0;
-  const pctContados = resumo.total_produtos ? Math.floor(resumo.auditados / resumo.total_produtos * 100) : 0;   // 299 de 300 não vira 100%
+  const pctOk = porcentagem(resumo.ok, comSaldo, 1);
+  const pctContados = porcentagem(resumo.auditados, resumo.total_produtos);
   const empresa = aud.empresas?.nome ?? '—';
   const criador = aud.usuarios?.nome ?? '—';
 

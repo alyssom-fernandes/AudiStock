@@ -107,6 +107,15 @@ export async function exportarCSV(auditoriaId, filtro = 'todos', ordem = 'difere
   return [cabecalho, ...linhas].join('\r\n') + '\r\n';
 }
 
+// Porcentagem arredondada para baixo, com casas decimais: 299 de 300 é 99%,
+// nunca 100% ao lado de um item que falta. Multiplica antes de dividir,
+// para 29 de 50 dar 58 (e não 57,999… → 57).
+export function porcentagem(parte, total, casas = 0) {
+  if (!total) return 0;
+  const escala = 10 ** casas;
+  return Math.floor(Number(parte) * 100 * escala / Number(total)) / escala;
+}
+
 // Um campo de CSV: entre aspas quando precisa, e nunca lido como fórmula
 // pelo Excel (=, +, -, @ no começo)
 export function csvTexto(v) {

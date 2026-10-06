@@ -39,6 +39,9 @@ test('quantidade digitada: vírgula decimal, ponto de milhar e unidade inteira',
   assert.match(lerQuantidade('7890000000001', 'PCT').erro, /grande demais/, 'código de barras lido no campo de quantidade');
   assert.deepEqual(lerQuantidade('1.000.000', 'KG'), { valor: 1000000 }, 'com dois pontos, só pode ser milhar');
   assert.match(lerQuantidade('1,5', 'UN').erro, /não aceita frações/);
+  assert.match(lerQuantidade('1.2,5', 'KG').erro, /ponto só separa milhares/, 'erro de digitação não vira 12,5');
+  assert.match(lerQuantidade('12.34,5', 'KG').erro, /ponto só separa milhares/);
+  assert.deepEqual(lerQuantidade('12.345,5', 'KG'), { valor: 12345.5 });
   assert.ok(lerQuantidade('1e3', 'UN').erro, 'notação científica não vale');
   assert.ok(lerQuantidade('-2', 'UN').erro);
   assert.equal(fmtEntrada(1234.5, 'KG'), '1234,500');

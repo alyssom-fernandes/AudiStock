@@ -3,7 +3,8 @@ import './ambiente.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { resumoAuditoria, ordenarItens, exportarCSV, situacaoTexto, gerarRelatorio } = await import('../../js/relatorios.js');
+const { default: supabase } = await import('../../js/supabaseClient.js');
+const { resumoAuditoria, ordenarItens, exportarCSV, situacaoTexto, gerarRelatorio, porcentagem } = await import('../../js/relatorios.js');
 const { nomeArquivo, tituloRelatorio, temComparacao, semDivergenciaMotivo, fimRotulo } = await import('../../js/exportacao.js');
 
 const banco = () => JSON.parse(sessionStorage.getItem('audistock-demo-db')).tabelas;
@@ -62,6 +63,27 @@ test('o CSV abre certo no Excel brasileiro', async () => {
   assert.match(kg, /;\d+,\d+;/, 'decimal com vírgula');
   assert.ok(linhas.slice(1, -1).every(l => l.startsWith(`${aud.numero_auditoria};Ferragens Horizonte;`)));
   assert.ok(linhas.some(l => /;\+\d/.test(l)), 'sobra com sinal de +');
+});
+
+test('CSV de auditoria em andamento sai só com a contagem, mesmo com algum saldo gravado', async () => {
+  const aud = auditoria('0007');
+  const item = JSON.parse(sessionStorage.getItem('audistock-demo-db')).tabelas.auditoria_itens.find(i => i.auditoria_id === aud.id);
+  await supabase.from('auditoria_itens').update({ estoque_sistema: 1 }).eq('id', item.id);   // finalização que falhou no meio
+  const comparado = temComparacao(await resumoAuditoria(aud.id), aud);
+  assert.equal(comparado, false);
+  const [cabecalho] = (await exportarCSV(aud.id, 'todos', 'nome', aud, { comparado })).split('\r\n');
+  assert.equal(cabecalho, 'Auditoria;Empresa;Código;Produto;Unidade;Contado');
+  await supabase.from('auditoria_itens').update({ estoque_sistema: null }).eq('id', item.id);
+});
+
+test('porcentagens arredondadas para baixo, sem erro de ponto flutuante', () => {
+  assert.equal(porcentagem(29, 50), 58, 'e não 57');
+  assert.equal(porcentagem(57, 100), 57);
+  assert.equal(porcentagem(299, 300), 99, '299 de 300 não é 100%');
+  assert.equal(porcentagem(299, 300, 1), 99.6);
+  assert.equal(porcentagem(2, 3, 1), 66.6);
+  assert.equal(porcentagem(5, 0), 0);
+  for (let t = 1; t <= 3000; t++) for (let p = 0; p <= t; p += 7) assert.equal(porcentagem(p, t), Math.floor((p * 100 - (p * 100) % t) / t), `${p} de ${t}`);
 });
 
 test('nome dos arquivos exportados leva número, empresa e data', () => {

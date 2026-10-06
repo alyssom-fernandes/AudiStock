@@ -28,7 +28,7 @@ const SUPABASE = `
   grant usage on schema auth to anon, authenticated;
 `;
 
-const VERIFICACOES = 48;
+const VERIFICACOES = 54;
 const novoBanco = async () => { const b = new PGlite(); await b.exec(SUPABASE); return b; };
 const permissoes = async b => {
   await b.exec(await ler('supabase/testes/permissoes.sql'));
@@ -118,14 +118,18 @@ test('um banco da versão anterior (15aac91) é atualizado rodando o esquema, e 
   const velho = await novoBanco();
   try {
     await velho.exec(await ler('testes/banco/esquema-15aac91.sql'));
-    // Dados de antes da atualização: uma auditoria encerrada sem retrato
+    // Dados de antes da atualização: uma auditoria encerrada sem retrato e
+    // uma em andamento com número de outro formato
     await velho.exec(`
       insert into public.empresas (id, nome) values ('3e000000-0000-4000-8000-000000000001', 'Antiga');
       insert into public.produtos (id, empresa_id, codigo_produto, nome_produto) values ('3b000000-0000-4000-8000-000000000001', '3e000000-0000-4000-8000-000000000001', 'V1', 'Velho 1');
       insert into public.auditorias (id, numero_auditoria, empresa_id, status) values ('3c000000-0000-4000-8000-000000000001', 'AUD-2025-001', '3e000000-0000-4000-8000-000000000001', 'em_andamento');
       insert into public.auditoria_itens (auditoria_id, produto_id, quantidade_contada, estoque_sistema) values ('3c000000-0000-4000-8000-000000000001', '3b000000-0000-4000-8000-000000000001', 5, 4);
-      update public.auditorias set status = 'finalizada' where id = '3c000000-0000-4000-8000-000000000001';`);
+      update public.auditorias set status = 'finalizada' where id = '3c000000-0000-4000-8000-000000000001';
+      insert into public.auditorias (id, numero_auditoria, empresa_id, status) values ('3c000000-0000-4000-8000-000000000002', 'AUD-2025-002', '3e000000-0000-4000-8000-000000000001', 'em_andamento');`);
     await velho.exec(await ler('supabase/schema.sql'));
+    // A auditoria antiga em andamento ainda pode ser encerrada (sem check de formato que a trave)
+    await velho.exec(`update public.auditorias set status = 'cancelada' where id = '3c000000-0000-4000-8000-000000000002'`);
 
     const r = await permissoes(velho);
     assert.equal(r.total, VERIFICACOES);
@@ -135,8 +139,9 @@ test('um banco da versão anterior (15aac91) é atualizado rodando o esquema, e 
       (select count(*)::int from pg_policies where policyname = 'historico_criar') as politica,
       (select count(*)::int from pg_proc where proname = 'gerar_numero_auditoria') as numeracao,
       (select count(*)::int from pg_proc where proname = 'registrar_contagem') as contagem,
-      (select confdeltype from pg_constraint where conname = 'usuarios_empresa_id_fkey') as fk`);
-    assert.deepEqual(rows[0], { politica: 0, numeracao: 0, contagem: 1, fk: 'r' });
+      (select confdeltype from pg_constraint where conname = 'usuarios_empresa_id_fkey') as fk,
+      (select count(*)::int from pg_constraint where conname = 'auditorias_numero_formato') as formato`);
+    assert.deepEqual(rows[0], { politica: 0, numeracao: 0, contagem: 1, fk: 'r', formato: 0 });
     // A auditoria antiga continua no relatório
     const { rows: rel } = await velho.query(`select diferenca::text from public.vw_relatorio_divergencias where auditoria_id = '3c000000-0000-4000-8000-000000000001'`);
     assert.deepEqual(rel, [{ diferenca: '1.000' }]);

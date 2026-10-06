@@ -6,6 +6,7 @@
 
 import supabase from './supabaseClient.js';
 import { buscarTodos } from './consulta.js';
+import { porcentagem } from './relatorios.js';
 
 // ─────────────────────────────────────────────────────────────
 //  listarAuditorias({ empresaId, status, limit })
@@ -150,13 +151,18 @@ export async function excluirAuditoria(auditoriaId, usuarioId) {
 
   if (logErr) throw new Error('Erro ao salvar log: ' + logErr.message);
 
-  // 4. Exclui (CASCADE remove os itens automaticamente)
-  const { error } = await supabase
+  // 4. Exclui (CASCADE remove os itens). Pela função excluir_auditoria, que
+  //    trava os itens antes da auditoria, como a contagem e o fechamento;
+  //    num banco sem ela, apaga direto.
+  const { error } = await supabase.rpc('excluir_auditoria', { p_auditoria_id: auditoriaId });
+  if (!error) return true;
+  if (!(error.code === 'PGRST202' || /could not find the function|excluir_auditoria.*does not exist/i.test(error.message ?? ''))) throw new Error(error.message);
+  const { error: e2 } = await supabase
     .from('auditorias')
     .delete()
     .eq('id', auditoriaId);
 
-  if (error) throw new Error(error.message);
+  if (e2) throw new Error(e2.message);
   return true;
 }
 
@@ -182,7 +188,7 @@ export async function progresso(auditoriaId) {
     .eq('auditoria_id', auditoriaId);
   if (e2) throw new Error(e2.message);
 
-  const pct = totalProdutos > 0 ? Math.round((contados / totalProdutos) * 100) : 0;
+  const pct = porcentagem(contados, totalProdutos);   // como no relatório: 299 de 300 não vira 100%
   return { contados: contados ?? 0, totalProdutos: totalProdutos ?? 0, pct };
 }
 

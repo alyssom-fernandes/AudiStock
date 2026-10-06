@@ -24,9 +24,12 @@ O `link` cria a pasta `supabase/.temp/`, que fica fora do git.
 
 1. No painel do Supabase, abra **SQL Editor**.
 2. Rode [`supabase/schema.sql`](../supabase/schema.sql) inteiro, seja o
-   projeto novo ou não. Ele pode ser rodado de novo num banco que já
-   existe: cria as tabelas e colunas que faltam, troca funções, gatilhos,
-   visões e políticas pela versão atual e não apaga dados. Se quiser uma
+   projeto novo ou não. Num banco criado por uma versão anterior deste
+   repositório, ele pode ser rodado de novo: cria o que falta, troca
+   funções, gatilhos, visões e políticas pela versão atual e não apaga
+   dados. Num banco montado de outro jeito, confira antes em
+   `pg_policies` se há políticas com outros nomes: o arquivo não as
+   remove, e uma política a mais pode liberar o que as dele fecham. Se quiser uma
    cópia do banco antes, o comando abaixo baixa o esquema do projeto
    ligado no passo 0 (precisa do Docker aberto; o arquivo fica fora do
    git):
@@ -45,7 +48,7 @@ O `link` cria a pasta `supabase/.temp/`, que fica fora do git.
 
 Rode [`supabase/testes/permissoes.sql`](../supabase/testes/permissoes.sql)
 no SQL Editor. Ele cria empresas, usuários e auditorias de teste, entra
-como cada perfil, confere 48 regras e **apaga tudo o que criou**. O
+como cada perfil, confere 54 regras e **apaga tudo o que criou**. O
 resultado é uma tabela: todas as linhas devem dizer `ok`.
 
 Se aparecer `FALHOU`, a coluna `detalhe` diz o que aconteceu (por exemplo,
@@ -94,6 +97,21 @@ Entre com um usuário **supremo** e confira:
 - [ ] Com o leitor de código de barras, bipe o mesmo produto várias vezes
       bem rápido. "Última leitura" mostra o total certo.
 - [ ] No Chrome para Android, teste a aba **Câmera**.
+- [ ] Fechamento com dois aparelhos (é a prova das travas da função
+      `finalizar_auditoria`, que os testes automáticos não alcançam):
+      - abra o fechamento no computador, preencha os saldos e clique em
+        **Finalizar** até aparecer a confirmação. Com ela aberta, registre
+        no celular um produto que ainda não estava na lista e confirme no
+        computador: a tela diz que nada foi finalizado e recarrega com os
+        saldos digitados;
+      - o mesmo, mas somando no celular um produto que já estava na lista:
+        a tela diz que o item foi recontado e nada é finalizado;
+      - os dois aparelhos no fechamento, confirmando quase juntos: um
+        finaliza, e o outro avisa que outra pessoa finalizou antes (ou abre
+        o relatório, se os saldos eram os mesmos);
+      - com a confirmação aberta no computador, cancele a auditoria no
+        celular e confirme no computador: a tela avisa que ela foi
+        cancelada e trava os campos.
 - [ ] Faça o fechamento e baixe o Excel, o PDF e o CSV. Abra o Excel no
       Excel de verdade e confira datas, fórmulas e o filtro.
 - [ ] Imprima o relatório pelo Chrome (Ctrl+P) e confira o rodapé com

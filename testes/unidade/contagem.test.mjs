@@ -9,7 +9,8 @@ import assert from 'node:assert/strict';
 
 const { default: supabase } = await import('../../js/supabaseClient.js');
 const { registrarContagem, editarContagem, historicoItem, buscarItemContado, preencherEstoquesSistema, listarItensContados, finalizarComSaldos,
-        JA_CONTADO, ITENS_NOVOS, JA_ENCERRADA } = await import('../../js/contagem.js');
+        aplicarRetrato, JA_CONTADO, ITENS_NOVOS, JA_ENCERRADA, RECONTADOS } = await import('../../js/contagem.js');
+const { excluirAuditoria } = await import('../../js/auditorias.js');
 const { ehFalhaPassageira } = await import('../../js/offline.js');
 const { ID_USUARIO_DEMO } = await import('../../js/demo.js');
 
@@ -118,12 +119,43 @@ test('finalizar grava os saldos e encerra junto; recusa item contado depois que 
   assert.equal(de_novo.code, JA_ENCERRADA);
 });
 
-test('fila sem internet: só falha passageira espera; recusa do banco não segura a fila', () => {
+test('finalizar recusa item recontado depois que a tela abriu: a diferença revisada não vale mais', async () => {
+  const aud = auditoria('0008');
+  const { data: itens } = await listarItensContados(aud.id);
+  const saldos = Object.fromEntries(itens.map(i => [i.id, 10]));
+  const contados = Object.fromEntries(itens.map(i => [i.id, Number(i.quantidade_contada)]));
+  // Outro aparelho soma num item que a tela já mostrava
+  await registrarContagem({ auditoriaId: aud.id, produtoId: itens[0].produto_id, quantidade: 30, usuarioId: ID_USUARIO_DEMO, acao: 'somar' });
+  const recusa = await finalizarComSaldos(aud.id, saldos, contados).catch(e => e);
+  assert.equal(recusa.code, RECONTADOS);
+  assert.equal(recusa.details, '1');
+  assert.equal(auditoria('0008').status, 'em_andamento');
+  // Com o contado de agora, finaliza; o relatório guarda o nome do encerramento
+  const { data: atuais } = await listarItensContados(aud.id);
+  await finalizarComSaldos(aud.id, saldos, Object.fromEntries(atuais.map(i => [i.id, Number(i.quantidade_contada)])));
+  assert.equal(auditoria('0008').status, 'finalizada');
+  await supabase.from('produtos').update({ nome_produto: 'Renomeado depois' }).eq('id', itens[0].produto_id);
+  const { data: depois } = await listarItensContados(aud.id);
+  await aplicarRetrato(aud.id, depois);
+  assert.notEqual(depois.find(i => i.id === itens[0].id).produtos.nome_produto, 'Renomeado depois', 'os detalhes mostram o nome do encerramento');
+});
+
+test('o supremo exclui a auditoria pela função, e os itens vão junto', async () => {
+  const aud = auditoria('0008');
+  await excluirAuditoria(aud.id, ID_USUARIO_DEMO);
+  assert.equal(banco().auditorias.some(a => a.id === aud.id), false);
+  assert.equal(banco().auditoria_itens.some(i => i.auditoria_id === aud.id), false);
+  assert.equal(banco().auditoria_exclusoes_log.at(-1).auditoria_id, aud.id, 'com o registro da exclusão');
+});
+
+// O comportamento da fila com essas falhas está em fila.test.mjs
+test('classificação das falhas da fila: o que é passageiro (espera) e o que é recusa do banco', () => {
   assert.ok(ehFalhaPassageira(new TypeError('Failed to fetch')));
   assert.ok(ehFalhaPassageira({ message: 'erro', status: 503 }));
   assert.ok(ehFalhaPassageira({ message: 'erro', status: 429 }));
   assert.ok(ehFalhaPassageira({ code: 'PGRST301', message: 'JWT expired' }));
   assert.ok(ehFalhaPassageira({ message: 'Unexpected token < in JSON at position 0' }));
+  assert.ok(ehFalhaPassageira({ code: '42501', status: 401, message: 'permission denied for function registrar_contagem' }), 'sessão perdida espera o login');
   assert.equal(ehFalhaPassageira({ code: '22003', status: 400, message: 'numeric field overflow' }), false);
   assert.equal(ehFalhaPassageira({ code: '42501', status: 403, message: 'new row violates row-level security policy' }), false);
   assert.equal(ehFalhaPassageira({ code: '23514', message: 'violates check constraint' }), false);

@@ -5,10 +5,12 @@
 //
 //  Entra com ?demo=1 em qualquer página (ou pelo botão do login) e
 //  sai pelo "Sair". Nada sai do navegador: o banco fica no
-//  sessionStorage da aba e some quando ela é fechada. Uma aba aberta a
-//  partir da demonstração (Ctrl+clique, botão do meio, "abrir em nova
-//  aba") continua nela, com uma cópia do banco; uma aba que já abriu no
-//  sistema real nunca vira demonstração.
+//  sessionStorage da aba e some quando ela é fechada. Um link aberto em
+//  outra aba a partir da demonstração (Ctrl+clique, botão do meio, "abrir
+//  em nova aba") leva uma ficha de uso único (#passe=…) e a aba nova
+//  continua nela, com uma cópia do banco. Sem a ficha no endereço (aba
+//  aberta a partir do sistema real, endereço digitado, favorito), nenhuma
+//  aba vira demonstração. Cada aba tem a sua fila sem internet.
 //
 //  O cliente imita só o pedaço da API do supabase-js que o sistema
 //  usa (from/select/filtros/ordem/insert/update/delete/upsert, rpc e
@@ -22,9 +24,11 @@ const CHAVE_MODO  = 'audistock-demo';      // 'completo' | 'vazio'
 const CHAVE_BANCO = 'audistock-demo-db';
 const VERSAO_BANCO = 4;
 const CHAVE_REAL  = 'audistock-sistema-real';   // sessionStorage: esta aba já abriu no sistema real
-const CHAVE_PASSE = 'audistock-demo-passe';     // localStorage, por segundos: a aba que está sendo aberta a partir da demonstração
+const CHAVE_PASSE = 'audistock-demo-passe';     // localStorage: { modo, banco, fichas: { ficha: validade } } dos links abertos em outra aba
+const CHAVE_ABA   = 'audistock-demo-aba';       // sessionStorage: id desta aba (a fila sem internet é por aba)
+const CHAVE_SEM_COPIA = 'audistock-demo-sem-copia';   // sessionStorage: a aba adotou um passe sem a cópia do banco
 const VALIDADE_PASSE = 30e3;
-const FILA_DEMO = 'audistock-offline-demo';      // IndexedDB da fila sem internet (js/offline.js)
+const FILA_DEMO = 'audistock-offline-demo';      // IndexedDB da fila sem internet (js/offline.js): FILA_DEMO-<id da aba>
 export const ID_USUARIO_DEMO = '6f1c2a90-4b7e-4d21-9c3a-0d5e8f7a1b2c';
 
 // ─────────────────────────────────────────────────────────────
@@ -41,38 +45,100 @@ export function demoAtivo() {
 }
 
 export function sairDemo() {
-  try { sessionStorage.removeItem(CHAVE_MODO); sessionStorage.removeItem(CHAVE_BANCO); localStorage.removeItem(CHAVE_PASSE); } catch (_) {}
   _apagarFila();
+  try { [CHAVE_MODO, CHAVE_BANCO, CHAVE_ABA].forEach(k => sessionStorage.removeItem(k)); } catch (_) {}
 }
 
-// Aba nova sem nada no sessionStorage, aberta segundos depois de um
-// Ctrl+clique na demonstração: continua nela, com a cópia do banco
+// Nome da fila sem internet desta aba da demonstração. Cada aba tem a sua:
+// as abas têm bancos separados, e uma não pode enviar (nem apagar) as
+// contagens guardadas da outra.
+export function filaDaDemo() {
+  let id = null;
+  try {
+    id = sessionStorage.getItem(CHAVE_ABA);
+    if (!id) { id = _uuidAleatorio(); sessionStorage.setItem(CHAVE_ABA, id); }
+  } catch (_) {}
+  return `${FILA_DEMO}-${id ?? 'aba'}`;
+}
+
+// Avisos da demonstração para a tela mostrar (js/ui.js): cópia do banco que
+// não coube na aba nova, banco que passou do espaço do navegador
+let _semEspaco = false;
+export function avisosDaDemo() {
+  const avisos = [];
+  try {
+    if (sessionStorage.getItem(CHAVE_SEM_COPIA)) {
+      sessionStorage.removeItem(CHAVE_SEM_COPIA);
+      avisos.push('Os dados da outra aba não couberam no navegador para virem junto: esta aba começou com os dados de exemplo da demonstração.');
+    }
+  } catch (_) {}
+  if (_semEspaco) avisos.push(AVISO_SEM_ESPACO);
+  return avisos;
+}
+const AVISO_SEM_ESPACO = 'A demonstração passou do espaço que o navegador guarda para esta aba. O que você fizer agora aparece na tela, mas se perde ao trocar de página ou recarregar.';
+
+// Ficha #passe=… no endereço: a aba foi aberta por um link da demonstração.
+// A ficha sai do endereço e vale uma vez só. Uma aba que já abriu no
+// sistema real não vira demonstração nem com ficha.
 function _adotarPasse() {
   try {
+    const m = /(?:^#|&)passe=([\w-]+)/.exec(location.hash);
+    if (!m) return;
+    const hash = location.hash.replace(/(^#|&)passe=[\w-]+/, (_, antes) => antes === '#' ? '#' : '').replace(/^#&/, '#').replace(/^#$/, '');
+    history.replaceState(history.state, '', location.pathname + location.search + hash);
     const passe = JSON.parse(localStorage.getItem(CHAVE_PASSE) || 'null');
-    if (passe && Date.now() > passe.ate) { localStorage.removeItem(CHAVE_PASSE); return; }
-    if (!passe || sessionStorage.getItem(CHAVE_MODO) || sessionStorage.getItem(CHAVE_REAL)) return;
+    const validade = passe?.fichas?.[m[1]];
+    if (!validade) return;
+    delete passe.fichas[m[1]];
+    _gravarPasse(passe);
+    if (Date.now() > validade || sessionStorage.getItem(CHAVE_MODO) || sessionStorage.getItem(CHAVE_REAL)) return;
     sessionStorage.setItem(CHAVE_MODO, passe.modo);
     if (passe.banco) sessionStorage.setItem(CHAVE_BANCO, passe.banco);
+    else sessionStorage.setItem(CHAVE_SEM_COPIA, '1');
   } catch (_) {}
 }
 
-// Na demonstração, abrir um link do app em outra aba deixa um passe curto
+// Grava o passe só com as fichas ainda válidas (sem nenhuma, apaga). Se a
+// cópia do banco não couber no localStorage, vai sem ela.
+function _gravarPasse(passe) {
+  const agora = Date.now();
+  passe.fichas = Object.fromEntries(Object.entries(passe.fichas ?? {}).filter(([, ate]) => ate > agora));
+  if (!Object.keys(passe.fichas).length) { localStorage.removeItem(CHAVE_PASSE); return; }
+  try { localStorage.setItem(CHAVE_PASSE, JSON.stringify(passe)); }
+  catch (_) { localStorage.setItem(CHAVE_PASSE, JSON.stringify({ ...passe, banco: null })); }
+}
+
+// Na demonstração, um link que vai ser aberto em outra aba ganha uma ficha
+// de uso único no endereço, e o passe guarda a cópia do banco por 30 s.
+// O endereço original do link volta depois disso (ou num clique normal).
 function _passarParaAbasNovas() {
   const deixarPasse = e => {
     const a = e.target?.closest?.('a[href]');
     if (!a || a.origin !== location.origin) return;
-    if (e.type === 'click' && !(e.ctrlKey || e.metaKey || e.shiftKey) && a.target !== '_blank') return;
-    if (e.type === 'auxclick' && e.button !== 1) return;
+    const outraAba = e.type === 'contextmenu' || (e.type === 'auxclick' && e.button === 1)
+      || (e.type === 'click' && (e.ctrlKey || e.metaKey || e.shiftKey || a.target === '_blank'));
+    if (!outraAba) {
+      if (e.type === 'click' && a.dataset.hrefOriginal) { a.setAttribute('href', a.dataset.hrefOriginal); delete a.dataset.hrefOriginal; }
+      return;
+    }
     try {
-      localStorage.setItem(CHAVE_PASSE, JSON.stringify({ modo: sessionStorage.getItem(CHAVE_MODO), banco: sessionStorage.getItem(CHAVE_BANCO), ate: Date.now() + VALIDADE_PASSE }));
+      const ficha = _uuidAleatorio();
+      const passe = JSON.parse(localStorage.getItem(CHAVE_PASSE) || 'null') ?? {};
+      _gravarPasse({ modo: sessionStorage.getItem(CHAVE_MODO), banco: sessionStorage.getItem(CHAVE_BANCO), fichas: { ...passe.fichas, [ficha]: Date.now() + VALIDADE_PASSE } });
+      a.dataset.hrefOriginal ??= a.getAttribute('href');
+      const url = new URL(a.dataset.hrefOriginal, location.href);
+      url.hash = `passe=${ficha}`;
+      a.setAttribute('href', url.href);
+      clearTimeout(a._voltarHref);
+      a._voltarHref = setTimeout(() => { if (a.dataset.hrefOriginal) { a.setAttribute('href', a.dataset.hrefOriginal); delete a.dataset.hrefOriginal; } }, VALIDADE_PASSE);
     } catch (_) {}
   };
   for (const tipo of ['click', 'auxclick', 'contextmenu']) document.addEventListener?.(tipo, deixarPasse, true);
 }
 
-// A fila sem internet da demonstração não passa de uma visita para a outra
-function _apagarFila() { try { indexedDB.deleteDatabase(FILA_DEMO); } catch (_) {} }   // as outras abas fecham a conexão delas (js/offline.js)
+// A fila sem internet da demonstração não passa de uma visita para a outra.
+// Apaga só a desta aba (as outras abas da demonstração têm as suas).
+function _apagarFila() { try { indexedDB.deleteDatabase(filaDaDemo()); } catch (_) {} }
 
 // ?demo=1 entra (banco novo), ?demo=vazio entra sem cadastros, ?demo=0 sai.
 // O parâmetro sai da barra de endereço para não ser copiado adiante.
@@ -88,6 +154,7 @@ function _lerPedidoDaUrl() {
       sessionStorage.removeItem(CHAVE_BANCO);
       sessionStorage.removeItem(CHAVE_REAL);
       _apagarFila();
+      indexedDB.deleteDatabase(FILA_DEMO);   // a fila única, de antes das filas por aba
     }
   } catch (_) {}
   params.delete('demo');
@@ -113,6 +180,7 @@ export function criarClienteDemo() {
       if (nome === 'registrar_contagem') return _registrarContagem(banco, args);
       if (nome === 'corrigir_contagem') return _corrigirContagem(banco, args);
       if (nome === 'finalizar_auditoria') return _finalizarAuditoria(banco, args);
+      if (nome === 'excluir_auditoria') return _excluirAuditoria(banco, args);
       return _falhaNaoSuportada(`rpc('${nome}')`);
     },
 
@@ -216,9 +284,9 @@ function _corrigirContagem(banco, { p_item_id, p_quantidade, p_motivo = null } =
 }
 
 // Igual à função finalizar_auditoria: grava os saldos de todos os itens e
-// finaliza junto; recusa item contado que a tela não mostrava (AS002) e
-// auditoria já encerrada (AS003)
-function _finalizarAuditoria(banco, { p_auditoria_id, p_saldos } = {}) {
+// finaliza junto; recusa item contado que a tela não mostrava (AS002),
+// item recontado (AS004) e auditoria já encerrada (AS003)
+function _finalizarAuditoria(banco, { p_auditoria_id, p_saldos, p_contados = null } = {}) {
   if ((NIVEL[_eu(banco)?.role] ?? 0) < NIVEL.auditor) return _erro('Seu perfil não finaliza auditorias.', '42501');
   const aud = banco.tabelas.auditorias.find(a => a.id === p_auditoria_id);
   if (!aud) return _erro('Auditoria não encontrada.', '42501');
@@ -227,6 +295,10 @@ function _finalizarAuditoria(banco, { p_auditoria_id, p_saldos } = {}) {
   const itens = banco.tabelas.auditoria_itens.filter(i => i.auditoria_id === aud.id);
   const faltam = itens.filter(i => !(i.id in saldos)).length;
   if (faltam) return _erro('Há itens contados que a tela de fechamento ainda não mostrava.', 'AS002', String(faltam));
+  if (p_contados) {
+    const mudaram = itens.filter(i => typeof p_contados[i.id] !== 'number' || Number(i.quantidade_contada) !== p_contados[i.id]).length;
+    if (mudaram) return _erro('Há itens recontados depois que a tela de fechamento abriu.', 'AS004', String(mudaram));
+  }
   for (const i of itens) {
     const v = saldos[i.id];
     i.estoque_sistema = typeof v === 'number' ? _arred(v) : null;
@@ -236,6 +308,15 @@ function _finalizarAuditoria(banco, { p_auditoria_id, p_saldos } = {}) {
   _retratar(banco, aud);
   _salvar(banco);
   return { data: { ...aud }, error: null };
+}
+
+// Igual à função excluir_auditoria: só o supremo (política auditorias_excluir)
+async function _excluirAuditoria(banco, { p_auditoria_id } = {}) {
+  if (_eu(banco)?.role !== 'supremo' || !banco.tabelas.auditorias.some(a => a.id === p_auditoria_id)) {
+    return _erro('Auditoria não encontrada, ou o seu perfil não exclui auditorias.', '42501');
+  }
+  const r = await new Consulta(banco, 'auditorias').delete().eq('id', p_auditoria_id);
+  return r.error ? r : { data: null, error: null, status: 204 };
 }
 
 // Gatilho numerar_auditoria: o próximo AUD-AAAA-NNNN, ignorando o número
@@ -418,6 +499,8 @@ class Consulta {
     // Como no banco: o histórico de correções só é gravado pelo gatilho
     if (this.tabela === 'auditoria_itens_historico') return _erro('permission denied for table auditoria_itens_historico', '42501');
     const novas = cargas.map(c => _completar(this.tabela, { ...c }));
+    // Como no banco, uma inserção recusada desfaz junto o número que pegou
+    const numeracao = structuredClone(this.banco.numeracao ?? null);
     if (this.tabela === 'auditorias') {
       const agora = new Date().toISOString();
       novas.forEach(n => Object.assign(n, {
@@ -434,7 +517,7 @@ class Consulta {
     }
     for (const n of novas) {
       const conflito = _violaUnica(this.tabela, tabela.concat(novas.filter(x => x !== n)), n);
-      if (conflito) return ERRO_UNICA(conflito);
+      if (conflito) { this.banco.numeracao = numeracao ?? undefined; return ERRO_UNICA(conflito); }
     }
     tabela.push(...novas);
     _salvar(this.banco);
@@ -668,9 +751,17 @@ function _carregarBanco() {
   _salvar(banco);
   return banco;
 }
+// Sem espaço no sessionStorage, o banco continua na memória (a tela segue
+// funcionando), e a pessoa é avisada uma vez de que o que fizer se perde
+// ao trocar de página
 function _salvar(banco) {
   try { sessionStorage.setItem(CHAVE_BANCO, JSON.stringify(banco)); }
-  catch (e) { _registrar('Demo: não foi possível gravar o banco na sessão: ' + e.message); }
+  catch (e) {
+    if (_semEspaco) return;
+    _semEspaco = true;
+    _registrar('Demo: não foi possível gravar o banco na sessão: ' + e.message);
+    globalThis.dispatchEvent?.(new CustomEvent('audistock:demo-aviso', { detail: AVISO_SEM_ESPACO }));
+  }
 }
 function _uuidAleatorio() { return crypto.randomUUID?.() ?? _uuid(Math.random); }
 

@@ -238,7 +238,9 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
       { texto: 'Importar', classe: 'btn-primary', tipo: 'submit', id: 'btnImportar' },
     ],
     aoEnviar: importar,
-    aoFechar: () => { if (concluido || gravouAlgo) aoConcluir(empresaFeita); },
+    // Fechada pelo Voltar do navegador: a tela de produtos está saindo, e
+    // trocar a empresa agora mexeria no endereço da tela seguinte
+    aoFechar: (_, { navegando } = {}) => { if (!navegando && (concluido || gravouAlgo)) aoConcluir(empresaFeita); },
   });
   const btnImp = m.$('#btnImportar');
   btnImp.disabled = true;

@@ -55,6 +55,8 @@ export async function render(el, { perfil }) {
         : vazioHtml({ titulo: 'Todos os usuários estão inativos', texto: 'Marque “Mostrar inativos” para vê-los.', compacto: true });
       return;
     }
+    // Nas tabelas estreitas, o último acesso vai para a linha de baixo do nome
+    const acesso = u => u.ultimo_acesso ? `último acesso ${fmtDateTime(u.ultimo_acesso)}` : 'nunca entrou';
     card.innerHTML = `<div class="tabela-wrap"><table class="tabela-lista tabela-fixa">
       <colgroup><col style="width:18%"><col><col style="width:124px"><col style="width:16%"><col style="width:136px"><col style="width:164px"></colgroup>
       <thead><tr><th scope="col">Nome</th><th scope="col">E-mail</th><th scope="col">Perfil</th><th scope="col" class="col-larga">Empresa</th><th scope="col" class="col-larga">Último acesso</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead>
@@ -63,8 +65,8 @@ export async function render(el, { perfil }) {
         const pode = !eu && (isSupremo() || ['auditor', 'visualizador'].includes(u.role));
         return `<tr class="${u.ativo ? '' : 'inativa'}">
           <td class="l-titulo"><span class="forte">${escapeHtml(u.nome)}</span>${eu ? ' <span class="badge badge-neutro">Você</span>' : ''}${u.ativo ? '' : ' <span class="badge badge-neutro">Inativo</span>'}
-            <span class="sub so-celular-bloco">${partesHtml([emailHtml(u.email), escapeHtml(u.empresa_id ? nomeEmpresa(u.empresa_id) : 'Todas as empresas')])}</span>
-            <span class="sub so-medio-bloco">${escapeHtml(u.empresa_id ? nomeEmpresa(u.empresa_id) : 'Todas as empresas')}</span></td>
+            <span class="sub so-celular-bloco">${partesHtml([emailHtml(u.email), escapeHtml(u.empresa_id ? nomeEmpresa(u.empresa_id) : 'Todas as empresas'), acesso(u)])}</span>
+            <span class="sub so-medio-bloco">${partesHtml([escapeHtml(u.empresa_id ? nomeEmpresa(u.empresa_id) : 'Todas as empresas'), acesso(u)])}</span></td>
           <td class="so-desktop email">${emailHtml(u.email)}</td>
           <td>${badgeRole(u.role)}</td>
           <td class="so-desktop col-larga">${u.empresa_id ? escapeHtml(nomeEmpresa(u.empresa_id)) : '<span class="muted">Todas</span>'}</td>
@@ -159,10 +161,11 @@ function abrirUsuario(u, { papeis, empresas, perfil, aoSalvar }) {
       const empresa_id = escolha === TODAS ? null : escolha || null;
       const invalido = (c, msg) => { marcarInvalido(c, msg); c.focus(); };
       mm.$('#usrAviso').innerHTML = '';
+      // Na ordem dos campos na tela
       if (!nome.value.trim()) return invalido(nome, 'Informe o nome.');
-      if (!escolha) return invalido(mm.$('#usrEmpresa'), 'Escolha a empresa, ou “Todas as empresas”.');
       if (!editando && !/^\S+@\S+\.\S+$/.test(email.value.trim())) return invalido(email, 'Informe um e-mail válido.');
       if (!editando && senha.value.length < 6) return invalido(senha, 'A senha precisa ter pelo menos 6 caracteres.');
+      if (!escolha) return invalido(mm.$('#usrEmpresa'), 'Escolha a empresa, ou “Todas as empresas”.');
       mm.ocupado(true, 'Salvando…');
       try {
         if (editando) {
@@ -178,10 +181,17 @@ function abrirUsuario(u, { papeis, empresas, perfil, aoSalvar }) {
       } catch (err) {
         mm.ocupado(false);
         const msg = mensagemErro(err, 'salvar usuário');
-        // Só o que é sobre o e-mail digitado marca o campo; avisos de
-        // configuração do Supabase aparecem na janela
+        // O que é sobre o e-mail ou a senha digitados marca o campo; avisos
+        // de configuração do Supabase aparecem no topo da janela, que rola
+        // até eles (no celular, quem acabou de preencher está lá embaixo)
         if (!editando && /já existe um usuário com este e-mail|e-mail válido|não aceitou este e-mail/i.test(msg)) invalido(email, msg);
-        else mm.$('#usrAviso').innerHTML = `<div class="aviso aviso-perigo">${ICONS.erro}<p>${escapeHtml(msg)}</p></div>`;
+        else if (!editando && /^(a senha|esta senha)/i.test(msg)) invalido(senha, msg);
+        else {
+          const aviso = mm.$('#usrAviso');
+          aviso.innerHTML = `<div class="aviso aviso-perigo" tabindex="-1">${ICONS.erro}<p>${escapeHtml(msg)}</p></div>`;
+          aviso.scrollIntoView({ block: 'nearest' });
+          aviso.firstElementChild.focus({ preventScroll: true });
+        }
       }
     },
   });

@@ -170,20 +170,18 @@ alter table public.usuarios drop constraint if exists usuarios_empresa_id_fkey;
 alter table public.usuarios add constraint usuarios_empresa_id_fkey
   foreign key (empresa_id) references public.empresas (id) on delete restrict;
 
--- Formato do número (vale para auditorias novas; as antigas ficam como estão)
+-- Formato do número: quem dá é o gatilho numerar_auditoria. Sem check na
+-- tabela: mesmo NOT VALID, ele é conferido em toda atualização e travaria
+-- (sem finalizar nem cancelar) uma auditoria antiga com outro formato.
 alter table public.auditorias drop constraint if exists auditorias_numero_auditoria_check;
-do $$ begin
-  if not exists (select 1 from pg_constraint where conname = 'auditorias_numero_formato') then
-    alter table public.auditorias add constraint auditorias_numero_formato
-      check (numero_auditoria ~ '^AUD-[0-9]{4}-[0-9]{4,}$') not valid;
-  end if;
-end $$;
+alter table public.auditorias drop constraint if exists auditorias_numero_formato;
 
 -- Índices. Um código de barras aponta para um só produto ativo da empresa
 -- (com dois, o leitor não saberia qual contar); uma auditoria em andamento
 -- por empresa; um e-mail por pessoa, sem diferença de maiúsculas. Se os
 -- dados já tiverem repetição, o índice não é criado e aparece um aviso
--- (NOTICE) dizendo o que corrigir; o permissoes.sql também acusa.
+-- (NOTICE) dizendo o que corrigir; o permissoes.sql também acusa a falta
+-- de cada um dos três.
 drop index if exists public.produtos_empresa_barras_idx;
 do $$ begin
   create unique index if not exists produtos_barras_unico_idx on public.produtos (empresa_id, codigo_barras)
@@ -430,18 +428,23 @@ end $$;
 
 -- Fechamento: grava o saldo do sistema de todos os itens e finaliza, numa
 -- só transação.
---   p_saldos  {item_id: saldo ou null} de cada item que a tela mostrou
+--   p_saldos    {item_id: saldo ou null} de cada item que a tela mostrou
+--   p_contados  {item_id: quantidade contada que a tela mostrou} (opcional)
 -- Recusa com AS002 (detalhe: quantos) se algum item contado não estiver em
--- p_saldos (contado depois que a tela abriu), e com AS003 se a auditoria
--- já não estiver em andamento.
+-- p_saldos (contado depois que a tela abriu), com AS004 se a quantidade de
+-- algum item mudou desde então (recontado: a diferença revisada não vale
+-- mais) e com AS003 (detalhe: o status) se a auditoria já não estiver em
+-- andamento.
 drop function if exists public.finalizar_auditoria(uuid, jsonb);
-create function public.finalizar_auditoria(p_auditoria_id uuid, p_saldos jsonb)
+drop function if exists public.finalizar_auditoria(uuid, jsonb, jsonb);
+create function public.finalizar_auditoria(p_auditoria_id uuid, p_saldos jsonb, p_contados jsonb default null)
 returns public.auditorias
 language plpgsql security invoker set search_path = public as $$
 declare
-  v_aud    public.auditorias;
-  v_status text;
-  v_faltam integer;
+  v_aud     public.auditorias;
+  v_status  text;
+  v_faltam  integer;
+  v_mudaram integer;
 begin
   if not public.tem_papel('auditor') then
     raise exception 'Seu perfil não finaliza auditorias.' using errcode = '42501';
@@ -466,12 +469,38 @@ begin
   if v_faltam > 0 then
     raise exception 'Há itens contados que a tela de fechamento ainda não mostrava.' using errcode = 'AS002', detail = v_faltam::text;
   end if;
+  if p_contados is not null then
+    select count(*) into v_mudaram from public.auditoria_itens
+     where auditoria_id = p_auditoria_id
+       and case when jsonb_typeof(p_contados -> id::text) = 'number'
+                then quantidade_contada is distinct from (p_contados ->> id::text)::numeric
+                else true end;
+    if v_mudaram > 0 then
+      raise exception 'Há itens recontados depois que a tela de fechamento abriu.' using errcode = 'AS004', detail = v_mudaram::text;
+    end if;
+  end if;
   update public.auditoria_itens
      set estoque_sistema = case when jsonb_typeof(p_saldos -> id::text) = 'number' then (p_saldos ->> id::text)::numeric end
    where auditoria_id = p_auditoria_id;
   update public.auditorias set status = 'finalizada' where id = p_auditoria_id
   returning * into v_aud;
   return v_aud;
+end $$;
+
+-- Exclusão (só o supremo, pela política auditorias_excluir). Trava os
+-- itens antes da auditoria, na mesma ordem da contagem e do fechamento:
+-- apagar direto travaria a auditoria primeiro, e uma contagem gravando
+-- naquele instante podia terminar em deadlock.
+drop function if exists public.excluir_auditoria(uuid);
+create function public.excluir_auditoria(p_auditoria_id uuid)
+returns void
+language plpgsql security invoker set search_path = public as $$
+begin
+  perform 1 from public.auditoria_itens where auditoria_id = p_auditoria_id for update;
+  delete from public.auditorias where id = p_auditoria_id;
+  if not found then
+    raise exception 'Auditoria não encontrada, ou o seu perfil não exclui auditorias.' using errcode = '42501';
+  end if;
 end $$;
 
 -- ── Regras que o RLS sozinho não cobre ──────────────────────────
@@ -800,8 +829,8 @@ revoke all on function public.proximo_numero_auditoria(), public.numerar_auditor
   public.proteger_auditorias(), public.retratar_auditoria(), public.proteger_itens(), public.historiar_item()
   from anon, authenticated, public;
 revoke all on function public.registrar_contagem(uuid, uuid, numeric, text, uuid), public.corrigir_contagem(uuid, numeric, text),
-  public.finalizar_auditoria(uuid, jsonb)
+  public.finalizar_auditoria(uuid, jsonb, jsonb), public.excluir_auditoria(uuid)
   from anon, public;
 grant execute on function public.registrar_contagem(uuid, uuid, numeric, text, uuid), public.corrigir_contagem(uuid, numeric, text),
-  public.finalizar_auditoria(uuid, jsonb)
+  public.finalizar_auditoria(uuid, jsonb, jsonb), public.excluir_auditoria(uuid)
   to authenticated;

@@ -148,6 +148,24 @@ export async function listarItensContados(auditoriaId) {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  aplicarRetrato(auditoriaId, itens) → retrato | null
+//  Numa auditoria encerrada, troca o código, o nome e a unidade de hoje
+//  pelos do encerramento (auditoria_retratos), como no relatório: renomear
+//  um produto depois não muda o que foi contado. Retorna o retrato
+//  (total_produtos, nao_contados, contados) ou null se não houver.
+// ─────────────────────────────────────────────────────────────
+export async function aplicarRetrato(auditoriaId, itens) {
+  const { data, error } = await supabase.from('auditoria_retratos')
+    .select('total_produtos, contados').eq('auditoria_id', auditoriaId).maybeSingle();
+  if (error) throw erroDoBanco(error);
+  for (const i of itens) {
+    const r = data?.contados?.[i.produto_id];
+    if (r) i.produtos = { ...i.produtos, ...r };
+  }
+  return data;
+}
+
+// ─────────────────────────────────────────────────────────────
 //  historicoItem(itemId)
 //  Retorna o histórico de edições de um item específico.
 // ─────────────────────────────────────────────────────────────
@@ -193,22 +211,25 @@ export async function preencherEstoquesSistema(auditoriaId, estoques) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  finalizarComSaldos(auditoriaId, saldos)
-//  saldos = { [item_id]: saldo | null } de TODOS os itens que a tela
-//  mostrou (o saldo apagado vai como null e fica vazio no banco).
+//  finalizarComSaldos(auditoriaId, saldos, contados)
+//  saldos   = { [item_id]: saldo | null } de TODOS os itens que a tela
+//             mostrou (o saldo apagado vai como null e fica vazio no banco)
+//  contados = { [item_id]: quantidade contada que a tela mostrou }
 //
 //  Usa a função finalizar_auditoria (supabase/schema.sql): grava os saldos
 //  e finaliza numa só transação, e recusa se um item foi contado depois
-//  que a tela abriu (ITENS_NOVOS) ou se a auditoria já foi encerrada
-//  (JA_ENCERRADA). Num banco sem a função, confere, grava e finaliza em
-//  etapas.
+//  que a tela abriu (ITENS_NOVOS), se algum foi recontado (RECONTADOS: a
+//  diferença revisada não vale mais) ou se a auditoria já foi encerrada
+//  (JA_ENCERRADA, com o status em details). Num banco sem a função,
+//  confere, grava e finaliza em etapas.
 // ─────────────────────────────────────────────────────────────
 export const ITENS_NOVOS = 'AS002';
 export const JA_ENCERRADA = 'AS003';
+export const RECONTADOS = 'AS004';
 
-export async function finalizarComSaldos(auditoriaId, saldos) {
+export async function finalizarComSaldos(auditoriaId, saldos, contados = null) {
   if (!_semFuncao.has('finalizar_auditoria')) {
-    const { data, error, status } = await supabase.rpc('finalizar_auditoria', { p_auditoria_id: auditoriaId, p_saldos: saldos });
+    const { data, error, status } = await supabase.rpc('finalizar_auditoria', { p_auditoria_id: auditoriaId, p_saldos: saldos, p_contados: contados });
     if (!error) return Array.isArray(data) ? data[0] : data;
     if (!_funcaoAusente(error, 'finalizar_auditoria')) throw erroDoBanco(error, status);
     _semFuncao.add('finalizar_auditoria');
@@ -218,6 +239,8 @@ export async function finalizarComSaldos(auditoriaId, saldos) {
   const { data: itens } = await listarItensContados(auditoriaId);
   const faltam = itens.filter(i => !(i.id in saldos)).length;
   if (faltam) throw Object.assign(new Error('Há itens contados que a tela de fechamento ainda não mostrava.'), { code: ITENS_NOVOS, details: String(faltam) });
+  const mudaram = contados ? itens.filter(i => Number(contados[i.id]) !== Number(i.quantidade_contada)).length : 0;
+  if (mudaram) throw Object.assign(new Error('Há itens recontados depois que a tela de fechamento abriu.'), { code: RECONTADOS, details: String(mudaram) });
   const r = await preencherEstoquesSistema(auditoriaId, itens.map(i => ({ produto_id: i.produto_id, quantidade: saldos[i.id] ?? null })));
   if (r.erros) throw new Error(`${r.erros === 1 ? '1 saldo não foi gravado' : `${r.erros} saldos não foram gravados`}. Nada foi finalizado; tente de novo.`);
   try { return await finalizarAuditoria(auditoriaId); }

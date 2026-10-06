@@ -202,6 +202,17 @@ do $$ declare n int; begin
   perform teste_audistock.anotar('Auditor da B não vê os envios de contagem da A', n = 0, n || ' visíveis');
 end $$;
 
+do $$ declare item uuid; msg text; begin
+  perform teste_audistock.dono();
+  select id into item from public.auditoria_itens where auditoria_id = '0c000000-0000-4000-8000-000000000002' limit 1;
+  begin
+    perform teste_audistock.como('0a000000-0000-4000-8000-000000000005');
+    insert into public.contagens_aplicadas (id_cliente, auditoria_item_id) values ('0f000000-0000-4000-8000-000000000002', item);
+  exception when others then msg := sqlerrm;
+  end;
+  perform teste_audistock.anotar('Auditor da B não grava envio de contagem apontando para item da A', coalesce(msg like '%row-level security%', false), coalesce(msg, 'foi aceito'));
+end $$;
+
 do $$ declare h int; u uuid; begin
   perform teste_audistock.como('0a000000-0000-4000-8000-000000000003');
   update public.auditoria_itens set quantidade_contada = 6
@@ -230,6 +241,15 @@ do $$ declare msg text; begin
   exception when others then msg := sqlerrm;
   end;
   perform teste_audistock.anotar('Visualizador não corrige contagem, e a mensagem diz por quê', msg like '%perfil%', coalesce(msg, 'foi aceito'));
+end $$;
+
+do $$ declare msg text; begin
+  begin
+    perform teste_audistock.como('0a000000-0000-4000-8000-000000000003');
+    perform public.corrigir_contagem('0d000000-0000-4000-8000-000000000001', 1, 'teste');
+  exception when others then msg := sqlerrm;
+  end;
+  perform teste_audistock.anotar('Correção em auditoria finalizada é recusada dizendo que ela não está em andamento', coalesce(msg like '%não está em andamento%', false), coalesce(msg, 'foi aceito'));
 end $$;
 
 do $$ begin
@@ -308,17 +328,6 @@ end $$;
 do $$ begin
   begin
     perform teste_audistock.como('0a000000-0000-4000-8000-000000000003');
-    insert into public.auditorias (empresa_id, criado_por) values
-      ('0e000000-0000-4000-8000-0000000000b1', '0a000000-0000-4000-8000-000000000003');
-    perform teste_audistock.anotar('Auditor não cria auditoria', false, 'foi aceito');
-  exception when others then
-    perform teste_audistock.anotar('Auditor não cria auditoria', true, sqlerrm);
-  end;
-end $$;
-
-do $$ begin
-  begin
-    perform teste_audistock.como('0a000000-0000-4000-8000-000000000003');
     update public.auditorias set auditoria_cega = false where id = '0c000000-0000-4000-8000-000000000002';
     perform teste_audistock.anotar('Auditor não muda o tipo de contagem da auditoria', not exists (select 1 from public.auditorias
       where id = '0c000000-0000-4000-8000-000000000002' and not auditoria_cega), 'nenhum erro; tipo conferido');
@@ -355,14 +364,13 @@ do $$ declare n int; d timestamptz; begin
   perform teste_audistock.anotar('Auditor da B finaliza a auditoria da B, com a hora real de finalização', n = 1 and d = now(), n || ' linha alterada');
 end $$;
 
-do $$ declare n int := 0; negado boolean := false; msg text; begin
+do $$ declare msg text; begin
   begin
-    perform teste_audistock.como('0a000000-0000-4000-8000-000000000002');
-    update public.auditorias set empresa_id = '0e000000-0000-4000-8000-0000000000b1' where id = '0c000000-0000-4000-8000-000000000002';
-    get diagnostics n = row_count;
-  exception when others then negado := true; msg := sqlerrm;
+    perform teste_audistock.como('0a000000-0000-4000-8000-000000000001');
+    update public.auditorias set empresa_id = '0e000000-0000-4000-8000-0000000000c1' where id = '0c000000-0000-4000-8000-000000000002';
+  exception when others then msg := sqlerrm;
   end;
-  perform teste_audistock.anotar('A empresa de uma auditoria não muda', negado or n = 0, coalesce(msg, n || ' linhas alteradas'));
+  perform teste_audistock.anotar('A empresa de uma auditoria não muda (nem pelo supremo)', coalesce(msg like '%não podem mudar%', false), coalesce(msg, 'foi aceito'));
 end $$;
 
 do $$ declare n int; c uuid; begin
@@ -374,12 +382,21 @@ do $$ declare n int; c uuid; begin
     n = 1 and c = '0a000000-0000-4000-8000-000000000002', n || ' linha alterada');
 end $$;
 
+do $$ declare msg text; begin
+  begin
+    perform teste_audistock.como('0a000000-0000-4000-8000-000000000003');
+    insert into public.auditorias (empresa_id) values ('0e000000-0000-4000-8000-0000000000a1');
+  exception when others then msg := sqlerrm;
+  end;
+  perform teste_audistock.anotar('Auditor não cria auditoria, nem na própria empresa', coalesce(msg like '%row-level security%', false), coalesce(msg, 'foi aceito'));
+end $$;
+
 do $$ declare num text; msg text; a public.auditorias; begin
   begin
     perform teste_audistock.como('0a000000-0000-4000-8000-000000000002');
-    insert into public.auditorias (numero_auditoria, empresa_id, criado_por, data_inicio, data_fim, criado_em, cancelado_em, motivo_cancelamento) values
+    insert into public.auditorias (numero_auditoria, empresa_id, criado_por, data_inicio, data_fim, criado_em, cancelado_em, cancelado_por, motivo_cancelamento) values
       ('AUD-2099-9999', '0e000000-0000-4000-8000-0000000000a1', '0a000000-0000-4000-8000-000000000002',
-       '1999-01-01', '1999-01-02', '1999-01-01', '1999-01-03', 'forjado')
+       '1999-01-01', '1999-01-02', '1999-01-01', '1999-01-03', '0a000000-0000-4000-8000-000000000001', 'forjado')
     returning * into a;
     num := a.numero_auditoria;
   exception when others then msg := sqlerrm;
@@ -387,8 +404,17 @@ do $$ declare num text; msg text; a public.auditorias; begin
   perform teste_audistock.anotar('Administrador da A inicia auditoria na A, com o número dado pelo banco (não o enviado)',
     num is not null and num <> 'AUD-2099-9999' and num ~ '^AUD-[0-9]{4}-[0-9]{4,}$', coalesce(msg, num));
   perform teste_audistock.anotar('Início, término e cancelamento de uma auditoria nova são do banco, não do navegador',
-    coalesce(a.data_inicio = now() and a.criado_em = now() and a.data_fim is null and a.cancelado_em is null and a.motivo_cancelamento is null, false),
+    coalesce(a.data_inicio = now() and a.criado_em = now() and a.data_fim is null and a.cancelado_em is null and a.cancelado_por is null and a.motivo_cancelamento is null, false),
     coalesce(msg, 'início ' || a.data_inicio));
+end $$;
+
+do $$ declare cod text; msg text; begin
+  begin
+    perform teste_audistock.como('0a000000-0000-4000-8000-000000000002');
+    insert into public.auditorias (empresa_id) values ('0e000000-0000-4000-8000-0000000000a1');
+  exception when others then get stacked diagnostics cod = returned_sqlstate; msg := sqlerrm;
+  end;
+  perform teste_audistock.anotar('Uma auditoria em andamento por empresa', coalesce(cod = '23505', false), coalesce(cod || ': ' || msg, 'a segunda foi aceita'));
 end $$;
 
 -- Fechamento: um item contado que a tela não mostrava impede finalizar;
@@ -412,13 +438,41 @@ do $$ declare aud uuid; cod text; msg text; begin
     coalesce(cod || ': ' || msg, 'foi aceito'));
 end $$;
 
-do $$ declare aud uuid; item uuid; st text; saldo numeric; msg text; begin
+do $$ declare aud uuid; msg text; begin
   perform teste_audistock.dono();
-  select a.id, i.id into aud, item from public.auditorias a join public.auditoria_itens i on i.auditoria_id = a.id
+  select id into aud from public.auditorias where empresa_id = '0e000000-0000-4000-8000-0000000000a1' and status = 'em_andamento';
+  begin
+    perform teste_audistock.como('0a000000-0000-4000-8000-000000000004');
+    perform public.finalizar_auditoria(aud, '{}'::jsonb);
+  exception when others then msg := sqlerrm;
+  end;
+  perform teste_audistock.anotar('Visualizador não finaliza pela função, e a mensagem diz por quê', coalesce(msg like '%perfil%', false), coalesce(msg, 'foi aceito'));
+end $$;
+
+do $$ declare aud uuid; saldos jsonb; contados jsonb; cod text; msg text; st text; begin
+  perform teste_audistock.dono();
+  select a.id, jsonb_object_agg(i.id::text, 1), jsonb_object_agg(i.id::text, i.quantidade_contada - 1) into aud, saldos, contados
+    from public.auditorias a join public.auditoria_itens i on i.auditoria_id = a.id
+   where a.empresa_id = '0e000000-0000-4000-8000-0000000000a1' and a.status = 'em_andamento' group by a.id;
+  begin
+    perform teste_audistock.como('0a000000-0000-4000-8000-000000000003');
+    perform public.finalizar_auditoria(aud, saldos, contados);
+  exception when others then get stacked diagnostics cod = returned_sqlstate; msg := sqlerrm;
+  end;
+  perform teste_audistock.dono();
+  select status into st from public.auditorias where id = aud;
+  perform teste_audistock.anotar('Finalizar é recusado se um item foi recontado depois que a tela de fechamento abriu',
+    coalesce(cod = 'AS004' and st = 'em_andamento', false), coalesce(cod || ': ' || msg, 'foi aceito'));
+end $$;
+
+do $$ declare aud uuid; item uuid; contados jsonb; st text; saldo numeric; msg text; begin
+  perform teste_audistock.dono();
+  select a.id, i.id, jsonb_build_object(i.id::text, i.quantidade_contada) into aud, item, contados
+    from public.auditorias a join public.auditoria_itens i on i.auditoria_id = a.id
    where a.empresa_id = '0e000000-0000-4000-8000-0000000000a1' and a.status = 'em_andamento';
   begin
     perform teste_audistock.como('0a000000-0000-4000-8000-000000000003');
-    perform public.finalizar_auditoria(aud, jsonb_build_object(item::text, 3));
+    perform public.finalizar_auditoria(aud, jsonb_build_object(item::text, 3), contados);
   exception when others then msg := sqlerrm;
   end;
   perform teste_audistock.dono();
@@ -428,19 +482,25 @@ do $$ declare aud uuid; item uuid; st text; saldo numeric; msg text; begin
     coalesce(msg, st || ', saldo ' || coalesce(saldo::text, 'vazio'), 'auditoria não encontrada'));
 end $$;
 
-do $$ declare n int; begin
-  perform teste_audistock.como('0a000000-0000-4000-8000-000000000002');
-  delete from public.auditorias where id = '0c000000-0000-4000-8000-000000000001';
-  get diagnostics n = row_count;
-  perform teste_audistock.anotar('Administrador não exclui auditoria', n = 0, n || ' excluídas');
+do $$ declare msg text; begin
+  begin
+    perform teste_audistock.como('0a000000-0000-4000-8000-000000000002');
+    perform public.excluir_auditoria('0c000000-0000-4000-8000-000000000001');
+  exception when others then msg := sqlerrm;
+  end;
+  perform teste_audistock.anotar('Administrador não exclui auditoria', msg is not null
+    and exists (select 1 from public.auditorias where id = '0c000000-0000-4000-8000-000000000001'), coalesce(msg, 'foi excluída'));
 end $$;
 
-do $$ declare n int; begin
-  perform teste_audistock.como('0a000000-0000-4000-8000-000000000001');
-  delete from public.auditorias where id = '0c000000-0000-4000-8000-000000000001';
-  get diagnostics n = row_count;
-  perform teste_audistock.anotar('Supremo exclui auditoria (e os itens vão junto)', n = 1
-    and not exists (select 1 from public.auditoria_itens where id = '0d000000-0000-4000-8000-000000000001'), n || ' excluída');
+do $$ declare msg text; begin
+  begin
+    perform teste_audistock.como('0a000000-0000-4000-8000-000000000001');
+    perform public.excluir_auditoria('0c000000-0000-4000-8000-000000000001');
+  exception when others then msg := sqlerrm;
+  end;
+  perform teste_audistock.anotar('Supremo exclui auditoria (e os itens vão junto)', msg is null
+    and not exists (select 1 from public.auditorias where id = '0c000000-0000-4000-8000-000000000001')
+    and not exists (select 1 from public.auditoria_itens where id = '0d000000-0000-4000-8000-000000000001'), coalesce(msg, 'excluída'));
 end $$;
 
 -- ── Empresas ────────────────────────────────────────────────────
@@ -533,6 +593,13 @@ do $$ declare n int := 0; negado boolean := false; msg text; begin
   exception when others then negado := true; msg := sqlerrm;
   end;
   perform teste_audistock.anotar('Administrador não troca o e-mail (login) de um auditor', negado or n = 0, coalesce(msg, n || ' linhas alteradas'));
+end $$;
+
+do $$ begin
+  perform teste_audistock.anotar('Um e-mail por pessoa, sem diferença de maiúsculas (índice usuarios_email_minusculo_idx)',
+    exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'usuarios_email_minusculo_idx'),
+    case when exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'usuarios_email_minusculo_idx')
+         then 'índice presente' else 'sem o índice: veja o aviso (NOTICE) do schema.sql' end);
 end $$;
 
 -- ── Produtos ────────────────────────────────────────────────────

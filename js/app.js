@@ -17,7 +17,9 @@ import * as relatorios from './telas/relatorios.js';
 import * as config from './telas/config.js';
 
 const auth = await requireAuth();
-if (!auth) throw new Error('Não autenticado');
+// Sem login, a página já está indo para a tela de entrada: o resto do
+// módulo não roda (sem lançar erro, que ficaria no registro de erros)
+if (!auth) await new Promise(() => {});
 
 const TELAS = {
   dashboard:  { titulo: 'Dashboard',     mod: dashboard },

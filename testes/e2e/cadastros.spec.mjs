@@ -55,6 +55,35 @@ test('o Voltar do navegador fecha o modal aberto', async ({ page }) => {
   await expect(page.locator(MODAL)).toHaveCount(0);
 });
 
+test('o Voltar do navegador com algo digitado na janela pergunta antes de descartar', async ({ page }) => {
+  await abrir(page, 'app.html?tela=dashboard');
+  await page.click('.nav-item[data-tela="empresas"]');
+  await expect(page.locator('#topbarTitle')).toHaveText('Empresas');
+  await page.click('.toolbar [data-acao="nova"]');
+  await page.fill('#empNome', 'Rascunho');
+  await page.goBack();
+  await expect(page.locator('[role="alertdialog"]')).toContainText('Descartar o que foi preenchido?');
+  await page.getByRole('button', { name: 'Continuar editando' }).click();
+  await expect(page.locator('#empNome')).toHaveValue('Rascunho');
+  await expect(page).toHaveURL(/tela=empresas/);
+});
+
+test('o Voltar do navegador depois de importar não mexe no endereço da tela anterior', async ({ page }) => {
+  await abrir(page, 'app.html?tela=dashboard');
+  await page.click('.nav-item[data-tela="produtos"]');
+  await expect(page.locator('#topbarTitle')).toHaveText('Produtos');
+  await expect(page.locator('#prodCard tbody tr').first()).toBeVisible();
+  await page.click('.toolbar [data-acao="importar"]');
+  await page.selectOption('#impEmpresa', { label: 'Distribuidora Aurora — Filial Norte' });
+  await page.setInputFiles('#impArquivo', PLANILHA);
+  await page.click('#btnImportar');
+  await expect(page.locator('#impPrevia')).toContainText('Importação concluída');
+  await page.goBack();
+  await expect(page.locator('#topbarTitle')).toHaveText('Dashboard');
+  await expect(page.locator(MODAL)).toHaveCount(0);
+  expect(page.url()).not.toContain('empresa=');
+});
+
 test('importa produtos de planilha, com prévia e progresso', async ({ page }) => {
   await abrir(page, 'app.html?tela=produtos');
   await page.click('.toolbar [data-acao="importar"]');

@@ -17,7 +17,10 @@ import { normalizarPedido, validarPedido } from '../supabase/functions/criar-usu
 
 const CHAVE_MODO  = 'audistock-demo';      // 'completo' | 'vazio'
 const CHAVE_BANCO = 'audistock-demo-db';
-const VERSAO_BANCO = 2;
+const VERSAO_BANCO = 3;
+const CHAVE_LEMBRAR = 'audistock-demo-aberta';   // localStorage: abas novas abertas a partir da demonstração
+const VALIDADE_LEMBRAR = 6 * 3600e3;
+const FILA_DEMO = 'audistock-offline-demo';      // IndexedDB da fila sem internet (js/offline.js)
 export const ID_USUARIO_DEMO = '6f1c2a90-4b7e-4d21-9c3a-0d5e8f7a1b2c';
 
 // ─────────────────────────────────────────────────────────────
@@ -25,13 +28,28 @@ export const ID_USUARIO_DEMO = '6f1c2a90-4b7e-4d21-9c3a-0d5e8f7a1b2c';
 // ─────────────────────────────────────────────────────────────
 _lerPedidoDaUrl();
 
+// A demonstração vale para a aba (sessionStorage). Uma aba nova aberta a
+// partir dela (Ctrl+clique, clique do meio) continua na demonstração por
+// algumas horas, com o banco de partida.
 export function demoAtivo() {
-  try { return !!sessionStorage.getItem(CHAVE_MODO); } catch (_) { return false; }
+  try {
+    if (sessionStorage.getItem(CHAVE_MODO)) return true;
+    const lembrar = JSON.parse(localStorage.getItem(CHAVE_LEMBRAR) || 'null');
+    if (lembrar && Date.now() - lembrar.em < VALIDADE_LEMBRAR) {
+      sessionStorage.setItem(CHAVE_MODO, lembrar.modo);
+      return true;
+    }
+  } catch (_) {}
+  return false;
 }
 
 export function sairDemo() {
-  try { sessionStorage.removeItem(CHAVE_MODO); sessionStorage.removeItem(CHAVE_BANCO); } catch (_) {}
+  try { sessionStorage.removeItem(CHAVE_MODO); sessionStorage.removeItem(CHAVE_BANCO); localStorage.removeItem(CHAVE_LEMBRAR); } catch (_) {}
+  _apagarFila();
 }
+
+// A fila sem internet da demonstração não passa de uma visita para a outra
+function _apagarFila() { try { indexedDB.deleteDatabase(FILA_DEMO); } catch (_) {} }
 
 // ?demo=1 entra (banco novo), ?demo=vazio entra sem cadastros, ?demo=0 sai.
 // O parâmetro sai da barra de endereço para não ser copiado adiante.
@@ -42,8 +60,11 @@ function _lerPedidoDaUrl() {
   try {
     if (pedido === '0') sairDemo();
     else {
-      sessionStorage.setItem(CHAVE_MODO, pedido === 'vazio' ? 'vazio' : 'completo');
+      const modo = pedido === 'vazio' ? 'vazio' : 'completo';
+      sessionStorage.setItem(CHAVE_MODO, modo);
       sessionStorage.removeItem(CHAVE_BANCO);
+      localStorage.setItem(CHAVE_LEMBRAR, JSON.stringify({ modo, em: Date.now() }));
+      _apagarFila();
     }
   } catch (_) {}
   params.delete('demo');
@@ -66,15 +87,8 @@ export function criarClienteDemo() {
 
     rpc: async (nome, args = {}) => {
       await _espera();
-      if (nome === 'gerar_numero_auditoria') {
-        const ano = new Date().getFullYear();
-        const prefixo = `AUD-${ano}-`;
-        const maior = banco.tabelas.auditorias
-          .filter(a => a.numero_auditoria?.startsWith(prefixo))
-          .reduce((m, a) => Math.max(m, Number(a.numero_auditoria.slice(prefixo.length)) || 0), 0);
-        return { data: prefixo + String(maior + 1).padStart(4, '0'), error: null };
-      }
       if (nome === 'registrar_contagem') return _registrarContagem(banco, args);
+      if (nome === 'corrigir_contagem') return _corrigirContagem(banco, args);
       return _falhaNaoSuportada(`rpc('${nome}')`);
     },
 
@@ -113,32 +127,88 @@ export function criarClienteDemo() {
 
 const NIVEL = { supremo: 4, administrador: 3, auditor: 2, visualizador: 1 };
 const _eu = banco => banco.tabelas.usuarios.find(u => u.id === ID_USUARIO_DEMO);
+const _fechada = (banco, auditoriaId) => banco.tabelas.auditorias.find(a => a.id === auditoriaId)?.status !== 'em_andamento';
+const _produtoDeOutraEmpresa = (banco, auditoriaId, produtoId) => {
+  const a = banco.tabelas.auditorias.find(x => x.id === auditoriaId), p = banco.tabelas.produtos.find(x => x.id === produtoId);
+  return !a || !p || a.empresa_id !== p.empresa_id;
+};
+const ERRO_FECHADA = () => _erro('A auditoria não está em andamento: a contagem não pode mais mudar.', '42501');
+
+// Os gatilhos itens_historico e proteger_itens do banco: toda mudança de
+// quantidade fica no histórico, com quem mudou e quando
+function _historiar(banco, item, anterior, motivo = null) {
+  if (Number(anterior) === Number(item.quantidade_contada)) return;
+  item.atualizado_em = new Date().toISOString();
+  banco.tabelas.auditoria_itens_historico.push(_completar('auditoria_itens_historico', {
+    auditoria_item_id: item.id, usuario_id: ID_USUARIO_DEMO, quantidade_anterior: anterior, quantidade_nova: item.quantidade_contada, motivo,
+  }));
+}
 
 // Igual à função registrar_contagem do banco (supabase/schema.sql): soma
-// ou substitui e grava o histórico de uma vez, sem perder leituras.
-function _registrarContagem(banco, { p_auditoria_id, p_produto_id, p_quantidade, p_acao = 'somar' } = {}) {
+// ou substitui numa vez só; 'novo' em produto já contado é recusado
+// (AS001); um envio repetido (mesmo p_id_cliente) não soma de novo.
+function _registrarContagem(banco, { p_auditoria_id, p_produto_id, p_quantidade, p_acao = 'somar', p_id_cliente = null } = {}) {
   const t = banco.tabelas, eu = _eu(banco);
+  if (p_id_cliente) {
+    const ja = t.contagens_aplicadas.find(c => c.id_cliente === p_id_cliente);
+    const item = ja && t.auditoria_itens.find(i => i.id === ja.auditoria_item_id);
+    if (item) return { data: { ...item }, error: null };
+  }
   if (!(Number(p_quantidade) >= 0)) return _erro('Quantidade não pode ser negativa.', '22023');
   if (!['novo', 'somar', 'sobrescrever'].includes(p_acao)) return _erro(`Ação inválida: ${p_acao}`, '22023');
   if (!eu?.ativo || (NIVEL[eu.role] ?? 0) < NIVEL.auditor) return _erro('new row violates row-level security policy for table "auditoria_itens"', '42501');
-  if (t.auditorias.find(a => a.id === p_auditoria_id)?.status !== 'em_andamento') {
-    return _erro('A auditoria não está em andamento: a contagem não pode mais mudar.', '42501');
-  }
+  if (_fechada(banco, p_auditoria_id)) return ERRO_FECHADA();
+  if (_produtoDeOutraEmpresa(banco, p_auditoria_id, p_produto_id)) return _erro('O produto não é da empresa desta auditoria.', '42501');
   let item = t.auditoria_itens.find(i => i.auditoria_id === p_auditoria_id && i.produto_id === p_produto_id);
   if (!item) {
     item = _completar('auditoria_itens', { auditoria_id: p_auditoria_id, produto_id: p_produto_id, quantidade_contada: _arred(Number(p_quantidade)), registrado_por: ID_USUARIO_DEMO, atualizado_em: null });
     t.auditoria_itens.push(item);
   } else {
+    if (p_acao === 'novo') return _erro('Este produto já foi contado nesta auditoria.', 'AS001', String(item.quantidade_contada));
     const anterior = item.quantidade_contada;
     item.quantidade_contada = _arred(p_acao === 'somar' ? Number(anterior) + Number(p_quantidade) : Number(p_quantidade));
-    item.atualizado_em = new Date().toISOString();
     _recalcular('auditoria_itens', item);
-    t.auditoria_itens_historico.push(_completar('auditoria_itens_historico', {
-      auditoria_item_id: item.id, usuario_id: ID_USUARIO_DEMO, quantidade_anterior: anterior, quantidade_nova: item.quantidade_contada, motivo: null,
-    }));
+    _historiar(banco, item, anterior);
   }
+  if (p_id_cliente) t.contagens_aplicadas.push({ id_cliente: p_id_cliente, auditoria_item_id: item.id, aplicado_em: new Date().toISOString() });
   _salvar(banco);
   return { data: { ...item }, error: null };
+}
+
+// Igual à função corrigir_contagem: troca o valor e o motivo vai para o histórico
+function _corrigirContagem(banco, { p_item_id, p_quantidade, p_motivo = null } = {}) {
+  if (!(Number(p_quantidade) >= 0)) return _erro('Quantidade não pode ser negativa.', '22023');
+  const item = banco.tabelas.auditoria_itens.find(i => i.id === p_item_id);
+  if (!item || _fechada(banco, item.auditoria_id)) return ERRO_FECHADA();
+  const anterior = item.quantidade_contada;
+  item.quantidade_contada = _arred(Number(p_quantidade));
+  _recalcular('auditoria_itens', item);
+  _historiar(banco, item, anterior, String(p_motivo ?? '').trim() || null);
+  _salvar(banco);
+  return { data: { ...item }, error: null };
+}
+
+// Gatilho numerar_auditoria: o próximo AUD-AAAA-NNNN, ignorando o número enviado
+function _proximoNumero(banco) {
+  const ano = Number(new Intl.DateTimeFormat('en', { timeZone: 'America/Sao_Paulo', year: 'numeric' }).format(new Date()));
+  const prefixo = `AUD-${ano}-`;
+  const maior = banco.tabelas.auditorias
+    .filter(a => a.numero_auditoria?.startsWith(prefixo))
+    .reduce((m, a) => Math.max(m, Number(a.numero_auditoria.slice(prefixo.length)) || 0), 0);
+  return prefixo + String(maior + 1).padStart(4, '0');
+}
+
+// Gatilho retratar_auditoria: ao encerrar, guarda os produtos que ficaram sem contar
+function _retratar(banco, aud) {
+  const t = banco.tabelas;
+  if (t.auditoria_retratos.some(r => r.auditoria_id === aud.id)) return;
+  const contados = new Set(t.auditoria_itens.filter(i => i.auditoria_id === aud.id).map(i => i.produto_id));
+  const ativos = t.produtos.filter(p => p.empresa_id === aud.empresa_id && p.ativo);
+  t.auditoria_retratos.push({
+    auditoria_id: aud.id, total_produtos: ativos.length, criado_em: new Date().toISOString(),
+    nao_contados: ativos.filter(p => !contados.has(p.id)).sort((a, b) => a.nome_produto.localeCompare(b.nome_produto, 'pt-BR'))
+      .map(p => ({ produto_id: p.id, codigo_produto: p.codigo_produto, nome_produto: p.nome_produto, unidade_medida: p.unidade_medida })),
+  });
 }
 
 // Igual à Edge Function criar-usuario, com as mesmas regras (regras.js)
@@ -181,7 +251,7 @@ function _espera() { return new Promise(r => setTimeout(r, 60 + Math.random() * 
 //  Consulta encadeável (imita o PostgrestQueryBuilder)
 // ─────────────────────────────────────────────────────────────
 const RESTRICOES_UNICAS = {
-  produtos:        [['empresa_id', 'codigo_produto']],
+  produtos:        [['empresa_id', 'codigo_produto'], ['empresa_id', 'codigo_barras']],
   auditorias:      [['numero_auditoria']],
   auditoria_itens: [['auditoria_id', 'produto_id']],
   usuarios:        [['email']],
@@ -279,7 +349,17 @@ class Consulta {
 
   _insert(cargas) {
     const tabela = this.banco.tabelas[this.tabela];
+    // Como no banco: o histórico de correções só é gravado pelo gatilho
+    if (this.tabela === 'auditoria_itens_historico') return _erro('permission denied for table auditoria_itens_historico', '42501');
     const novas = cargas.map(c => _completar(this.tabela, { ...c }));
+    if (this.tabela === 'auditorias') novas.forEach(n => { n.numero_auditoria = _proximoNumero(this.banco); });
+    if (this.tabela === 'auditoria_itens') {
+      for (const n of novas) {
+        if (_fechada(this.banco, n.auditoria_id)) return ERRO_FECHADA();
+        if (_produtoDeOutraEmpresa(this.banco, n.auditoria_id, n.produto_id)) return _erro('O produto não é da empresa desta auditoria.', '42501');
+        Object.assign(n, { registrado_por: ID_USUARIO_DEMO, data_registro: new Date().toISOString(), atualizado_em: null });
+      }
+    }
     for (const n of novas) {
       const conflito = _violaUnica(this.tabela, tabela.concat(novas.filter(x => x !== n)), n);
       if (conflito) return _erro(`duplicate key value violates unique constraint "${this.tabela}_${conflito.join('_')}_key"`, '23505');
@@ -314,7 +394,23 @@ class Consulta {
       const conflito = _violaUnica(this.tabela, this.banco.tabelas[this.tabela].filter(x => x !== l), depois);
       if (conflito) return _erro(`duplicate key value violates unique constraint "${this.tabela}_${conflito.join('_')}_key"`, '23505');
     }
-    alvo.forEach(l => { Object.assign(l, this.carga); _recalcular(this.tabela, l); });
+    if (this.tabela === 'auditoria_itens' && alvo.some(l => _fechada(this.banco, l.auditoria_id))) return ERRO_FECHADA();
+    const agora = new Date().toISOString();
+    alvo.forEach(l => {
+      const antes = { ...l };
+      Object.assign(l, this.carga);
+      _recalcular(this.tabela, l);
+      if (this.tabela === 'auditoria_itens') {
+        Object.assign(l, { auditoria_id: antes.auditoria_id, produto_id: antes.produto_id, registrado_por: antes.registrado_por, data_registro: antes.data_registro, atualizado_em: antes.atualizado_em });
+        _historiar(this.banco, l, antes.quantidade_contada);
+      }
+      if (this.tabela === 'auditorias') {
+        l.data_fim = l.status === 'finalizada' && antes.status !== 'finalizada' ? agora : antes.data_fim;
+        if (l.status === 'cancelada' && antes.status !== 'cancelada') Object.assign(l, { cancelado_por: ID_USUARIO_DEMO, cancelado_em: agora });
+        else Object.assign(l, { cancelado_por: antes.cancelado_por, cancelado_em: antes.cancelado_em });
+        if (antes.status === 'em_andamento' && l.status !== 'em_andamento') _retratar(this.banco, l);
+      }
+    });
     _salvar(this.banco);
     return this._resposta(this.retorno ? alvo.map(l => _projetar(this.banco, this.tabela, l, this.retorno)) : null);
   }
@@ -329,6 +425,8 @@ class Consulta {
       const itens = new Set(t.auditoria_itens.filter(i => ids.has(i.auditoria_id)).map(i => i.id));
       t.auditoria_itens = t.auditoria_itens.filter(i => !itens.has(i.id));
       t.auditoria_itens_historico = t.auditoria_itens_historico.filter(h => !itens.has(h.auditoria_item_id));
+      t.contagens_aplicadas = t.contagens_aplicadas.filter(c => !itens.has(c.auditoria_item_id));
+      t.auditoria_retratos = t.auditoria_retratos.filter(r => !ids.has(r.auditoria_id));
     }
     _salvar(this.banco);
     return this._resposta(this.retorno ? [...alvo].map(l => _projetar(this.banco, this.tabela, l, this.retorno)) : null);
@@ -348,7 +446,7 @@ class Consulta {
 // para que uma tela que esqueça de paginar falhe aqui também.
 const MAX_LINHAS = 1000;
 
-function _erro(message, code = 'DEMO') { return { data: null, error: { message, code }, count: null, status: 400 }; }
+function _erro(message, code = 'DEMO', details = null) { return { data: null, error: { message, code, details }, count: null, status: 400 }; }
 
 function _igual(a, b) {
   if (a == null || b == null) return false;
@@ -463,9 +561,12 @@ const VISOES = {
   },
   vw_produtos_nao_auditados(banco) {
     const contados = new Set(banco.tabelas.auditoria_itens.map(i => i.auditoria_id + '|' + i.produto_id));
-    return banco.tabelas.auditorias.flatMap(a => banco.tabelas.produtos
-      .filter(p => p.empresa_id === a.empresa_id && p.ativo && !contados.has(a.id + '|' + p.id))
-      .map(p => ({ auditoria_id: a.id, produto_id: p.id, codigo_produto: p.codigo_produto, nome_produto: p.nome_produto, unidade_medida: p.unidade_medida })));
+    const retratos = new Map(banco.tabelas.auditoria_retratos.map(r => [r.auditoria_id, r]));
+    return banco.tabelas.auditorias.flatMap(a => retratos.has(a.id)
+      ? retratos.get(a.id).nao_contados.map(p => ({ auditoria_id: a.id, ...p }))
+      : banco.tabelas.produtos
+        .filter(p => p.empresa_id === a.empresa_id && p.ativo && !contados.has(a.id + '|' + p.id))
+        .map(p => ({ auditoria_id: a.id, produto_id: p.id, codigo_produto: p.codigo_produto, nome_produto: p.nome_produto, unidade_medida: p.unidade_medida })));
   },
 };
 
@@ -515,7 +616,8 @@ function _semear(cenario) {
   const hoje = new Date(); hoje.setSeconds(0, 0);
   const em = (dias, h, m) => { const d = new Date(hoje); d.setDate(d.getDate() - dias); d.setHours(h, m, 0, 0); return d; };
 
-  const t = { empresas: [], usuarios: [], produtos: [], auditorias: [], auditoria_itens: [], auditoria_itens_historico: [], auditoria_exclusoes_log: [], importacoes_produtos: [] };
+  const t = { empresas: [], usuarios: [], produtos: [], auditorias: [], auditoria_itens: [], auditoria_itens_historico: [],
+    auditoria_exclusoes_log: [], importacoes_produtos: [], auditoria_retratos: [], contagens_aplicadas: [] };
   const banco = { versao: VERSAO_BANCO, cenario, tabelas: t };
 
   const usuario = (nome, email, role, empresa_id = null, ativo = true, uid = id()) => {
@@ -600,6 +702,7 @@ function _semear(cenario) {
     if (status === 'finalizada') a.data_fim = new Date(Math.max(relogio, inicio.getTime()) + duracaoDias * 3600e3 * 2).toISOString();
     if (status === 'cancelada') Object.assign(a, { cancelado_por: criador.id, cancelado_em: new Date(relogio + 3600e3).toISOString(), motivo_cancelamento: cancelamento });
     t.auditorias.push(a);
+    if (status !== 'em_andamento') _retratar(banco, a);
     return a;
   };
 

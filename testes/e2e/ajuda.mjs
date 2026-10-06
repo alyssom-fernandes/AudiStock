@@ -8,7 +8,8 @@ export const test = base.extend({
   page: async ({ page, errosEsperados }, usar) => {
     await usar(page);
     if (page.isClosed()) return;
-    const erros = await page.evaluate(() => window.errosRegistrados?.() ?? []).catch(() => []);
+    // Se a conferência falhar, o teste falha junto (não passa calado)
+    const erros = await page.evaluate(() => window.errosRegistrados?.() ?? []);
     const inesperados = erros.filter(e => !errosEsperados.some(t => e.msg.includes(t)));
     expect(inesperados.map(e => `${e.tipo}: ${e.msg} (${e.pagina})`)).toEqual([]);
   },

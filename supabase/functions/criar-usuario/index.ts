@@ -10,7 +10,7 @@
 // ================================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { normalizarPedido, validarPedido } from './regras.js';
+import { normalizarPedido, validarPedido, traduzirErroAuth } from './regras.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -50,7 +50,7 @@ Deno.serve(async (req: Request) => {
   });
   if (eCriar || !criado?.user) {
     const repetido = /already|registered|exists/i.test(eCriar?.message ?? '');
-    return responder(repetido ? 409 : 400, { erro: repetido ? 'Já existe um usuário com este e-mail.' : (eCriar?.message ?? 'Não foi possível criar o acesso.') });
+    return responder(repetido ? 409 : 400, { erro: traduzirErroAuth(eCriar?.message ?? '') });
   }
 
   const { error: ePerfil } = await servico.from('usuarios').insert({
@@ -58,9 +58,17 @@ Deno.serve(async (req: Request) => {
     role: pedido.role, empresa_id: pedido.empresa_id, ativo: true,
   });
   if (ePerfil) {
+    console.error('[criar-usuario] perfil não gravado:', ePerfil.message);
     // Sem perfil, o acesso não serve para nada: desfaz
-    await servico.auth.admin.deleteUser(criado.user.id);
-    return responder(500, { erro: `Não foi possível gravar o perfil: ${ePerfil.message}` });
+    const { error: eDesfazer } = await servico.auth.admin.deleteUser(criado.user.id);
+    if (eDesfazer) {
+      console.error('[criar-usuario] acesso não desfeito:', criado.user.id, eDesfazer.message);
+      return responder(500, { erro: `O perfil não foi gravado e o acesso criado para ${pedido.email} não pôde ser desfeito. Apague esse e-mail em Authentication > Users, no painel do Supabase, antes de tentar de novo.` });
+    }
+    const motivo = /usuarios_email|duplicate/i.test(ePerfil.message) ? 'já existe um perfil com este e-mail'
+      : /foreign key|empresa/i.test(ePerfil.message) ? 'a empresa escolhida não existe mais'
+      : 'o banco recusou o cadastro';
+    return responder(500, { erro: `Não foi possível gravar o perfil: ${motivo}. Nada foi criado; tente de novo.` });
   }
 
   return responder(201, { id: criado.user.id });

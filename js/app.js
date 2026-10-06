@@ -6,7 +6,7 @@
 // ================================================================
 
 import { requireAuth, getPerfil, hasRole } from './auth.js';
-import { initLayout, definirTitulo, vazioHtml, mensagemErro } from './ui.js';
+import { initLayout, definirTitulo, vazioHtml, mensagemErro, fecharModais } from './ui.js';
 import * as dashboard from './telas/dashboard.js';
 import * as auditorias from './telas/auditorias.js';
 import * as auditoria from './telas/auditoria.js';
@@ -44,11 +44,15 @@ export function irPara(tela, params = {}, { substituir = false } = {}) {
   rotear();
 }
 
-async function rotear() {
+// focar: na troca de tela (não na primeira carga), o foco vai para o título
+// novo; o leitor de tela anuncia a tela e o próximo Tab já cai no conteúdo
+async function rotear({ focar = true } = {}) {
+  fecharModais();   // um modal da tela anterior não fica aberto sobre a nova
   const params = new URLSearchParams(location.search);
   const nome = TELAS[params.get('tela')] ? params.get('tela') : 'dashboard';
   const tela = TELAS[nome];
   definirTitulo(tela.titulo, tela.ativa ?? nome);
+  if (focar) document.getElementById('topbarTitle')?.focus({ preventScroll: true });
 
   // Cada navegação ganha um contêiner novo: uma tela antiga que ainda
   // esteja carregando escreve no contêiner descartado, não na tela atual.
@@ -71,7 +75,7 @@ async function rotear() {
   }
 }
 
-window.addEventListener('popstate', rotear);
+window.addEventListener('popstate', () => rotear());
 document.addEventListener('click', e => {
   const a = e.target.closest('a[href^="app.html?"]');
   if (!a || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || a.target) return;
@@ -81,4 +85,4 @@ document.addEventListener('click', e => {
 });
 
 window.irPara = irPara;
-rotear();
+rotear({ focar: false });

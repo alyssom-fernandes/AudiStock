@@ -74,11 +74,13 @@ test('sem internet a contagem fica no aparelho e sobe ao reabrir a página já o
   await expect(page.locator('#lista .badge', { hasText: 'Na fila' })).toBeVisible();
   await expect(page.locator('#conexao')).toContainText('1 na fila');
 
-  // Fecha a aba ainda sem internet; abre outra já online (a fila fica no aparelho)
+  // Fecha a aba ainda sem internet; abre outra já online (a fila fica no
+  // aparelho). Sem "demo=1": a aba nova continua a demonstração, e entrar
+  // de novo nela começaria do zero, sem a fila.
   await page.close();
   await context.setOffline(false);
   const nova = await context.newPage();
-  await nova.goto(`contagem.html?id=${id}&demo=1`);
+  await nova.goto(`contagem.html?id=${id}`);
   await esperarCarregar(nova);
   await expect(nova.locator('#conexao')).toHaveText('Online', { timeout: 10_000 });
   await expect(nova.locator('#lista .badge', { hasText: 'Na fila' })).toHaveCount(0);
@@ -110,6 +112,6 @@ test('saldo inválido não deixa finalizar', async ({ page }) => {
   await esperarCarregar(page);
   await page.locator('.saldo-input').first().fill('abc');
   await page.click('#btnFinalizar');
-  await expect(page.locator('.toast')).toContainText('saldo inválido');
+  await expect(page.locator('.toast')).toContainText(/saldo inválido/i);
   await expect(page.locator(MODAL)).toHaveCount(0);
 });

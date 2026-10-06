@@ -8,7 +8,7 @@
 
 import { requireAuth, getPerfil } from '../auth.js';
 import { initLayout, definirTitulo, escapeHtml, fmtDateTime, fmtInt, plural, qtdHtml, difHtml, badgeStatus, badgeSituacao,
-         vazioHtml, showToast, showLoading, hideLoading, ICONS, mensagemErro } from '../ui.js';
+         vazioHtml, showToast, showLoading, hideLoading, ICONS, mensagemErro, partesHtml } from '../ui.js';
 import { buscarAuditoria } from '../auditorias.js';
 import { gerarRelatorio, ordenarItens, resumoAuditoria, produtosNaoAuditados, exportarCSV, baixarArquivo } from '../relatorios.js';
 import { gerarPDF, gerarExcel, nomeArquivo, tituloRelatorio, temComparacao, semDivergenciaMotivo, fimRotulo } from '../exportacao.js';
@@ -55,7 +55,7 @@ async function iniciar() {
   let filtro = 'todos', ordem = comparado ? 'diferenca' : 'nome', limite = POR_PAGINA;
   const emissor = getPerfil()?.nome ?? '';
   const comSaldo = resumo.auditados - resumo.sem_saldo;
-  const pctOk = comSaldo ? Math.round(resumo.ok / comSaldo * 100) : 0;
+  const pctOk = comSaldo ? Math.floor(resumo.ok / comSaldo * 1000) / 10 : 0;
   const pctContados = resumo.total_produtos ? Math.round(resumo.auditados / resumo.total_produtos * 100) : 0;
   const empresa = aud.empresas?.nome ?? '—';
   const criador = aud.usuarios?.nome ?? '—';
@@ -70,7 +70,8 @@ async function iniciar() {
     : '<span class="positivo">Contagem completa</span>';
 
   el.innerHTML = `
-    <a class="voltar" href="app.html?tela=relatorios">${ICONS.voltar}Relatórios</a>
+    ${aud.status === 'finalizada' ? `<a class="voltar" href="app.html?tela=relatorios">${ICONS.voltar}Relatórios</a>`
+      : `<a class="voltar" href="app.html?tela=historico&id=${encodeURIComponent(aud.id)}">${ICONS.voltar}Detalhes da auditoria</a>`}
 
     <header class="print-only folha">
       <div class="folha-cab"><strong>${escapeHtml(titulo)}</strong><span class="folha-marca">AudiStock</span></div>
@@ -108,12 +109,12 @@ async function iniciar() {
     <div class="kpis">
       <div class="kpi"><div class="kpi-rotulo">Itens contados</div><div class="kpi-valor">${fmtInt(resumo.auditados)}<small> de ${fmtInt(resumo.total_produtos)}</small></div><div class="kpi-apoio">${comparado ? naoContadosApoio : `${pctContados}% dos produtos ativos`}</div></div>
       ${comparado ? `
-      <div class="kpi"><div class="kpi-rotulo">Sem divergência</div>${kpiNum(resumo.ok)}<div class="kpi-apoio">${pctOk}% dos itens com saldo</div></div>
+      <div class="kpi"><div class="kpi-rotulo">Sem divergência</div>${kpiNum(resumo.ok)}<div class="kpi-apoio">${pctOk.toLocaleString('pt-BR')}% dos itens com saldo</div></div>
       <div class="kpi kpi-falta"><div class="kpi-rotulo">Itens com falta</div>${kpiNum(resumo.faltas)}<div class="kpi-apoio">contado abaixo do sistema</div></div>
       <div class="kpi kpi-sobra"><div class="kpi-rotulo">Itens com sobra</div>${kpiNum(resumo.sobras)}<div class="kpi-apoio">contado acima do sistema</div></div>
       ${resumo.sem_saldo ? `<div class="kpi"><div class="kpi-rotulo">Sem saldo do sistema</div>${kpiNum(resumo.sem_saldo)}<div class="kpi-apoio">não informado no fechamento</div></div>` : ''}`
       : `
-      <div class="kpi"><div class="kpi-rotulo">Não contados</div>${kpiNum(resumo.nao_auditados)}<div class="kpi-apoio">${resumo.nao_auditados ? '<a href="#tNao" class="link" data-ir-nao>ver a lista</a>' : '<span class="positivo">Contagem completa</span>'}</div></div>
+      <div class="kpi"><div class="kpi-rotulo">Não contados</div>${kpiNum(resumo.nao_auditados)}<div class="kpi-apoio">${resumo.nao_auditados ? '<a href="#tNao" class="link no-print" data-ir-nao>ver a lista</a><span class="print-only">produtos ativos sem contagem</span>' : '<span class="positivo">Contagem completa</span>'}</div></div>
       <div class="kpi"><div class="kpi-rotulo">Divergências</div><div class="kpi-valor zero">—</div><div class="kpi-apoio">${semDivergenciaMotivo(aud)}</div></div>`}
     </div>
 
@@ -152,17 +153,18 @@ async function iniciar() {
 
   const visiveis = () => ordenarItens(todos.filter(FILTROS.find(f => f.id === filtro).teste), ordem);
   const linhaComparada = r => `<tr>
-        <td class="so-desktop"><span class="codigo">${escapeHtml(r.codigo_produto)}</span></td>
+        <td class="so-desktop col-larga"><span class="codigo">${escapeHtml(r.codigo_produto)}</span></td>
         <td class="l-titulo"><span class="forte">${escapeHtml(r.nome_produto)}</span>
-          <span class="sub so-celular-bloco"><span class="codigo">${escapeHtml(r.codigo_produto)}</span> · <span class="nowrap">sistema ${qtdHtml(r.estoque_sistema, r.unidade_medida)}</span> · <span class="nowrap">contado ${qtdHtml(r.quantidade_contada, r.unidade_medida)}</span></span></td>
+          <span class="sub so-celular-bloco">${partesHtml([`<span class="codigo">${escapeHtml(r.codigo_produto)}</span>`, `sistema ${qtdHtml(r.estoque_sistema, r.unidade_medida)}`, `contado ${qtdHtml(r.quantidade_contada, r.unidade_medida)}`])}</span>
+          <span class="sub so-medio-bloco"><span class="codigo">${escapeHtml(r.codigo_produto)}</span></span></td>
         <td class="num so-desktop">${qtdHtml(r.estoque_sistema, r.unidade_medida)}</td>
         <td class="num so-desktop">${qtdHtml(r.quantidade_contada, r.unidade_medida)}</td>
         <td class="num">${difHtml(r.diferenca, r.unidade_medida)}</td>
         <td>${badgeSituacao(r.diferenca)}</td>
       </tr>`;
   const linhaSimples = r => `<tr>
-        <td class="so-desktop"><span class="codigo">${escapeHtml(r.codigo_produto)}</span></td>
-        <td class="l-titulo"><span class="forte">${escapeHtml(r.nome_produto)}</span><span class="sub so-celular-bloco"><span class="codigo">${escapeHtml(r.codigo_produto)}</span></span></td>
+        <td class="so-desktop col-larga"><span class="codigo">${escapeHtml(r.codigo_produto)}</span></td>
+        <td class="l-titulo"><span class="forte">${escapeHtml(r.nome_produto)}</span><span class="sub so-celular-bloco so-medio-bloco"><span class="codigo">${escapeHtml(r.codigo_produto)}</span></span></td>
         <td class="num">${qtdHtml(r.quantidade_contada, r.unidade_medida)}</td>
       </tr>`;
 
@@ -180,8 +182,8 @@ async function iniciar() {
     const pagina = lista.slice(0, limite);
     $('#relCorpo').innerHTML = `<div class="tabela-wrap"><table class="tabela-lista ${comparado ? 'tabela-relatorio' : 'tabela-relatorio-simples'}">
       ${comparado
-        ? '<colgroup><col class="c-codigo"><col><col class="c-num"><col class="c-num"><col class="c-num"><col class="c-sit"></colgroup><thead><tr><th scope="col" class="so-desktop">Código</th><th scope="col">Produto</th><th scope="col" class="num">Sistema</th><th scope="col" class="num">Contado</th><th scope="col" class="num">Diferença</th><th scope="col">Situação</th></tr></thead>'
-        : '<colgroup><col class="c-codigo"><col><col class="c-num"></colgroup><thead><tr><th scope="col" class="so-desktop">Código</th><th scope="col">Produto</th><th scope="col" class="num">Contado</th></tr></thead>'}
+        ? '<colgroup><col class="c-codigo"><col><col class="c-num"><col class="c-num"><col class="c-num"><col class="c-sit"></colgroup><thead><tr><th scope="col" class="so-desktop col-larga">Código</th><th scope="col">Produto</th><th scope="col" class="num">Sistema</th><th scope="col" class="num">Contado</th><th scope="col" class="num">Diferença</th><th scope="col">Situação</th></tr></thead>'
+        : '<colgroup><col class="c-codigo"><col><col class="c-num"></colgroup><thead><tr><th scope="col" class="so-desktop col-larga">Código</th><th scope="col">Produto</th><th scope="col" class="num">Contado</th></tr></thead>'}
       <tbody>${pagina.map(comparado ? linhaComparada : linhaSimples).join('')}</tbody>
     </table></div>
     <div class="tabela-rodape no-print"><span>${lista.length > limite ? `Mostrando ${fmtInt(limite)} de ${plural(lista.length, 'item', 'itens')}` : plural(lista.length, 'item', 'itens')}</span>
@@ -218,7 +220,7 @@ async function iniciar() {
   const acoes = {
     excel: async () => baixarArquivo(await gerarExcel(doc()), nomeArquivo(aud, 'xlsx')),
     pdf: () => gerarPDF(doc()),
-    csv: async () => baixarArquivo(await exportarCSV(aud.id, filtro, ordem, aud), nomeArquivo(aud, 'csv')),
+    csv: async () => baixarArquivo(await exportarCSV(aud.id, filtro, ordem, aud, { comparado }), nomeArquivo(aud, 'csv')),
   };
   el.querySelector('.cabecalho-acoes').addEventListener('click', async e => {
     const b = e.target.closest('[data-exp]'); if (!b) return;

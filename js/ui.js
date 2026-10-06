@@ -106,7 +106,7 @@ export function initLayout(titulo, { ativa = null } = {}) {
         <div class="offline-bar" id="offlineBar" role="status" aria-live="polite"></div>
         <header class="topbar">
             <button type="button" class="btn-icone btn-hamburger" id="btnMenu" onclick="window.__layoutToggleSidebar()" aria-label="Abrir menu" aria-expanded="false" aria-controls="sidebar">${ICONS.menu}</button>
-            <h1 class="topbar-titulo" id="topbarTitle">${escapeHtml(titulo ?? '')}</h1>
+            <h1 class="topbar-titulo" id="topbarTitle" tabindex="-1">${escapeHtml(titulo ?? '')}</h1>
             <button type="button" class="btn-icone" id="btnTema" onclick="window.__layoutToggleTheme()"></button>
         </header>`;
 
@@ -126,10 +126,30 @@ export function initLayout(titulo, { ativa = null } = {}) {
     _applyTheme(_temaAtual());
     definirTitulo(titulo);
 
-    window.__layoutLogout        = () => logout();
+    window.__layoutLogout        = () => _sair();
     window.__layoutToggleSidebar = () => toggleSidebar();
     window.__layoutFecharSidebar = () => fecharSidebar();
     window.__layoutToggleTheme   = () => toggleTheme();
+}
+
+// Contagens guardadas sem internet ainda não enviadas: avisa antes de sair
+async function _sair() {
+    const demo = demoAtivo();
+    try {
+        const { resumoFila } = await import('./offline.js');
+        const { meus } = await resumoFila();
+        if (meus) {
+            const ok = await fmConfirm({
+                titulo: `${plural(meus, 'contagem ainda não foi enviada', 'contagens ainda não foram enviadas')}`,
+                msg: demo ? 'Elas estão guardadas só neste aparelho e são apagadas ao sair da demonstração.'
+                    : 'Elas ficam guardadas neste aparelho e só são enviadas quando você entrar de novo. Se outra pessoa entrar aqui, elas continuam esperando por você.',
+                confirmTxt: 'Sair mesmo assim', cancelTxt: 'Continuar aqui', tipo: 'perigo' });
+            if (!ok) return;
+        }
+    } catch (_) {}
+    // Sem internet a tela de entrada não abre: a demonstração segue funcionando
+    if (demo && !navigator.onLine) { showToast('Sem internet agora: a tela de entrada não carrega. A demonstração continua funcionando aqui.', 'warning', 6000); return; }
+    logout();
 }
 
 export function definirTitulo(titulo, ativa) {
@@ -148,8 +168,18 @@ function _garantirCamadas() {
         document.body.insertAdjacentHTML('beforeend', `<div class="loading-overlay" id="loadingOverlay" role="status" aria-live="polite"><div class="carregando"><span class="spinner"></span><span id="loadingTexto">Carregando…</span></div></div>`);
     }
     if (!document.getElementById('toasts')) {
-        document.body.insertAdjacentHTML('beforeend', `<div class="toasts" id="toasts" role="status" aria-live="polite"></div>`);
+        document.body.insertAdjacentHTML('beforeend', `<div class="toasts" id="toasts"></div>
+            <div class="sr-only anuncios" id="anuncio" role="status" aria-live="polite"></div>
+            <div class="sr-only anuncios" id="anuncioUrgente" role="alert"></div>`);
     }
+}
+
+// Leitor de tela: lê a mensagem pela região viva (polida ou urgente)
+export function anunciar(msg, urgente = false) {
+    _garantirCamadas();
+    const alvo = document.getElementById(urgente ? 'anuncioUrgente' : 'anuncio');
+    alvo.textContent = '';
+    setTimeout(() => { alvo.textContent = msg; }, 60);
 }
 
 export function toggleSidebar() {
@@ -161,6 +191,7 @@ function abrirSidebar() {
     document.getElementById('sidebar')?.classList.add('open');
     document.getElementById('sidebarOverlay')?.classList.add('visible');
     document.getElementById('btnMenu')?.setAttribute('aria-expanded', 'true');
+    document.getElementById('btnMenu')?.setAttribute('aria-label', 'Fechar menu');
     setTimeout(() => document.querySelector('#sidebar .nav-item')?.focus(), 50);
 }
 export function fecharSidebar() {
@@ -169,6 +200,7 @@ export function fecharSidebar() {
     document.getElementById('sidebarOverlay')?.classList.remove('visible');
     const btn = document.getElementById('btnMenu');
     btn?.setAttribute('aria-expanded', 'false');
+    btn?.setAttribute('aria-label', 'Abrir menu');
     if (aberta && window.innerWidth <= 900) btn?.focus();
 }
 document.addEventListener('click', e => { if (window.innerWidth <= 900 && e.target.closest('.nav-item')) fecharSidebar(); });
@@ -196,6 +228,9 @@ function _temaAtual() {
     return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 export function initTheme() { _applyTheme(_temaAtual()); }
+window.addEventListener?.('storage', e => {
+    if (e.key === 'audistock-theme' && (e.newValue === 'light' || e.newValue === 'dark')) _applyTheme(e.newValue);
+});
 export function toggleTheme() {
     const proximo = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
     _applyTheme(proximo);
@@ -222,15 +257,25 @@ export function showToast(msg, tipo = 'success', duracao = 4000, { acao = null }
     const [classe, icone] = TIPO_TOAST[tipo] ?? TIPO_TOAST.info;
     const el = document.createElement('div');
     el.className = `toast toast-${classe}`;
-    if (tipo === 'error') el.setAttribute('role', 'alert');
     const link = acao ? `<a href="${escapeHtml(acao.href)}">${escapeHtml(acao.texto)}</a>` : '';
     el.innerHTML = `<span class="toast-icone">${icone}</span><span class="toast-msg">${escapeHtml(msg)}${link}</span>
         <button type="button" class="btn-icone toast-fechar" aria-label="Fechar aviso">${ICONS.fechar}</button>`;
-    const sair = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 200); };
+    let timer = null, restante = duracao, inicio = Date.now(), pausado = false;
+    const sair = () => { clearTimeout(timer); el.classList.remove('show'); setTimeout(() => el.remove(), 200); };
+    const pausar = () => { if (pausado) return; pausado = true; clearTimeout(timer); restante -= Date.now() - inicio; };
+    const seguir = () => {
+        if (!pausado || el.matches(':hover') || el.contains(document.activeElement)) return;
+        pausado = false; inicio = Date.now(); timer = setTimeout(sair, Math.max(restante, 1500));
+    };
+    el.addEventListener('mouseenter', pausar);
+    el.addEventListener('mouseleave', seguir);
+    el.addEventListener('focusin', pausar);
+    el.addEventListener('focusout', () => setTimeout(seguir, 0));
     el.querySelector('.toast-fechar').onclick = sair;
     document.getElementById('toasts').appendChild(el);
+    anunciar(acao ? `${msg} ${acao.texto}` : msg, tipo === 'error');
     requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
-    setTimeout(sair, duracao);
+    timer = setTimeout(sair, duracao);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -260,6 +305,44 @@ export function hideLoading() {
 const _pilha = [];
 let _seqModal = 0;
 
+// Com um modal aberto, o resto da página fica inerte: fora do Tab, do
+// clique e do leitor de tela. Os avisos e as regiões de anúncio ficam de fora.
+function _atualizarFundo() {
+    const topo = _pilha[_pilha.length - 1];
+    for (const el of document.body.children) {
+        if (el.matches('script, #toasts, .anuncios, .loading-overlay')) continue;
+        if (topo && el !== topo.fundo) { if (!el.inert) { el.inert = true; el.dataset.inerteModal = ''; } }
+        else if ('inerteModal' in el.dataset) { el.inert = false; delete el.dataset.inerteModal; }
+    }
+}
+
+// Depois de salvar, a tela costuma redesenhar a lista e o botão que abriu o
+// modal some. O foco vai para o botão equivalente da lista nova (mesma ação,
+// mesmo id); se a linha saiu da lista, vai para o conteúdo da página.
+function _seletorDe(el) {
+    if (!el || el === document.body || !el.dataset) return null;
+    if (el.dataset.acao) return `[data-acao="${CSS.escape(el.dataset.acao)}"]${el.dataset.id ? `[data-id="${CSS.escape(el.dataset.id)}"]` : ''}`;
+    return el.id ? `#${CSS.escape(el.id)}` : null;
+}
+function _devolverFoco(origem) {
+    const seletor = _seletorDe(origem);
+    if (origem?.isConnected) origem.focus({ preventScroll: true });
+    const perdido = () => !document.activeElement || document.activeElement === document.body;
+    let n = 0;
+    const vigia = setInterval(() => {
+        if (_pilha.length || ++n > 40) { clearInterval(vigia); return; }
+        if (!perdido()) return;
+        const novo = seletor && document.querySelector(seletor);
+        if (novo) novo.focus();
+        else if (n >= 10) document.getElementById('pageContent')?.focus({ preventScroll: true });
+    }, 50);
+}
+
+// Fecha tudo (troca de tela pelo menu ou pelo Voltar do navegador)
+export function fecharModais() {
+    while (_pilha.length) _pilha[_pilha.length - 1].fechar(false, { semFoco: true });
+}
+
 export function abrirModal({ titulo, subtitulo = '', corpo = '', acoes = [], largura = 'md', aoEnviar = null, aoFechar = null, papel = 'dialog' } = {}) {
     const id = `modal${++_seqModal}`;
     const origem = document.activeElement;
@@ -281,16 +364,22 @@ export function abrirModal({ titulo, subtitulo = '', corpo = '', acoes = [], lar
     const form = fundo.querySelector('form');
     const modal = {
         el: form, fundo,
-        fechar(resultado) {
-            if (!fundo.isConnected) return;
+        fechar(resultado, { semFoco = false } = {}) {
+            const i = _pilha.indexOf(modal);
+            if (!fundo.isConnected || i < 0) return;
+            _pilha.splice(i, 1);
             fundo.classList.remove('active');
-            const i = _pilha.indexOf(modal); if (i >= 0) _pilha.splice(i, 1);
+            fundo.inert = true;                 // some do leitor de tela já, não depois da animação
+            _atualizarFundo();
             setTimeout(() => fundo.remove(), 150);
-            if (origem?.isConnected) origem.focus?.();
+            if (!semFoco) _devolverFoco(origem);
             aoFechar?.(resultado);
         },
         $: sel => form.querySelector(sel),
+        // Durante a gravação, nada fecha a janela: nem Cancelar, nem o X, nem Esc ou clique fora
         ocupado(sim, texto) {
+            modal.travado = sim;
+            form.querySelectorAll('.modal-rodape .btn:not([type=submit]), [data-fechar]').forEach(b => { b.disabled = sim; });
             const b = form.querySelector('[type=submit]');
             if (!b) return;
             b.disabled = sim;
@@ -304,6 +393,7 @@ export function abrirModal({ titulo, subtitulo = '', corpo = '', acoes = [], lar
     form.addEventListener('input', () => { alterado = true; });
     modal.semAlteracoes = () => { alterado = false; };
     modal.dispensar = async () => {
+        if (modal.travado) return;
         if (alterado && !form.querySelector('[type=submit]:disabled')) {
             const ok = await fmConfirm({ titulo: 'Descartar o que foi preenchido?', msg: 'O que você digitou nesta janela será perdido.', confirmTxt: 'Descartar', cancelTxt: 'Continuar editando', tipo: 'perigo' });
             if (!ok) return;
@@ -324,6 +414,7 @@ export function abrirModal({ titulo, subtitulo = '', corpo = '', acoes = [], lar
 
     document.body.appendChild(fundo);
     _pilha.push(modal);
+    _atualizarFundo();
     requestAnimationFrame(() => fundo.classList.add('active'));
     setTimeout(() => {
         const alvo = form.querySelector('[data-foco]') || form.querySelector('input:not([type=hidden]):not([disabled]):not([readonly]), select:not([disabled]), textarea') || form.querySelector('.modal-rodape [type=submit]') || form.querySelector('.modal-rodape .btn');
@@ -340,7 +431,8 @@ document.addEventListener('keydown', e => {
         const focaveis = [...topo.el.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(x => x.offsetParent !== null);
         if (!focaveis.length) return;
         const [primeiro, ultimo] = [focaveis[0], focaveis[focaveis.length - 1]];
-        if (e.shiftKey && document.activeElement === primeiro) { e.preventDefault(); ultimo.focus(); }
+        if (!topo.el.contains(document.activeElement)) { e.preventDefault(); (e.shiftKey ? ultimo : primeiro).focus(); }
+        else if (e.shiftKey && document.activeElement === primeiro) { e.preventDefault(); ultimo.focus(); }
         else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primeiro.focus(); }
     }
 });
@@ -406,6 +498,31 @@ export function fmtInt(n) { return Number(n ?? 0).toLocaleString('pt-BR'); }
 // Unidades fracionadas sempre com 3 casas (15,730 kg), para a vírgula alinhar
 // e "1,288" nunca ser lido como mil duzentos e oitenta e oito.
 const FRACIONADAS = new Set(['KG', 'G', 'L', 'LT', 'ML', 'M', 'M2', 'M3', 'TON']);
+// Quantidade digitada em pt-BR: "1.234" é mil duzentos e trinta e quatro,
+// "1,5" é um e meio. Unidade inteira (UN, PCT…) não aceita fração. Em
+// unidade fracionada, "1.234" tanto pode ser mil quanto 1,234 kg: a pessoa
+// escolhe, em vez de o sistema adivinhar.
+// Retorna { vazio: true } | { valor } | { erro }.
+export function lerQuantidade(txt, un) {
+    const b = String(txt ?? '').trim().replace(/\s/g, '');
+    if (!b) return { vazio: true };
+    const formato = 'Use só números, com vírgula para decimais.';
+    if (!/^[0-9.,]+$/.test(b) || (b.match(/,/g) ?? []).length > 1) return { erro: formato };
+    const milhar = !b.includes(',') && /^\d{1,3}(\.\d{3})+$/.test(b);
+    if (milhar && un && casasDaUnidade(un) > 0) return { erro: `Use vírgula para decimais (${b.replace('.', ',')}) ou escreva sem ponto (${b.replace(/\./g, '')}).` };
+    const n = b.includes(',') ? Number(b.replace(/\./g, '').replace(',', '.'))
+        : milhar ? Number(b.replace(/\./g, ''))
+        : Number(b);
+    if (!Number.isFinite(n)) return { erro: formato };
+    if (un && casasDaUnidade(un) === 0 && !Number.isInteger(n)) return { erro: `${String(un).toUpperCase()} não aceita frações.` };
+    return { valor: Math.round(n * 1000) / 1000 };
+}
+// Valor num campo editável: sem separador de milhar ("1.234" seria lido de outro jeito)
+export function fmtEntrada(n, un) {
+    if (n == null || n === '') return '';
+    const c = casasDaUnidade(un);
+    return Number(n).toLocaleString('pt-BR', { useGrouping: false, minimumFractionDigits: c, maximumFractionDigits: Math.max(c, 3) });
+}
 export function casasDaUnidade(un) { return FRACIONADAS.has(String(un ?? '').toUpperCase()) ? 3 : 0; }
 export function fmtQtd(n, un) {
     if (n == null || n === '') return '—';
@@ -461,7 +578,6 @@ const INTEGRIDADE = {
     'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js': 'sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==',
     'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js': 'sha512-2/YdOMV+YNpanLCF5MdQwaoFRVbTmrJ4u4EpqS/USXAQNUDgI5uwYi6J98WVtJKcfe1AbgerygzDFToxAlOGEQ==',
     'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js': 'sha512-dlPw+ytv/6JyepmelABrgeYgHI0O+frEwgfnPdXDTOIZz+eDgfW07QXG02/O8COfivBdGNINy+Vex+lYmJ5rxw==',
-    'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js': 'sha512-r22gChDnGvBylk90+2e/ycr3RVrDi8DIOkIGNhJlKfuyQM4tIRAI062MaV8sfjQKYVGjOBaZBOA87z+IhZE9DA==',
 };
 
 export function carregarScript(url, global) {
@@ -500,6 +616,16 @@ export function mensagemErro(err, contexto = '') {
     }
     return m;
 }
+
+// Trechos de uma linha de detalhes ("código · unidade · EAN"). No celular a
+// quebra cai entre os trechos, e o "·" nunca fica sozinho no fim da linha.
+// Cada trecho é um texto (HTML) ou { html, classe }.
+export function partesHtml(partes) {
+    return `<span class="partes">${partes.filter(Boolean).map(p => typeof p === 'string' ? `<span>${p}</span>` : `<span class="${p.classe}">${p.html}</span>`).join('')}</span>`;
+}
+
+// E-mail que pode quebrar só depois do "@"
+export const emailHtml = email => escapeHtml(email ?? '').replace('@', '@<wbr>');
 
 // Erro de validação junto do campo (e não num aviso que some e cobre os botões no celular)
 export function marcarInvalido(campo, msg) {

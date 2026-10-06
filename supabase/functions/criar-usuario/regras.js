@@ -8,6 +8,25 @@
 export const PAPEIS = ['supremo', 'administrador', 'auditor', 'visualizador'];
 
 /**
+ * Mensagem do Supabase Auth (em inglês) para a tela. Cobre as regras de
+ * senha que o projeto pode exigir além dos 6 caracteres.
+ * @param {string} msg
+ * @returns {string}
+ */
+export function traduzirErroAuth(msg) {
+  const m = String(msg ?? '');
+  const minimo = m.match(/at least (\d+) characters/i);
+  if (/already|registered|exists/i.test(m)) return 'Já existe um usuário com este e-mail.';
+  if (minimo) return `A senha precisa ter pelo menos ${minimo[1]} caracteres.`;
+  if (/pwned|leaked|weak|compromised/i.test(m)) return 'Esta senha é fraca ou já apareceu em vazamentos. Escolha outra.';
+  if (/should contain|characters? of each/i.test(m)) return 'A senha precisa misturar letras maiúsculas, minúsculas, números e símbolos, como pedem as regras do projeto.';
+  if (/email/i.test(m) && /invalid|validate/i.test(m)) return 'O Supabase não aceitou este e-mail. Confira o endereço.';
+  if (/signups? not allowed|disabled/i.test(m)) return 'O cadastro de novos acessos está desligado no Supabase.';
+  if (/rate limit|too many/i.test(m)) return 'Muitos cadastros seguidos. Aguarde alguns minutos e tente de novo.';
+  return `Não foi possível criar o acesso (resposta do Supabase: ${m || 'sem detalhe'}).`;
+}
+
+/**
  * Limpa o corpo do pedido.
  * @param {any} corpo
  * @returns {{ nome: string, email: string, senha: string, role: string, empresa_id: string | null }}

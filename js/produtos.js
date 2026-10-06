@@ -8,6 +8,7 @@
 
 import supabase from './supabaseClient.js';
 import { buscarTodos } from './consulta.js';
+import { carregarScript, plural } from './ui.js';
 
 // ─────────────────────────────────────────────────────────────
 //  listarProdutos(empresaId, { q, apenasAtivos, page, limit })
@@ -82,10 +83,57 @@ export async function buscarProdutoPorBarras(empresaId, barcode) {
     .eq('empresa_id', empresaId)
     .eq('codigo_barras', barcode.trim())
     .eq('ativo', true)
-    .maybeSingle();
+    .order('codigo_produto')
+    .limit(1);    // o banco não deixa repetir; um cadastro antigo com repetição não trava a leitura
 
   if (error) throw new Error(error.message);
-  return data;
+  return data?.[0] ?? null;
+}
+
+// Produto com este código na empresa, ativo ou não (para explicar o
+// "código repetido" quando o outro está inativo)
+export async function buscarCadastroPorCodigo(empresaId, codigo) {
+  const { data, error } = await supabase.from('produtos')
+    .select('id, codigo_produto, nome_produto, ativo')
+    .eq('empresa_id', empresaId).eq('codigo_produto', String(codigo).trim().toUpperCase())
+    .limit(1);
+  if (error) throw new Error(error.message);
+  return data?.[0] ?? null;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  listarCatalogo(empresaId) — os produtos ativos da empresa. A contagem
+//  guarda essa lista e procura nela, sem depender da rede a cada leitura.
+// ─────────────────────────────────────────────────────────────
+export async function listarCatalogo(empresaId) {
+  return buscarTodos(() => supabase
+    .from('produtos')
+    .select('id, codigo_produto, nome_produto, unidade_medida, codigo_barras')
+    .eq('empresa_id', empresaId)
+    .eq('ativo', true)
+    .order('codigo_produto'));
+}
+
+const _sem = s => String(s ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
+
+// Código de barras ou código do produto, exatos
+export function acharNoCatalogo(catalogo, codigo) {
+  const c = String(codigo ?? '').trim();
+  if (!c) return null;
+  return catalogo.find(p => p.codigo_barras === c) ?? catalogo.find(p => p.codigo_produto === c.toUpperCase()) ?? null;
+}
+
+// Como buscarProdutoUnificado, no catálogo: exato primeiro; depois nome ou
+// código que contêm o termo, sem diferença de acento e maiúscula (até 10)
+export function buscarNoCatalogo(catalogo, termo) {
+  const exato = acharNoCatalogo(catalogo, termo);
+  if (exato) return [exato];
+  const t = _sem(termo);
+  if (!t) return [];
+  return catalogo
+    .filter(p => _sem(p.nome_produto).includes(t) || _sem(p.codigo_produto).includes(t))
+    .sort((a, b) => a.nome_produto.localeCompare(b.nome_produto, 'pt-BR'))
+    .slice(0, 10);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -179,54 +227,100 @@ export async function atualizarProduto(id, campos) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  importarProdutosExcel(empresaId, linhas, usuarioId, { aoProgredir })
+//  lerPlanilha(arquivo) → { linhas, colunas }
+//  Lê a primeira aba de um .xlsx com o ExcelJS. Cada linha vem com o
+//  número real dela na planilha (n), para os avisos apontarem a linha
+//  certa mesmo com linhas em branco no meio.
+//  colunas: quais campos opcionais existem no cabeçalho.
+// ─────────────────────────────────────────────────────────────
+const CDN_EXCEL = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+
+export async function lerPlanilha(arquivo) {
+  const ExcelJS = await carregarScript(CDN_EXCEL, 'ExcelJS');
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(await arquivo.arrayBuffer());
+  const ws = wb.worksheets[0];
+  if (!ws) return { linhas: [], colunas: { unidade: false, codigo_barras: false } };
+  const texto = v => {
+    if (v == null) return '';
+    if (v instanceof Date) return v.toISOString().slice(0, 10);
+    if (typeof v === 'object') return v.richText ? v.richText.map(t => t.text).join('') : String(v.text ?? v.result ?? '');
+    return String(v);
+  };
+  const cabecalho = [];
+  ws.getRow(1).eachCell({ includeEmpty: true }, (c, col) => { cabecalho[col] = texto(c.value).trim(); });
+  const linhas = [];
+  ws.eachRow({ includeEmpty: false }, (row, n) => {
+    if (n === 1) return;
+    const obj = {};
+    row.eachCell({ includeEmpty: true }, (c, col) => { if (cabecalho[col]) obj[cabecalho[col]] = texto(c.value).trim(); });
+    if (Object.values(obj).some(Boolean)) linhas.push({ ...normalizarLinhaPlanilha(obj), n });
+  });
+  const tem = campo => cabecalho.some(h => h && SINONIMOS[campo].includes(_chave(h)));
+  return { linhas, colunas: { unidade: tem('unidade'), codigo_barras: tem('codigo_barras') } };
+}
+
+// ─────────────────────────────────────────────────────────────
+//  importarProdutosExcel(empresaId, linhas, usuarioId, opções)
 //
-//  linhas = [{ codigo, nome, unidade, codigo_barras }] (já lidas da
-//  planilha com o SheetJS). Grava em lotes de 500 (upsert pelo código),
+//  linhas = [{ codigo, nome, unidade, codigo_barras, n }] (de lerPlanilha;
+//  n é a linha na planilha). Grava em lotes de 500 (upsert pelo código),
 //  com uma consulta só para saber quais códigos já existem.
-//  aoProgredir(feitos, total) é chamado a cada lote.
+//  Só os campos que existem na planilha são gravados, e uma célula vazia
+//  não apaga o que já está cadastrado: reimportar só código e nome não
+//  some com a unidade nem com o código de barras.
+//  opções: { aoProgredir(feitos, total), totalLinhas, ignoradas: [{ n, motivo }] }
 //  Retorna { criados, atualizados, erros: [{ linha, motivo }] }
 // ─────────────────────────────────────────────────────────────
 const LOTE = 500;
 
-export async function importarProdutosExcel(empresaId, linhas, usuarioId, { aoProgredir } = {}) {
+export async function importarProdutosExcel(empresaId, linhas, usuarioId, { aoProgredir, totalLinhas = linhas.length, ignoradas = [] } = {}) {
   const erros = [], porCodigo = new Map();
   linhas.forEach((bruta, i) => {
     const l = normalizarLinhaPlanilha(bruta);
+    const linha = bruta.n ?? i + 2;
     const codigo = l.codigo.toUpperCase();
-    if (!codigo || !l.nome) { erros.push({ linha: i + 2, motivo: !codigo ? 'sem código' : 'sem nome' }); return; }
-    // Código repetido na planilha: vale a última linha
-    porCodigo.set(codigo, { linha: i + 2, payload: {
-      empresa_id:     empresaId,
-      codigo_produto: codigo,
-      nome_produto:   l.nome,
-      unidade_medida: l.unidade.toUpperCase() || null,
-      codigo_barras:  l.codigo_barras || null,
-      ativo:          true,
-    } });
+    if (!codigo || !l.nome) { erros.push({ linha, motivo: !codigo ? 'sem código' : 'sem nome' }); return; }
+    const payload = { empresa_id: empresaId, codigo_produto: codigo, nome_produto: l.nome, ativo: true };
+    if (l.unidade) payload.unidade_medida = l.unidade.toUpperCase();
+    if (l.codigo_barras) payload.codigo_barras = l.codigo_barras;
+    porCodigo.set(codigo, { linha, payload });   // código repetido na planilha: vale a última linha
   });
 
   const jaExistem = new Set((await buscarTodos(() => supabase.from('produtos')
     .select('codigo_produto').eq('empresa_id', empresaId).order('codigo_produto'))).map(p => p.codigo_produto));
 
   const lista = [...porCodigo.values()];
-  let criados = 0, atualizados = 0;
+  let criados = 0, atualizados = 0, feitos = 0;
   const contar = x => { if (jaExistem.has(x.payload.codigo_produto)) atualizados++; else criados++; };
+  // Num envio em lote, campo ausente vira vazio no banco: agrupa as linhas
+  // pelos campos que têm, e cada grupo vai num envio próprio
   const gravar = itens => supabase.from('produtos').upsert(itens.map(x => x.payload), { onConflict: 'empresa_id,codigo_produto' });
+  const grupos = new Map();
+  for (const x of lista) {
+    const chave = Object.keys(x.payload).sort().join(',');
+    if (!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave).push(x);
+  }
 
   aoProgredir?.(0, lista.length);
-  for (let i = 0; i < lista.length; i += LOTE) {
-    const lote = lista.slice(i, i + LOTE);
-    const { error } = await gravar(lote);
-    if (!error) lote.forEach(contar);
-    else {
-      // Lote recusado: refaz linha a linha, para dizer qual linha tem problema
-      for (const x of lote) {
-        const { error: e } = await gravar([x]);
-        if (e) erros.push({ linha: x.linha, motivo: e.message }); else contar(x);
+  for (const grupo of grupos.values()) {
+    for (let i = 0; i < grupo.length; i += LOTE) {
+      const lote = grupo.slice(i, i + LOTE);
+      const { error } = await gravar(lote);
+      if (!error) lote.forEach(contar);
+      else if (/fetch|network|load failed/i.test(error.message)) {
+        throw new Error(`Sem conexão com o servidor no meio da importação: ${plural(criados + atualizados, 'produto foi gravado', 'produtos foram gravados')} até aqui. Importe a planilha de novo quando a internet voltar; o que já foi gravado só é atualizado.`);
+      } else {
+        // Lote recusado: refaz linha a linha, para dizer qual linha tem problema
+        for (const x of lote) {
+          const { error: e } = await gravar([x]);
+          if (e) erros.push({ linha: x.linha, motivo: _motivoProduto(e, x.payload) }); else contar(x);
+        }
       }
+      feitos += lote.length;
+      aoProgredir?.(feitos, lista.length);
     }
-    aoProgredir?.(Math.min(i + LOTE, lista.length), lista.length);
   }
   erros.sort((a, b) => a.linha - b.linha);
 
@@ -234,14 +328,21 @@ export async function importarProdutosExcel(empresaId, linhas, usuarioId, { aoPr
   const { error: eLog } = await supabase.from('importacoes_produtos').insert([{
     empresa_id:   empresaId,
     usuario_id:   usuarioId,
-    total_linhas: linhas.length,
+    total_linhas: totalLinhas,
     criados, atualizados,
-    erros:        erros.length,
-    detalhes:     erros.length > 0 ? erros : null,
+    erros:        erros.length + ignoradas.length,
+    detalhes:     erros.length || ignoradas.length ? [...ignoradas.map(x => ({ linha: x.n, motivo: x.motivo })), ...erros] : null,
   }]);
   if (eLog) console.warn('[produtos] Registro da importação não gravado:', eLog.message);
 
   return { criados, atualizados, erros };
+}
+
+// Motivo legível de uma linha recusada pelo banco
+function _motivoProduto(e, payload) {
+  if (/produtos_barras_unico|codigo_barras/i.test(e.message)) return `código de barras ${payload.codigo_barras} já é de outro produto ativo`;
+  if (/duplicate|23505/i.test(e.message)) return `código ${payload.codigo_produto} repetido`;
+  return e.message;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -262,18 +363,33 @@ export async function clonarProdutos(origemId, destinoId, ids = null) {
   const novos = fonte.map(p => ({ ...p, empresa_id: destinoId, ativo: true }));
 
   // Códigos que já existem no destino serão atualizados, não criados
-  const existentes = await buscarTodos(() => supabase.from('produtos').select('codigo_produto').eq('empresa_id', destinoId).order('codigo_produto'));
-  const jaExistem = new Set(existentes.map(p => p.codigo_produto));
+  const existentes = await buscarTodos(() => supabase.from('produtos').select('codigo_produto, codigo_barras, ativo').eq('empresa_id', destinoId).order('codigo_produto'));
+  const noDestino = new Map(existentes.map(p => [p.codigo_produto, p]));
+  // Código de barras que no destino já é de outro produto ativo não é copiado
+  // (o banco recusaria o lote inteiro): o produto fica com o que já tinha
+  const donoDoEan = new Map(existentes.filter(p => p.ativo && p.codigo_barras).map(p => [p.codigo_barras, p.codigo_produto]));
+  let semEan = 0;
+  for (const n of novos) {
+    const dono = n.codigo_barras && donoDoEan.get(n.codigo_barras);
+    if (dono && dono !== n.codigo_produto) { n.codigo_barras = noDestino.get(n.codigo_produto)?.codigo_barras ?? null; semEan++; }
+  }
 
   // upsert para não duplicar por código, em lotes
+  let gravados = 0;
   for (let i = 0; i < novos.length; i += LOTE) {
     const { error } = await supabase
       .from('produtos')
       .upsert(novos.slice(i, i + LOTE), { onConflict: 'empresa_id,codigo_produto', ignoreDuplicates: false });
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (!gravados) throw new Error(error.message);
+      const e = new Error(`A clonagem parou no meio: ${plural(gravados, 'produto já foi copiado', 'produtos já foram copiados')}. Tente de novo; o que já foi copiado só é atualizado.`);
+      e.parcial = true;
+      throw e;
+    }
+    gravados += novos.slice(i, i + LOTE).length;
   }
-  const atualizados = novos.filter(p => jaExistem.has(p.codigo_produto)).length;
-  return { criados: novos.length - atualizados, atualizados };
+  const atualizados = novos.filter(p => noDestino.has(p.codigo_produto)).length;
+  return { criados: novos.length - atualizados, atualizados, semEan };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -287,8 +403,9 @@ const SINONIMOS = {
   unidade:       ['unidade', 'un', 'und', 'unid', 'unidademedida', 'unidadedemedida'],
   codigo_barras: ['codigobarras', 'codigodebarras', 'ean', 'gtin', 'barras', 'codbarras'],
 };
+const _chave = k => String(k).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 export function normalizarLinhaPlanilha(linha) {
-  const chave = k => String(k).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const chave = _chave;
   const porChave = Object.fromEntries(Object.entries(linha).map(([k, v]) => [chave(k), v]));
   const pegar = campo => String(SINONIMOS[campo].map(s => porChave[s]).find(v => v !== undefined && v !== '') ?? '').trim();
   return { codigo: pegar('codigo'), nome: pegar('nome'), unidade: pegar('unidade'), codigo_barras: pegar('codigo_barras') };

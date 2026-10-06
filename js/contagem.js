@@ -24,7 +24,7 @@ export async function buscarItemContado(auditoriaId, produtoId) {
     .eq('produto_id',   produtoId)
     .maybeSingle();
 
-  if (error) throw new Error(error.message);
+  if (error) throw erroDoBanco(error);
   return data;   // null se não existe ainda
 }
 
@@ -38,30 +38,39 @@ export async function buscarItemContado(auditoriaId, produtoId) {
 //  leitor, ou dois aparelhos no mesmo produto, nunca perdem unidades.
 //  Num banco sem essa função, faz em duas etapas (ler e gravar).
 // ─────────────────────────────────────────────────────────────
-let _semFuncaoNoBanco = false;
-const _funcaoAusente = e => e?.code === 'PGRST202' || /could not find the function|function .*registrar_contagem.* does not exist/i.test(e?.message ?? '');
+const _semFuncao = new Set();   // funções que o banco não tem (projeto com esquema antigo)
+const _funcaoAusente = (e, nome) => e?.code === 'PGRST202' || new RegExp(`could not find the function|function .*${nome}.* does not exist`, 'i').test(e?.message ?? '');
+
+// O erro do banco vira Error sem perder o código (a fila offline decide por ele)
+export function erroDoBanco(error) {
+  return Object.assign(new Error(error.message), { code: error.code, details: error.details });
+}
+export const JA_CONTADO = 'AS001';
+const _jaContado = atual => Object.assign(new Error('Este produto já foi contado nesta auditoria.'), { code: JA_CONTADO, details: String(atual ?? '') });
 
 export async function registrarContagem({
   auditoriaId,
   produtoId,
   quantidade,
   usuarioId,
-  acao = 'novo',   // 'novo' | 'sobrescrever' | 'somar'
+  acao = 'novo',     // 'novo' | 'sobrescrever' | 'somar'
+  idCliente = null,  // id do envio: o banco não aplica o mesmo id duas vezes
 }) {
   if (!(quantidade >= 0)) throw new Error('Quantidade não pode ser negativa.');
 
-  if (!_semFuncaoNoBanco) {
+  if (!_semFuncao.has('registrar_contagem')) {
     const { data, error } = await supabase.rpc('registrar_contagem', {
-      p_auditoria_id: auditoriaId, p_produto_id: produtoId, p_quantidade: quantidade, p_acao: acao,
+      p_auditoria_id: auditoriaId, p_produto_id: produtoId, p_quantidade: quantidade, p_acao: acao, p_id_cliente: idCliente,
     });
     if (!error) return Array.isArray(data) ? data[0] : data;
-    if (!_funcaoAusente(error)) throw new Error(error.message);
-    _semFuncaoNoBanco = true;
+    if (!_funcaoAusente(error, 'registrar_contagem')) throw erroDoBanco(error);
+    _semFuncao.add('registrar_contagem');
     console.warn('[contagem] O banco não tem a função registrar_contagem; usando o caminho em duas etapas. Veja supabase/schema.sql.');
   }
 
   const existente = await buscarItemContado(auditoriaId, produtoId);
   if (!existente) return await _inserirItem(auditoriaId, produtoId, quantidade, usuarioId);
+  if (acao === 'novo') throw _jaContado(existente.quantidade_contada);
   const novaQtd = acao === 'somar' ? Number(existente.quantidade_contada) + quantidade : quantidade;
   return await _atualizarItem(existente, novaQtd, usuarioId);
 }
@@ -87,39 +96,32 @@ export async function registrarScannerLeitura(auditoriaId, produtoId, usuarioId)
 //  Sempre grava histórico.
 // ─────────────────────────────────────────────────────────────
 export async function editarContagem(itemId, novaQtd, usuarioId, motivo = '') {
-  // 1. Busca valor atual
+  // A função corrigir_contagem leva o motivo para o histórico, que o banco grava
+  if (!_semFuncao.has('corrigir_contagem')) {
+    const { data, error } = await supabase.rpc('corrigir_contagem', { p_item_id: itemId, p_quantidade: novaQtd, p_motivo: motivo.trim() || null });
+    if (!error) return Array.isArray(data) ? data[0] : data;
+    if (!_funcaoAusente(error, 'corrigir_contagem')) throw erroDoBanco(error);
+    _semFuncao.add('corrigir_contagem');
+  }
+
+  // Banco antigo: confere, atualiza e só então grava o histórico
   const { data: item, error: errBusca } = await supabase
     .from('auditoria_itens')
     .select('id, quantidade_contada, auditoria_id')
     .eq('id', itemId)
     .single();
+  if (errBusca) throw erroDoBanco(errBusca);
 
-  if (errBusca) throw new Error(errBusca.message);
+  const { data: aud } = await supabase.from('auditorias').select('status').eq('id', item.auditoria_id).single();
+  if (aud?.status !== 'em_andamento') throw new Error('A auditoria não está em andamento: a contagem não pode mais mudar.');
 
-  // 2. Verifica se auditoria ainda está em andamento
-  const { data: aud } = await supabase
-    .from('auditorias')
-    .select('status')
-    .eq('id', item.auditoria_id)
-    .single();
-
-  if (aud?.status !== 'em_andamento') {
-    throw new Error('Não é possível editar uma auditoria já finalizada ou cancelada.');
-  }
-
-  // 3. Atualiza e só então grava o histórico: se a atualização falhar,
-  //    não fica registrada uma correção que não aconteceu.
   const { data, error } = await supabase
     .from('auditoria_itens')
-    .update({
-      quantidade_contada: novaQtd,
-      atualizado_em:      new Date().toISOString(),
-    })
+    .update({ quantidade_contada: novaQtd, atualizado_em: new Date().toISOString() })
     .eq('id', itemId)
     .select()
     .single();
-
-  if (error) throw new Error(error.message);
+  if (error) throw erroDoBanco(error);
   await _gravarHistorico(itemId, item.quantidade_contada, novaQtd, usuarioId, motivo);
   return data;
 }
@@ -157,7 +159,7 @@ export async function historicoItem(itemId) {
     .eq('auditoria_item_id', itemId)
     .order('criado_em', { ascending: false });
 
-  if (error) throw new Error(error.message);
+  if (error) throw erroDoBanco(error);
   return data ?? [];
 }
 
@@ -207,7 +209,7 @@ async function _inserirItem(auditoriaId, produtoId, quantidade, usuarioId) {
     `)
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) throw erroDoBanco(error);
   return data;
 }
 
@@ -225,7 +227,7 @@ async function _atualizarItem(existente, novaQtd, usuarioId) {
     `)
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) throw erroDoBanco(error);
   // Histórico só depois que a mudança foi gravada
   await _gravarHistorico(existente.id, existente.quantidade_contada, novaQtd, usuarioId);
   return data;
@@ -242,8 +244,7 @@ async function _gravarHistorico(itemId, qtdAnterior, qtdNova, usuarioId, motivo 
       motivo:              motivo.trim() || null,
     }]);
 
-  if (error) {
-    // Não lança erro para não bloquear a contagem; apenas loga
-    console.error('[contagem] Erro ao gravar histórico:', error);
-  }
+  // 42501: banco com o gatilho itens_historico, que já gravou o histórico.
+  // Outra falha não bloqueia a contagem; só fica no console.
+  if (error && error.code !== '42501') console.error('[contagem] Erro ao gravar histórico:', error);
 }

@@ -9,7 +9,7 @@ import { hasRole, isSupremo } from '../auth.js';
 import { buscarAuditoria, progresso, cancelarAuditoria, excluirAuditoria } from '../auditorias.js';
 import { listarItensContados, historicoItem } from '../contagem.js';
 import { escapeHtml, fmtDateTime, fmtInt, plural, badgeStatus, qtdHtml, difHtml, vazioHtml, abrirModal,
-         fmConfirm, showToast, showLoading, hideLoading, normalizar, debounce, delegarAcoes, ICONS, mensagemErro } from '../ui.js';
+         fmConfirm, showToast, showLoading, hideLoading, normalizar, debounce, delegarAcoes, ICONS, mensagemErro, partesHtml } from '../ui.js';
 
 const POR_PAGINA = 100;
 
@@ -88,17 +88,17 @@ export async function render(el, { perfil, params, irPara }) {
       <tbody>${pagina.map(i => {
         const un = i.produtos?.unidade_medida;
         const detalhe = finalizada
-          ? `<span class="nowrap">sistema ${qtdHtml(i.estoque_sistema, un)}</span> · <span class="nowrap">contado ${qtdHtml(i.quantidade_contada, un)}</span>`
-          : `${escapeHtml(i.usuarios?.nome ?? '—')} · <span class="nowrap">${fmtDateTime(i.data_registro)}</span>`;
+          ? [`sistema ${qtdHtml(i.estoque_sistema, un)}`, `contado ${qtdHtml(i.quantidade_contada, un)}`]
+          : [escapeHtml(i.usuarios?.nome ?? '—'), fmtDateTime(i.data_registro)];
         return `<tr>
           <td class="l-titulo"><span class="forte">${escapeHtml(i.produtos?.nome_produto ?? '—')}</span>${i.atualizado_em ? ' <span class="badge badge-calmo">corrigido</span>' : ''}
-            <span class="sub"><span class="codigo">${escapeHtml(i.produtos?.codigo_produto ?? '')}</span><span class="so-celular"> · ${detalhe}</span></span></td>
+            <span class="sub">${partesHtml([`<span class="codigo">${escapeHtml(i.produtos?.codigo_produto ?? '')}</span>`, ...detalhe.map(html => ({ html, classe: 'so-celular' }))])}</span></td>
           ${finalizada ? `<td class="num so-desktop">${qtdHtml(i.estoque_sistema, un)}</td>` : ''}
           <td class="num${finalizada ? ' so-desktop' : ''}">${qtdHtml(i.quantidade_contada, un)}</td>
           ${finalizada ? `<td class="num">${difHtml(i.diferenca, un)}</td>` : ''}
           <td class="so-desktop">${escapeHtml(i.usuarios?.nome ?? '—')}</td>
           <td class="nowrap so-desktop">${fmtDateTime(i.data_registro)}</td>
-          <td>${i.atualizado_em ? `<div class="acoes-linha"><button type="button" class="btn btn-ghost btn-sm" data-acao="correcoes" data-id="${escapeHtml(i.id)}">Ver correções</button></div>` : ''}</td>
+          <td>${i.atualizado_em ? `<div class="acoes-linha"><button type="button" class="btn btn-ghost btn-sm" data-acao="correcoes" data-id="${escapeHtml(i.id)}" aria-label="Ver correções de ${escapeHtml(i.produtos?.nome_produto ?? 'item')}">Ver correções</button></div>` : ''}</td>
         </tr>`;
       }).join('')}</tbody>
     </table></div>

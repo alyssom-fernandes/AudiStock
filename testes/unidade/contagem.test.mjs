@@ -1,11 +1,12 @@
-// Registro da contagem: soma atômica, histórico, auditoria fechada e
-// o caminho antigo, para bancos sem a função registrar_contagem.
+// Registro da contagem no banco da demonstração: o app usa a função
+// atômica registrar_contagem (a trava de verdade fica no Postgres e é
+// conferida em testes/banco), o histórico, a recusa em auditoria
+// fechada e o envio repetido da fila sem internet.
 import './ambiente.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { default: supabase } = await import('../../js/supabaseClient.js');
-const { registrarContagem, editarContagem, historicoItem, buscarItemContado, preencherEstoquesSistema, listarItensContados } = await import('../../js/contagem.js');
+const { registrarContagem, editarContagem, historicoItem, buscarItemContado, preencherEstoquesSistema, listarItensContados, JA_CONTADO } = await import('../../js/contagem.js');
 const { ID_USUARIO_DEMO } = await import('../../js/demo.js');
 
 const banco = () => JSON.parse(sessionStorage.getItem('audistock-demo-db')).tabelas;
@@ -59,21 +60,21 @@ test('o fechamento grava os saldos de todos os itens, em grupos', async () => {
   assert.ok(depois.every(i => i.estoque_sistema != null && i.diferenca === Math.round((i.quantidade_contada - i.estoque_sistema) * 1000) / 1000));
 });
 
-test('banco sem a função registrar_contagem: cai no caminho em duas etapas', async () => {
-  const original = supabase.rpc;
-  let tentativas = 0;
-  supabase.rpc = async (nome, args) => {
-    if (nome === 'registrar_contagem') { tentativas++; return { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.registrar_contagem' } }; }
-    return original(nome, args);
-  };
-  try {
-    const aud = auditoria('0007'), [p] = produtoNaoContado(aud);
-    await registrarContagem({ auditoriaId: aud.id, produtoId: p.id, quantidade: 2, usuarioId: ID_USUARIO_DEMO, acao: 'somar' });
-    const item = await registrarContagem({ auditoriaId: aud.id, produtoId: p.id, quantidade: 3, usuarioId: ID_USUARIO_DEMO, acao: 'somar' });
-    assert.equal(Number(item.quantidade_contada), 5);
-    assert.equal(tentativas, 1, 'depois da primeira recusa não tenta a função de novo');
-    assert.equal((await historicoItem(item.id)).length, 1);
-  } finally { supabase.rpc = original; }
+test("'novo' num produto já contado não substitui: o banco devolve a quantidade atual", async () => {
+  const aud = auditoria('0007'), [, , , p] = produtoNaoContado(aud);
+  await registrarContagem({ auditoriaId: aud.id, produtoId: p.id, quantidade: 4, usuarioId: ID_USUARIO_DEMO, acao: 'novo' });
+  const erro = await registrarContagem({ auditoriaId: aud.id, produtoId: p.id, quantidade: 9, usuarioId: ID_USUARIO_DEMO, acao: 'novo' }).catch(e => e);
+  assert.equal(erro.code, JA_CONTADO);
+  assert.equal(Number(erro.details), 4);
+  assert.equal(Number((await buscarItemContado(aud.id, p.id)).quantidade_contada), 4);
+});
+
+test('o mesmo envio (id_cliente) repetido conta uma vez só', async () => {
+  const aud = auditoria('0007'), [, , , , p] = produtoNaoContado(aud);
+  const idCliente = 'c0ffee00-0000-4000-8000-000000000001';
+  const envio = () => registrarContagem({ auditoriaId: aud.id, produtoId: p.id, quantidade: 2, usuarioId: ID_USUARIO_DEMO, acao: 'somar', idCliente });
+  await envio(); await envio(); await envio();
+  assert.equal(Number((await buscarItemContado(aud.id, p.id)).quantidade_contada), 2);
 });
 
 test('nenhum erro registrado pelo app', () => assert.deepEqual(globalThis.errosDoApp, []));

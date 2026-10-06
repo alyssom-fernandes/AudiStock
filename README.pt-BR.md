@@ -64,10 +64,14 @@ Capturadas do modo demonstração.
   costuma estar em mais de um lugar.
 - Correções ficam no histórico da auditoria, com o valor anterior, quem
   corrigiu, quando e por quê.
-- Sem internet, as contagens ficam guardadas no aparelho (IndexedDB). Com
-  a contagem ou o fechamento abertos, elas são enviadas assim que há
-  conexão: ao abrir a página, quando a rede volta e a cada 30 segundos.
-  O fechamento não é finalizado com contagens ainda no aparelho.
+- Sem internet, as contagens ficam guardadas no aparelho (IndexedDB), e o
+  cadastro de produtos fica na página da contagem: a busca e o leitor
+  continuam funcionando. Com a contagem ou o fechamento abertos, elas são
+  enviadas assim que há conexão: ao abrir a página, quando a rede volta e
+  a cada 30 segundos. Cada uma leva uma identificação, então um envio
+  repetido conta uma vez só, e cada uma pertence a quem registrou: sair
+  com contagens não enviadas mostra um aviso. O fechamento não é
+  finalizado com contagens ainda no aparelho.
 
 ### Fechamento e relatório
 
@@ -97,8 +101,11 @@ Capturadas do modo demonstração.
 ### Cadastros e acesso
 
 - Empresas, produtos e usuários. Produtos entram por planilha `.xlsx`,
-  com prévia das linhas com problema antes de importar e um modelo para
-  baixar, ou são copiados do cadastro de outra empresa.
+  com um modelo para baixar e uma prévia que aponta a linha da planilha
+  de cada problema (sem código ou nome, código repetido, código de barras
+  que já é de outro produto). Só as colunas da planilha são gravadas, e
+  uma célula vazia nunca apaga a unidade nem o código de barras. Os
+  produtos também podem ser copiados do cadastro de outra empresa.
 - Quatro perfis: **supremo** (tudo, inclusive excluir auditorias),
   **administrador** (cadastros, criar e cancelar auditorias),
   **auditor** (registra contagens e faz o fechamento) e **visualizador**
@@ -114,7 +121,8 @@ Capturadas do modo demonstração.
 - No celular, as tabelas viram cartões e os formulários abrem como folhas
   na parte de baixo da tela.
 - Pelo teclado: janelas prendem o foco e fecham com Esc; em ação
-  perigosa, o foco começa em "Cancelar".
+  perigosa, o foco começa em "Cancelar". Depois de salvar, o foco volta
+  ao botão da linha, e a troca de tela leva o foco ao título novo.
 - Falhas não tratadas ficam registradas no navegador e aparecem em
   **Configurações**, com um atalho no aviso de erro. No console,
   `errosRegistrados()` lista as 30 mais recentes deste navegador, de todas
@@ -140,7 +148,7 @@ cadastros. Uma chamada que o banco de mentira não conhece vira registro em
 | Dados e login | Supabase (PostgreSQL, Auth) |
 | Contagem sem internet | IndexedDB |
 | PDF | jsPDF e jsPDF-AutoTable |
-| Excel | ExcelJS para gerar, SheetJS para ler a planilha de produtos |
+| Excel | ExcelJS, para gerar os relatórios e ler a planilha de produtos |
 | Fontes | IBM Plex Sans e IBM Plex Mono (Google Fonts); IBM Plex Sans embutida no PDF |
 | Testes | `node:test`, PGlite (Postgres em WebAssembly) e Playwright |
 
@@ -153,36 +161,48 @@ ou importa, e o navegador confere cada uma pelo hash (SRI) antes de rodar.
 tabelas, as duas visões do relatório, a numeração AUD-AAAA-NNNN (sem
 número repetido, mesmo com duas pessoas criando ao mesmo tempo) e a função
 `registrar_contagem`, que soma a contagem numa só transação. Antes dela,
-20 leituras simultâneas do mesmo produto registravam 2; hoje um teste
-confere que registram 20.
+20 leituras simultâneas do mesmo produto registravam 2. Hoje o app manda
+toda leitura para essa função: um teste dispara 20 de uma vez no banco da
+demonstração e confere que registram 20, e a prova com dois aparelhos de
+verdade está no roteiro do teste real. Quando dois aparelhos contam um
+produto pela primeira vez, o segundo recebe a pergunta somar ou
+substituir, em vez de apagar o primeiro.
 
 As permissões ficam no banco: cada perfil só vê a sua empresa, o auditor
 conta e finaliza mas não cancela, só o supremo exclui, e gatilhos impedem
 que alguém promova a si mesmo ou altere uma contagem já finalizada.
 [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql) entra
-como cada perfil e confere 28 dessas regras; dá para rodar no SQL Editor
+como cada perfil e confere 42 dessas regras; dá para rodar no SQL Editor
 de qualquer projeto, e ele apaga o que criou.
 
 ## Testes
 
 ```bash
 npm install
-npm test            # unidade (Node) e banco (PGlite): 30 testes
-npm run test:e2e    # ponta a ponta no navegador (Playwright): 25 testes
+npm test            # unidade (Node) e banco (PGlite): 39 testes
+npm run test:e2e    # ponta a ponta no navegador (Playwright): 30 execuções
 ```
 
 - **Unidade:** o código real de `js/` rodando no Node sobre o banco do
-  modo demonstração: soma das leituras, histórico, importação em lotes,
-  CSV, números do relatório, regras de cadastro.
+  modo demonstração: soma das leituras, envio repetido que conta uma vez,
+  histórico, leitura das quantidades ("1.234" é mil duzentos e trinta e
+  quatro), importação em lotes que não apaga as colunas ausentes, CSV,
+  números do relatório, regras de cadastro.
 - **Banco:** `schema.sql` e `permissoes.sql` num Postgres de verdade
   (PGlite), sem instalar nada.
 - **Ponta a ponta:** contagem pelo teclado e pelo leitor, contagem sem
   internet que sobe ao reabrir a página, fechamento, exportações (o PDF
-  precisa sair com a fonte embutida), importação de planilha, cadastros,
-  teclado e celular. Cada teste termina conferindo que
-  `errosRegistrados()` está vazio.
+  precisa sair com a fonte embutida, e todo script de CDN, com o hash),
+  importação de planilha, cadastros, foco depois de salvar, tabelas em
+  largura de tablet, teclado e celular: 25 execuções em tela de
+  computador (um teste só de celular é pulado nela) e 5 no celular. Cada
+  teste termina conferindo que `errosRegistrados()` está vazio.
 
-Tudo roda no GitHub Actions a cada push. O roteiro para o teste com o
+Os testes de ponta a ponta usam o Google Chrome instalado. Sem ele, rode
+uma vez `npx playwright install chromium` e depois `PW_CHANNEL=chromium
+npm run test:e2e` (ou `PW_CHANNEL=msedge` para usar o Edge).
+
+Tudo roda no GitHub Actions a cada push na `main` e em cada pull request. O roteiro para o teste com o
 Supabase de verdade está em [`docs/teste-real.md`](docs/teste-real.md).
 
 ## Limitações conhecidas

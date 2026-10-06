@@ -5,14 +5,24 @@
 //
 //  O envio acontece ao abrir a página (se já houver internet), quando a
 //  rede volta, quando a aba volta a ficar visível e, enquanto houver
-//  fila, a cada 30 segundos. A demonstração usa uma fila separada, para
-//  nunca misturar contagens fictícias com as de verdade.
+//  fila, a cada 30 segundos.
 //
-//  USO:
-//    import { registrarOffline, initOfflineSync, isOnline } from './offline.js';
+//  Garantias:
+//  * cada registro leva um id gerado no aparelho; o banco não aplica o
+//    mesmo id duas vezes (resposta perdida, a mesma fila em duas abas);
+//  * só uma aba envia por vez (Web Locks);
+//  * só sobem os registros de quem está logado; os de outra pessoa
+//    esperam o login dela;
+//  * falha de rede, servidor fora do ar ou sessão vencida não descartam
+//    nada: o registro fica na fila e é enviado depois. Só uma recusa de
+//    verdade (permissão, auditoria encerrada) vira "Não enviada".
+//
+//  A demonstração usa uma fila separada, para nunca misturar contagens
+//  fictícias com as de verdade.
 // ================================================================
 
 import { registrarContagem } from './contagem.js';
+import { getPerfil } from './auth.js';
 import { showToast } from './ui.js';
 import { demoAtivo } from './demo.js';
 
@@ -45,16 +55,32 @@ export function isOnline() {
   return navigator.onLine;
 }
 
+// Falha de rede em qualquer navegador (Chrome, Firefox, Safari/iOS) ou tempo esgotado
+export function ehErroDeRede(err) {
+  return /failed to fetch|networkerror|network request failed|load failed|fetch|timed? ?out|aborted/i.test(String(err?.message ?? err ?? ''));
+}
+
+// Recusa definitiva do banco: tentar de novo não muda o resultado
+function _recusaDefinitiva(err) {
+  return ['42501', '22023', '23505', '23503', 'AS001'].includes(err?.code)
+    || /row-level security|não está em andamento|não é da empresa|permission denied/i.test(String(err?.message ?? ''));
+}
+
 // ─────────────────────────────────────────────────────────────
-//  registrarOffline({ auditoriaId, produtoId, quantidade, usuarioId, acao, produto })
-//  Guarda na fila. Retorna o id local.
+//  registrarOffline({ auditoriaId, produtoId, quantidade, usuarioId, acao, produto, idCliente })
+//  Guarda na fila. 'novo' vira 'somar': quem contou sem internet não viu
+//  o que os outros aparelhos gravaram nesse meio-tempo, e somar nunca
+//  apaga a contagem de ninguém. Retorna o id local.
 // ─────────────────────────────────────────────────────────────
-export async function registrarOffline({ auditoriaId, produtoId, quantidade, usuarioId, acao = 'somar', produto = null }) {
+export async function registrarOffline({ auditoriaId, produtoId, quantidade, usuarioId, acao = 'somar', produto = null, idCliente = null }) {
   const db = await openDB();
   const id = await new Promise((resolve, reject) => {
     const req = db.transaction(STORE, 'readwrite').objectStore(STORE).add({
       auditoria_id: auditoriaId, produto_id: produtoId, quantidade, usuario_id: usuarioId,
-      acao, status: 'pending', criado_em: new Date().toISOString(),
+      acao: acao === 'novo' ? 'somar' : acao, status: 'pending', criado_em: new Date().toISOString(),
+      // O mesmo id de uma tentativa que falhou pela rede: se ela chegou ao
+      // banco, o reenvio não soma de novo
+      id_cliente: idCliente ?? crypto.randomUUID(),
       // Só para mostrar na lista enquanto o registro não sobe
       produto: produto ? { codigo: produto.codigo_produto, nome: produto.nome_produto, un: produto.unidade_medida } : null,
     });
@@ -66,64 +92,93 @@ export async function registrarOffline({ auditoriaId, produtoId, quantidade, usu
 }
 
 // ─────────────────────────────────────────────────────────────
-//  contarPendentes(auditoriaId?) → quantos registros ainda não subiram
+//  resumoFila(auditoriaId?) → { meus, deOutros, comErro }
+//  meus: esperando envio, de quem está logado; deOutros: esperando o
+//  login de outra pessoa; comErro: recusados pelo servidor.
 // ─────────────────────────────────────────────────────────────
+export async function resumoFila(auditoriaId = null) {
+  const eu = getPerfil()?.id;
+  const itens = (await _todos(await openDB())).filter(i => !auditoriaId || i.auditoria_id === auditoriaId);
+  const pend = itens.filter(i => i.status === 'pending');
+  return {
+    meus: pend.filter(i => !eu || i.usuario_id === eu).length,
+    deOutros: eu ? pend.filter(i => i.usuario_id !== eu).length : 0,
+    comErro: itens.filter(i => i.status === 'error').length,
+  };
+}
+
+// Quantos registros ainda não subiram (de qualquer pessoa)
 export async function contarPendentes(auditoriaId = null) {
   const itens = await _todos(await openDB());
   return itens.filter(i => i.status === 'pending' && (!auditoriaId || i.auditoria_id === auditoriaId)).length;
 }
 
 // Tudo o que está no aparelho: 'pending' (esperando envio) e 'error'
-// (recusado pelo servidor; fica guardado até a pessoa descartar)
+// (recusado pelo servidor; fica guardado até a pessoa descartar ou
+// mandar de novo)
 export async function listarFila(auditoriaId = null) {
   const itens = await _todos(await openDB());
   return itens.filter(i => !auditoriaId || i.auditoria_id === auditoriaId).sort((a, b) => a.id - b.id);
 }
 
 export async function descartarRegistro(id) {
-  const db = await openDB();
-  await new Promise((resolve) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete = resolve; tx.onerror = resolve;
-  });
+  await _alterar(id, null);
+  _avisarMudanca();
+}
+
+// Um registro recusado volta para a fila (ex.: a permissão foi corrigida)
+export async function tentarDeNovo(id) {
+  await _alterar(id, item => ({ ...item, status: 'pending', erro: null }));
   _avisarMudanca();
 }
 
 // ─────────────────────────────────────────────────────────────
-//  sincronizar() — envia a fila, na ordem em que foi gravada
+//  sincronizar() — envia a fila de quem está logado, na ordem em que
+//  foi gravada. Só uma aba por vez.
 // ─────────────────────────────────────────────────────────────
 let _enviando = null;
 export function sincronizar() {
   if (!isOnline()) return Promise.resolve({ ok: 0, erros: 0 });
-  _enviando ??= (async () => {
+  const enviar = async () => {
     const db = await openDB();
-    const pendentes = (await _todos(db)).filter(i => i.status === 'pending').sort((a, b) => a.id - b.id);
+    const eu = getPerfil()?.id;
+    const pendentes = (await _todos(db))
+      .filter(i => i.status === 'pending' && (!eu || i.usuario_id === eu))
+      .sort((a, b) => a.id - b.id);
     let ok = 0, erros = 0;
     for (const item of pendentes) {
       try {
-        await registrarContagem({ auditoriaId: item.auditoria_id, produtoId: item.produto_id, quantidade: item.quantidade, usuarioId: item.usuario_id, acao: item.acao });
-        await _remover(db, item.id);
+        await registrarContagem({
+          auditoriaId: item.auditoria_id, produtoId: item.produto_id, quantidade: item.quantidade,
+          usuarioId: item.usuario_id, acao: item.acao === 'novo' ? 'somar' : item.acao, idCliente: item.id_cliente ?? null,
+        });
+        await _alterar(item.id, null);
         ok++;
       } catch (err) {
-        // Sem rede de novo: para e tenta depois. Recusa do servidor: guarda como erro.
-        if (!isOnline() || /fetch|network/i.test(err.message)) break;
-        await _marcarErro(db, item.id, err.message);
-        erros++;
+        if (_recusaDefinitiva(err)) {
+          await _alterar(item.id, x => ({ ...x, status: 'error', erro: err.message }));
+          erros++;
+          continue;
+        }
+        break;   // rede, servidor fora do ar, sessão vencida: tenta depois, sem perder nada
       }
     }
     return { ok, erros };
-  })().finally(() => { _enviando = null; });
+  };
+  _enviando ??= (navigator.locks?.request ? navigator.locks.request('audistock-fila', enviar) : enviar())
+    .finally(() => { _enviando = null; });
   return _enviando;
 }
 
 // ─────────────────────────────────────────────────────────────
 //  initOfflineSync(aoMudar, { auditoriaId })
 //  Mostra a faixa de conexão, envia a fila sempre que possível e chama
-//  aoMudar({ online, pendentes, enviados }) a cada mudança.
+//  aoMudar({ online, pendentes, deOutros, comErro, enviados }) a cada mudança.
 // ─────────────────────────────────────────────────────────────
 let _aoMudarGlobal = null;
 function _avisarMudanca() { _aoMudarGlobal?.(); }
+
+const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
 export function initOfflineSync(aoMudar, { auditoriaId = null } = {}) {
   const bar = document.getElementById('offlineBar');
@@ -131,20 +186,22 @@ export function initOfflineSync(aoMudar, { auditoriaId = null } = {}) {
 
   async function atualizar(enviados = 0) {
     const online = isOnline();
-    const pendentes = await contarPendentes(auditoriaId);
+    const { meus: pendentes, deOutros, comErro } = await resumoFila(auditoriaId);
     if (bar) {
-      bar.classList.toggle('visible', !online || pendentes > 0);
+      const outros = deOutros ? ` ${plural(deOutros, 'contagem de outra pessoa espera', 'contagens de outra pessoa esperam')} o login dela neste aparelho.` : '';
+      bar.classList.toggle('visible', !online || pendentes > 0 || deOutros > 0);
       bar.innerHTML = !online
-        ? `<span class="offline-dot"></span> Sem internet. ${pendentes ? `${pendentes} ${pendentes === 1 ? 'contagem guardada' : 'contagens guardadas'} neste aparelho; o envio é automático quando a rede voltar.` : 'As próximas contagens ficam guardadas neste aparelho.'}`
-        : `<span class="offline-dot"></span> Enviando ${pendentes} ${pendentes === 1 ? 'contagem guardada' : 'contagens guardadas'}…`;
+        ? `<span class="offline-dot"></span> Sem internet. ${pendentes ? `${plural(pendentes, 'contagem guardada', 'contagens guardadas')} neste aparelho; o envio é automático quando a rede voltar.` : 'As próximas contagens ficam guardadas neste aparelho.'}${outros}`
+        : pendentes ? `<span class="offline-dot"></span> Enviando ${plural(pendentes, 'contagem guardada', 'contagens guardadas')}…${outros}`
+        : `<span class="offline-dot"></span>${outros}`;
     }
     clearInterval(timer);
     if (online && pendentes) timer = setInterval(enviar, 30000);
-    aoMudar?.({ online, pendentes, enviados });
+    aoMudar?.({ online, pendentes, deOutros, comErro, enviados });
   }
 
   async function enviar() {
-    if (!isOnline() || !(await contarPendentes())) return atualizar();
+    if (!isOnline() || !(await resumoFila()).meus) return atualizar();
     await atualizar();
     const r = await sincronizar();
     if (r.ok) showToast(`${r.ok} ${r.ok === 1 ? 'contagem guardada foi enviada' : 'contagens guardadas foram enviadas'}.`, 'success');
@@ -160,20 +217,16 @@ export function initOfflineSync(aoMudar, { auditoriaId = null } = {}) {
   return { enviar, atualizar };
 }
 
-function _remover(db, id) {
-  return new Promise((resolve) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete = resolve; tx.onerror = resolve;
-  });
-}
-
-function _marcarErro(db, id, erro) {
-  return new Promise((resolve) => {
+// Altera (ou apaga, com fn nula) um registro da fila
+function _alterar(id, fn) {
+  return openDB().then(db => new Promise((resolve) => {
     const tx = db.transaction(STORE, 'readwrite');
     const store = tx.objectStore(STORE);
-    const get = store.get(id);
-    get.onsuccess = () => { if (get.result) store.put({ ...get.result, status: 'error', erro }); };
+    if (!fn) store.delete(id);
+    else {
+      const get = store.get(id);
+      get.onsuccess = () => { if (get.result) store.put(fn(get.result)); };
+    }
     tx.oncomplete = resolve; tx.onerror = resolve;
-  });
+  }));
 }

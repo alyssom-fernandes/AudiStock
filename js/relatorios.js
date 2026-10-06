@@ -85,12 +85,14 @@ export function situacaoTexto(diferenca) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  exportarCSV(auditoriaId, filtro, ordem) → texto CSV
+//  exportarCSV(auditoriaId, filtro, ordem, aud, { comparado }) → texto CSV
 //  Feito para abrir certo no Excel brasileiro: separador ";",
 //  decimal com vírgula, UTF-8 com BOM (no download) e \r\n.
-// ─────────────────────────────────────────────────────────────
 //  Cada linha leva a auditoria e a empresa, para juntar arquivos depois.
-export async function exportarCSV(auditoriaId, filtro = 'todos', ordem = 'diferenca', aud = null) {
+//  Sem saldo do sistema (auditoria em andamento ou cancelada), sai só a
+//  contagem, como na tela, no PDF e no Excel.
+// ─────────────────────────────────────────────────────────────
+export async function exportarCSV(auditoriaId, filtro = 'todos', ordem = 'diferenca', aud = null, { comparado = true } = {}) {
   const { itens } = await gerarRelatorio(auditoriaId, { filtro, ordem });
   const texto = v => {
     let s = String(v ?? '');
@@ -99,10 +101,12 @@ export async function exportarCSV(auditoriaId, filtro = 'todos', ordem = 'difere
   };
   const num = n => n == null || n === '' ? '' : Number(n).toLocaleString('pt-BR', { useGrouping: false, maximumFractionDigits: 3 });
 
-  const cabecalho = ['Auditoria', 'Empresa', 'Código', 'Produto', 'Unidade', 'Sistema', 'Contado', 'Diferença', 'Situação'].join(';');
+  const cabecalho = ['Auditoria', 'Empresa', 'Código', 'Produto', 'Unidade', ...(comparado ? ['Sistema', 'Contado', 'Diferença', 'Situação'] : ['Contado'])].join(';');
   const linhas = itens.map(i => [
     texto(aud?.numero_auditoria), texto(aud?.empresas?.nome), texto(i.codigo_produto), texto(i.nome_produto), texto(i.unidade_medida),
-    num(i.estoque_sistema), num(i.quantidade_contada), (Number(i.diferenca) > 0 ? '+' : '') + num(i.diferenca), situacaoTexto(i.diferenca),
+    ...(comparado
+      ? [num(i.estoque_sistema), num(i.quantidade_contada), (Number(i.diferenca) > 0 ? '+' : '') + num(i.diferenca), situacaoTexto(i.diferenca)]
+      : [num(i.quantidade_contada)]),
   ].join(';'));
   return [cabecalho, ...linhas].join('\r\n') + '\r\n';
 }

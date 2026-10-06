@@ -9,7 +9,7 @@ import { isSupremo } from '../auth.js';
 import { criarUsuario } from '../usuarios.js';
 import { listarEmpresas } from '../empresas.js';
 import { escapeHtml, fmtDateTime, badgeRole, vazioHtml, erroCargaHtml, abrirModal, fmConfirm, showToast, normalizar,
-         debounce, delegarAcoes, marcarInvalido, ICONS, NOMES_PAPEL, mensagemErro } from '../ui.js';
+         debounce, delegarAcoes, marcarInvalido, ICONS, NOMES_PAPEL, mensagemErro, partesHtml, emailHtml } from '../ui.js';
 
 const PLURAL_PAPEL = { supremo: 'supremos', administrador: 'administradores', auditor: 'auditores', visualizador: 'visualizadores' };
 const DESCRICAO_PAPEL = {
@@ -56,21 +56,22 @@ export async function render(el, { perfil }) {
       return;
     }
     card.innerHTML = `<div class="tabela-wrap"><table class="tabela-lista tabela-fixa">
-      <colgroup><col style="width:22%"><col><col style="width:130px"><col style="width:19%"><col style="width:150px"><col style="width:170px"></colgroup>
-      <thead><tr><th scope="col">Nome</th><th scope="col">E-mail</th><th scope="col">Perfil</th><th scope="col">Empresa</th><th scope="col">Último acesso</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead>
+      <colgroup><col style="width:18%"><col><col style="width:124px"><col style="width:16%"><col style="width:136px"><col style="width:164px"></colgroup>
+      <thead><tr><th scope="col">Nome</th><th scope="col">E-mail</th><th scope="col">Perfil</th><th scope="col" class="col-larga">Empresa</th><th scope="col" class="col-larga">Último acesso</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead>
       <tbody>${visiveis.map(u => {
         const eu = u.id === perfil.id;
         const pode = !eu && (isSupremo() || ['auditor', 'visualizador'].includes(u.role));
         return `<tr class="${u.ativo ? '' : 'inativa'}">
           <td class="l-titulo"><span class="forte">${escapeHtml(u.nome)}</span>${eu ? ' <span class="badge badge-neutro">Você</span>' : ''}${u.ativo ? '' : ' <span class="badge badge-neutro">Inativo</span>'}
-            <span class="sub so-celular-bloco">${escapeHtml(u.email)} · ${escapeHtml(nomeEmpresa(u.empresa_id))}</span></td>
-          <td class="so-desktop">${escapeHtml(u.email)}</td>
+            <span class="sub so-celular-bloco">${partesHtml([emailHtml(u.email), escapeHtml(u.empresa_id ? nomeEmpresa(u.empresa_id) : 'Todas as empresas')])}</span>
+            <span class="sub so-medio-bloco">${escapeHtml(u.empresa_id ? nomeEmpresa(u.empresa_id) : 'Todas as empresas')}</span></td>
+          <td class="so-desktop email">${emailHtml(u.email)}</td>
           <td>${badgeRole(u.role)}</td>
-          <td class="so-desktop">${u.empresa_id ? escapeHtml(nomeEmpresa(u.empresa_id)) : '<span class="muted">Todas</span>'}</td>
-          <td class="nowrap so-desktop">${fmtDateTime(u.ultimo_acesso)}</td>
+          <td class="so-desktop col-larga">${u.empresa_id ? escapeHtml(nomeEmpresa(u.empresa_id)) : '<span class="muted">Todas</span>'}</td>
+          <td class="nowrap so-desktop col-larga">${fmtDateTime(u.ultimo_acesso)}</td>
           <td class="l-linha"><div class="acoes-linha">${pode
             ? `<button type="button" class="btn btn-ghost btn-sm" data-acao="editar" data-id="${escapeHtml(u.id)}" aria-label="Editar ${escapeHtml(u.nome)}">Editar</button>
-               <button type="button" class="btn btn-ghost btn-sm" data-acao="status" data-id="${escapeHtml(u.id)}">${u.ativo ? 'Inativar' : 'Reativar'}</button>`
+               <button type="button" class="btn btn-ghost btn-sm" data-acao="status" data-id="${escapeHtml(u.id)}" aria-label="${u.ativo ? 'Inativar' : 'Reativar'} ${escapeHtml(u.nome)}">${u.ativo ? 'Inativar' : 'Reativar'}</button>`
             : eu ? '<a class="btn btn-ghost btn-sm" href="app.html?tela=config">Meu perfil</a>' : ''}</div></td>
         </tr>`;
       }).join('')}</tbody>
@@ -135,11 +136,11 @@ function abrirUsuario(u, { papeis, empresas, perfil, aoSalvar }) {
         <span class="form-hint" id="usrSenhaDica">Pelo menos 6 caracteres. Combine a senha com a pessoa; depois ela pode trocá-la em Configurações.</span></div>`}
       <div class="grade-2">
         <div class="form-group"><label class="form-label" for="usrRole">Perfil</label>
-          <select class="form-input" id="usrRole">${papeis.map(r => `<option value="${r}" ${r === (u?.role ?? 'auditor') ? 'selected' : ''}>${NOMES_PAPEL[r]}</option>`).join('')}</select></div>
+          <select class="form-input" id="usrRole" aria-describedby="usrPapelDica">${papeis.map(r => `<option value="${r}" ${r === (u?.role ?? 'auditor') ? 'selected' : ''}>${NOMES_PAPEL[r]}</option>`).join('')}</select>
+          <span class="form-hint" id="usrPapelDica" aria-live="polite"></span></div>
         <div class="form-group"><label class="form-label" for="usrEmpresa">Empresa</label>
           <select class="form-input" id="usrEmpresa" ${fixa ? 'disabled' : ''}>${fixa ? '' : '<option value="">Todas as empresas</option>'}${empresasOpc.map(e => `<option value="${escapeHtml(e.id)}" ${e.id === (u?.empresa_id ?? fixa?.id) ? 'selected' : ''}>${escapeHtml(e.nome)}</option>`).join('')}</select></div>
-      </div>
-      <p class="form-hint" id="usrPapelDica" aria-live="polite"></p>`,
+      </div>`,
     acoes: [
       { texto: 'Cancelar', classe: 'btn-secondary', acao: mm => mm.fechar() },
       { texto: editando ? 'Salvar alterações' : 'Cadastrar usuário', classe: 'btn-primary', tipo: 'submit' },

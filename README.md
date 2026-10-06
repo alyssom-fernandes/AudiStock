@@ -62,10 +62,14 @@ Captured from the demo mode.
   product is often stored in more than one place.
 - Corrections are kept in the audit history with the previous value, who
   changed it, when and why.
-- Offline, counts are stored on the device (IndexedDB). While the
-  counting or closing page is open, they are sent as soon as there is a
-  connection: when the page opens, when the network comes back and every
-  30 seconds. An audit cannot be finished with counts still on the device.
+- Offline, counts are stored on the device (IndexedDB) and the product
+  catalog stays on the counting page, so search and the scanner keep
+  working. While the counting or closing page is open, counts are sent as
+  soon as there is a connection: when the page opens, when the network
+  comes back and every 30 seconds. Each one carries an id, so a count sent
+  twice is applied once, and each one belongs to the person who recorded
+  it: signing out warns about counts not yet sent. An audit cannot be
+  finished with counts still on the device.
 
 ### Closing and report
 
@@ -95,8 +99,11 @@ Captured from the demo mode.
 ### Records and access
 
 - Companies, products and users. Products are imported from an `.xlsx`
-  sheet, with a preview of problem rows before importing and a template to
-  download, or copied from another company's catalog.
+  sheet, with a template to download and a preview that points to the
+  sheet row of each problem (missing code or name, repeated code, a barcode
+  already used by another product). Only the columns in the sheet are
+  written, so an empty cell never erases a unit or a barcode. Products can
+  also be copied from another company's catalog.
 - Four roles: **supremo** (everything, including deleting audits),
   **administrador** (records, creating and cancelling audits),
   **auditor** (records counts and does the closing) and **visualizador**
@@ -112,7 +119,8 @@ Captured from the demo mode.
 - Light and dark themes, following the device until someone picks one.
 - On phones, tables become cards and forms open as bottom sheets.
 - Keyboard friendly: dialogs trap focus and close with Esc; in dangerous
-  actions, focus starts on "Cancelar".
+  actions, focus starts on "Cancelar". After saving, focus goes back to
+  the row's button, and moving between screens focuses the new title.
 - Unhandled errors are logged in the browser and listed under
   **Configurações**, with a shortcut in the error notice. In the console,
   `errosRegistrados()` lists the 30 most recent in this browser, from
@@ -138,7 +146,7 @@ silently.
 | Data and login | Supabase (PostgreSQL, Auth) |
 | Offline counting | IndexedDB |
 | PDF | jsPDF and jsPDF-AutoTable |
-| Excel | ExcelJS to write, SheetJS to read the product sheet |
+| Excel | ExcelJS, to write the reports and to read the product sheet |
 | Fonts | IBM Plex Sans and IBM Plex Mono (Google Fonts); IBM Plex Sans embedded in the PDF |
 | Tests | `node:test`, PGlite (Postgres in WebAssembly) and Playwright |
 
@@ -152,34 +160,48 @@ uses: tables, the two report views, AUD-YYYY-NNNN numbering (never
 repeated, even with two people creating audits at once) and the
 `registrar_contagem` function, which adds up a count in a single
 transaction. Before it, 20 simultaneous scans of the same product
-recorded 2; a test now checks they record 20.
+recorded 2. The app now sends every scan to this function: a test fires
+20 at once against the demo database and expects 20, and the check with
+two real devices is in the real-world checklist. When two devices count
+a product for the first time, the second one gets the add-or-replace
+question instead of overwriting the first.
 
 Permissions live in the database: each role only sees its company, an
 auditor counts and finishes but cannot cancel, only the supremo deletes,
 and triggers stop anyone from promoting themselves or changing a finished
 count. [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql)
-signs in as each role and checks 28 of these rules; it runs in any
+signs in as each role and checks 42 of these rules; it runs in any
 project's SQL Editor and deletes what it creates.
 
 ## Tests
 
 ```bash
 npm install
-npm test            # unit (Node) and database (PGlite): 30 tests
-npm run test:e2e    # end to end in the browser (Playwright): 25 tests
+npm test            # unit (Node) and database (PGlite): 39 tests
+npm run test:e2e    # end to end in the browser (Playwright): 30 runs
 ```
 
 - **Unit:** the real `js/` code running on Node against the demo
-  database: scan totals, history, batched import, CSV, report numbers,
+  database: scan totals, a repeated send applied once, history, quantity
+  parsing ("1.234" is one thousand two hundred thirty-four), batched
+  import that never erases missing columns, CSV, report numbers,
   user-creation rules.
 - **Database:** `schema.sql` and `permissoes.sql` on a real Postgres
   (PGlite), with nothing to install.
 - **End to end:** keyboard and scanner counting, offline counts that are
   sent when the page is reopened, closing, exports (the PDF must embed
-  the font), spreadsheet import, records, keyboard and phone. Every test
-  ends by checking that `errosRegistrados()` is empty.
+  the font and every CDN script must carry its hash), spreadsheet import,
+  records, focus after saving, tables at tablet widths, keyboard and
+  phone: 25 runs at desktop size (one phone-only test is skipped there)
+  and 5 on a phone. Every test ends by checking that `errosRegistrados()`
+  is empty.
 
-Everything runs on GitHub Actions on every push. The checklist for a
+The end-to-end tests use the installed Google Chrome. Without it, run
+`npx playwright install chromium` once and then `PW_CHANNEL=chromium npm
+run test:e2e` (or `PW_CHANNEL=msedge` for Edge).
+
+Everything runs on GitHub Actions on every push to `main` and on pull
+requests. The checklist for a
 test against a real Supabase project is in
 [`docs/teste-real.md`](docs/teste-real.md) (in Portuguese).
 

@@ -9,7 +9,7 @@ import { listarEmpresas } from '../empresas.js';
 import { demoAtivo } from '../demo.js';
 import { escapeHtml, fmtDateTime, badgeRole, fmConfirm, showToast, renderUserCard, mensagemErro, marcarInvalido, limparInvalido } from '../ui.js';
 
-const TIPO_ERRO = { erro: 'Erro', promessa: 'Erro assíncrono', recurso: 'Arquivo não carregado', tratado: 'Tratado na tela' };
+const TIPO_ERRO = { erro: 'Erro', promessa: 'Erro assíncrono', recurso: 'Arquivo não carregado', tratado: 'Tratado na tela', tela: 'Tela não abriu', demo: 'Demonstração' };
 
 export async function render(el, { perfil }) {
   let nomeEmpresa = 'Todas';

@@ -20,6 +20,7 @@ import supabase from './supabaseClient.js';
 // ── Estado global do usuário ──────────────────────────────────
 let _currentUser   = null;   // auth.User do Supabase
 let _currentPerfil = null;   // linha da tabela `usuarios`
+let _vigiandoSessao = false;
 
 // ─────────────────────────────────────────────────────────────
 //  login(email, senha) → { user, perfil } | lança erro
@@ -90,6 +91,15 @@ export async function requireAuth() {
     await supabase.auth.signOut();
     window.location.href = `login.html?erro=${_currentPerfil ? 'inativo' : 'sem-perfil'}`;
     return null;
+  }
+
+  // Saiu em outra aba, ou a sessão não pôde ser renovada: volta ao login,
+  // em vez de seguir na tela recebendo "sem permissão" a cada ação
+  if (!_vigiandoSessao) {
+    _vigiandoSessao = true;
+    supabase.auth.onAuthStateChange(evento => {
+      if (evento === 'SIGNED_OUT') window.location.href = 'login.html';
+    });
   }
 
   return { user: _currentUser, perfil: _currentPerfil };

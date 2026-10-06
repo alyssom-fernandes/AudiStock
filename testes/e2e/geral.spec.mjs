@@ -21,6 +21,7 @@ test('com a demonstração aberta, o login avisa em vez de entrar nela', async (
 });
 
 test('todas as telas abrem sem erro e sem rolagem lateral @celular', async ({ page }) => {
+  test.slow();   // passa por sete telas
   await abrir(page);
   for (const tela of PAGINAS) {
     await page.goto(tela);

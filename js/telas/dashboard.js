@@ -8,7 +8,7 @@ import supabase from '../supabaseClient.js';
 import { hasRole } from '../auth.js';
 import { progresso } from '../auditorias.js';
 import { resumoAuditoria } from '../relatorios.js';
-import { escapeHtml, fmtDate, fmtInt, difHtml, vazioHtml, erroCargaHtml } from '../ui.js';
+import { escapeHtml, fmtDate, fmtInt, difHtml, vazioHtml, erroCargaHtml, partesHtml } from '../ui.js';
 
 const contar = q => q.then(({ count, error }) => { if (error) throw new Error(error.message); return count ?? 0; });
 
@@ -69,7 +69,7 @@ async function _andamento(alvo) {
     const p = prog[i];
     return `<li><a class="andamento" href="contagem.html?id=${encodeURIComponent(a.id)}">
       <span><span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span>
-        <span class="sub"><span class="codigo">${escapeHtml(a.numero_auditoria)}</span> · <span class="nowrap">desde ${fmtDate(a.data_inicio)}</span> · ${a.auditoria_cega ? 'cega' : 'visível'}</span></span>
+        <span class="sub">${partesHtml([`<span class="codigo">${escapeHtml(a.numero_auditoria)}</span>`, `desde ${fmtDate(a.data_inicio)}`, a.auditoria_cega ? 'cega' : 'visível'])}</span></span>
       <span class="andamento-pct">${p ? `${fmtInt(p.contados)} de ${fmtInt(p.totalProdutos)} · <strong>${p.pct}%</strong>` : '<span class="muted">progresso indisponível</span>'}</span>
       ${p ? `<span class="barra" role="progressbar" aria-valuenow="${p.pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Progresso da contagem"><i style="width:${p.pct}%"></i></span>` : ''}
     </a></li>`;
@@ -88,7 +88,7 @@ async function _ultima(el) {
     return;
   }
   $('#kpiUltima').textContent = `última em ${fmtDate(aud.data_fim)}`;
-  $('#sUltima').innerHTML = `<span class="codigo">${escapeHtml(aud.numero_auditoria)}</span> · ${escapeHtml(aud.empresas?.nome ?? '')} · ${fmtDate(aud.data_fim)}`;
+  $('#sUltima').innerHTML = partesHtml([`<span class="codigo">${escapeHtml(aud.numero_auditoria)}</span>`, escapeHtml(aud.empresas?.nome ?? ''), fmtDate(aud.data_fim)]);
   $('#aUltima').innerHTML = `<a class="btn btn-ghost btn-sm" href="relatorios.html?id=${encodeURIComponent(aud.id)}">Ver relatório</a>`;
 
   // Só os itens com divergência; os totais vêm do mesmo resumo usado no relatório
@@ -130,10 +130,18 @@ function _top(titulo, lista, vazio) {
       <thead><tr><th scope="col">Produto</th><th scope="col" class="num">Diferença</th></tr></thead>
       <tbody>${lista.map(r => `<tr>
         <td><span class="forte">${escapeHtml(r.nome_produto)}</span><span class="sub codigo">${escapeHtml(r.codigo_produto)}</span></td>
-        <td class="num">${difHtml(r.diferenca, r.unidade_medida)}</td>
+        <td class="num">${difHtml(r.diferenca, r.unidade_medida)}<span class="sub">${_proporcao(r)}</span></td>
       </tr>`).join('')}</tbody>
     </table></div>`;
-  return `<section class="card"><div class="card-header"><div><h2 class="card-title">${titulo}</h2><div class="card-sub">Da última auditoria finalizada</div></div></div>${corpo}</section>`;
+  return `<section class="card"><div class="card-header"><div><h2 class="card-title">${titulo}</h2><div class="card-sub">Da última auditoria finalizada, em proporção ao saldo</div></div></div>${corpo}</section>`;
+}
+
+// A ordem é pela diferença em proporção ao saldo: a proporção aparece junto
+function _proporcao(r) {
+  const saldo = Math.abs(Number(r.estoque_sistema));
+  if (!saldo) return 'saldo zerado';
+  const v = Math.abs(Number(r.diferenca)) / saldo * 100;
+  return `${v < 10 ? v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : fmtInt(Math.round(v))}% do saldo`;
 }
 
 // Arredonda mantendo a soma em 100 (método do maior resto)

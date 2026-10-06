@@ -46,6 +46,28 @@ test('Excel e PDF são gerados (bibliotecas conferidas por SRI, PDF com a fonte 
   const texto = pdf.bytes.toString('latin1');
   expect(texto).toMatch(/\/BaseFont \/IBMPlexSans/);
   expect(texto).toContain('/FontFile2');   // a fonte vai embutida no arquivo
+  // Todo script de fora da página veio com o hash conferido pelo navegador
+  const scripts = await page.$$eval('script[src^="https://"]', s => s.map(x => ({ src: x.src, integrity: x.integrity, cors: x.crossOrigin })));
+  expect(scripts.length).toBeGreaterThan(0);
+  for (const s of scripts) expect(s, s.src).toMatchObject({ integrity: expect.stringMatching(/^sha512-/), cors: 'anonymous' });
+});
+
+test('tabelas em tablet e notebook pequeno não espremem a coluna principal', async ({ page }) => {
+  test.slow();   // três telas em três larguras
+  await abrir(page);
+  const id = await idAuditoria(page, '0006');
+  const casos = [['app.html?tela=usuarios', 'td.l-titulo'], ['app.html?tela=auditorias', 'td.l-titulo'], [`relatorios.html?id=${id}`, '#relCorpo td.l-titulo']];
+  for (const largura of [768, 1024, 1180]) {
+    await page.setViewportSize({ width: largura, height: 900 });
+    for (const [url, celula] of casos) {
+      await page.goto(url);
+      await esperarCarregar(page);
+      const w = await page.locator(celula).first().evaluate(td => td.getBoundingClientRect().width);
+      expect(w, `${url} em ${largura}px`).toBeGreaterThan(140);
+      const sobra = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+      expect(sobra, `rolagem lateral em ${url} (${largura}px)`).toBeLessThanOrEqual(0);
+    }
+  }
 });
 
 test('relatório parcial mostra só a contagem, sem divergências', async ({ page }) => {

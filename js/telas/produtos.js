@@ -7,10 +7,11 @@
 
 import { hasRole } from '../auth.js';
 import { listarEmpresas, contarProdutosPorEmpresa } from '../empresas.js';
-import { listarProdutos, buscarProdutoPorId, criarProduto, atualizarProduto, importarProdutosExcel, clonarProdutos, normalizarLinhaPlanilha } from '../produtos.js';
+import { listarProdutos, buscarProdutoPorId, criarProduto, atualizarProduto, importarProdutosExcel, clonarProdutos, lerPlanilha,
+         listarCatalogo, buscarProdutoPorBarras, buscarCadastroPorCodigo } from '../produtos.js';
 import { baixarArquivo } from '../relatorios.js';
 import { escapeHtml, fmtInt, plural, vazioHtml, erroCargaHtml, abrirModal, fmConfirm, showToast, debounce, delegarAcoes,
-         marcarInvalido, ICONS, mensagemErro, carregarScript } from '../ui.js';
+         marcarInvalido, ICONS, mensagemErro, carregarScript, partesHtml } from '../ui.js';
 
 const POR_PAGINA = 50;
 const UNIDADES = ['UN', 'PCT', 'CX', 'FD', 'KG', 'G', 'L', 'ML', 'M', 'SC', 'CT', 'RL', 'GL', 'BD', 'BR', 'PR', 'DZ'];
@@ -46,7 +47,9 @@ export async function render(el, { perfil, params }) {
 
   if (!empresas.length) {
     $('.toolbar').remove();
-    card.innerHTML = vazioHtml({ titulo: 'Cadastre uma empresa antes dos produtos', texto: 'Cada produto pertence a uma empresa. Depois de cadastrá-la, importe a planilha de produtos.', acoes: '<a class="btn btn-primary" href="app.html?tela=empresas&nova=1">Cadastrar empresa</a>' });
+    card.innerHTML = perfil.empresa_id
+      ? vazioHtml({ titulo: 'Sua empresa está inativa', texto: 'Os produtos voltam a aparecer quando ela for reativada. Fale com quem administra o sistema.' })
+      : vazioHtml({ titulo: 'Cadastre uma empresa antes dos produtos', texto: 'Cada produto pertence a uma empresa. Depois de cadastrá-la, importe a planilha de produtos.', acoes: '<a class="btn btn-primary" href="app.html?tela=empresas&nova=1">Cadastrar empresa</a>' });
     return;
   }
   if (!empresas.some(e => e.id === empresaId)) empresaId = empresas[0].id;
@@ -100,7 +103,7 @@ export async function render(el, { perfil, params }) {
       <tbody>${data.map(p => `<tr class="${p.ativo ? '' : 'inativa'} ${destacar && p.codigo_produto === destacar ? 'recente' : ''}">
         <td class="codigo so-desktop">${escapeHtml(p.codigo_produto)}</td>
         <td class="l-titulo"><span class="forte">${escapeHtml(p.nome_produto)}</span>${p.ativo ? '' : ' <span class="badge badge-neutro">Inativo</span>'}
-          <span class="sub so-celular-bloco"><span class="codigo">${escapeHtml(p.codigo_produto)}</span> · ${escapeHtml(p.unidade_medida ?? '—')}${p.codigo_barras ? ` · <span class="codigo">${escapeHtml(p.codigo_barras)}</span>` : ''}</span></td>
+          <span class="sub so-celular-bloco">${partesHtml([`<span class="codigo">${escapeHtml(p.codigo_produto)}</span>`, escapeHtml(p.unidade_medida ?? '—'), p.codigo_barras ? `<span class="codigo">${escapeHtml(p.codigo_barras)}</span>` : ''])}</span></td>
         <td class="so-desktop">${escapeHtml(p.unidade_medida ?? '—')}</td>
         <td class="codigo so-desktop">${escapeHtml(p.codigo_barras ?? '—')}</td>
         <td>${admin ? `<div class="acoes-linha"><button type="button" class="btn btn-ghost btn-sm" data-acao="editar" data-id="${escapeHtml(p.id)}" aria-label="Editar ${escapeHtml(p.nome_produto)}">Editar</button></div>` : ''}</td>
@@ -169,13 +172,25 @@ async function abrirProduto(id, empresas, empresaAtual, aoSalvar) {
       const vazio = [nome, codigo].find(c => !c.value.trim());
       if (vazio) { vazio.focus(); return; }
       const cod = codigo.value.trim().toUpperCase();
+      const empresaDestino = id ? p.empresa_id : m.$('#prodEmp').value;
+      const barras = m.$('#prodBarras'), ean = barras.value.trim();
+      const ficaAtivo = id ? m.$('#prodAtivo').checked : true;
+      m.ocupado(true, 'Salvando…');
+      // Dois produtos ativos com o mesmo código de barras confundem o leitor na contagem
+      if (ean && ficaAtivo) {
+        const dono = await buscarProdutoPorBarras(empresaDestino, ean).catch(() => null);
+        if (dono && dono.id !== id) {
+          m.ocupado(false);
+          marcarInvalido(barras, `Este código de barras já é do produto ${dono.codigo_produto} · ${dono.nome_produto}.`);
+          barras.focus(); return;
+        }
+      }
       const campos = {
-        empresa_id: id ? p.empresa_id : m.$('#prodEmp').value,
+        empresa_id: empresaDestino,
         codigo_produto: codigo.value, nome_produto: nome.value,
         unidade_medida: m.$('#prodUnidade').value, codigo_barras: m.$('#prodBarras').value,
         ...(id ? { ativo: m.$('#prodAtivo').checked } : {}),
       };
-      m.ocupado(true, 'Salvando…');
       try {
         if (id) await atualizarProduto(id, campos); else await criarProduto(campos);
         m.fechar();
@@ -183,7 +198,14 @@ async function abrirProduto(id, empresas, empresaAtual, aoSalvar) {
         await aoSalvar(campos.empresa_id, id ? {} : { codigo: cod });
       } catch (err) {
         m.ocupado(false);
-        if (/duplicate|23505/i.test(err.message)) { marcarInvalido(codigo, `Já existe um produto com o código ${cod} nesta empresa.`); codigo.focus(); return; }
+        if (/duplicate|23505/i.test(err.message) && /barras/i.test(err.message)) { marcarInvalido(barras, 'Este código de barras já é de outro produto ativo desta empresa.'); barras.focus(); return; }
+        if (/duplicate|23505/i.test(err.message)) {
+          const outro = await buscarCadastroPorCodigo(campos.empresa_id, cod).catch(() => null);
+          marcarInvalido(codigo, outro && !outro.ativo
+            ? `O código ${cod} é de um produto inativo (${outro.nome_produto}). Para usá-lo de novo, marque “Mostrar inativos” na lista e reative o produto.`
+            : `Já existe um produto com o código ${cod} nesta empresa.`);
+          codigo.focus(); return;
+        }
         showToast(mensagemErro(err, 'salvar produto'), 'error');
       }
     },
@@ -191,11 +213,15 @@ async function abrirProduto(id, empresas, empresaAtual, aoSalvar) {
 }
 
 // ── Importação ──────────────────────────────────────────────
+// A planilha é lida pelo ExcelJS (js/produtos.js, lerPlanilha). A prévia
+// aponta, com o número da linha na planilha, o que vai ficar de fora:
+// linha sem código ou nome, código repetido e código de barras repetido
+// (na própria planilha ou já usado por outro produto ativo da empresa).
 function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
-  let linhas = [], concluido = false, empresaFeita = null;
+  let lida = null, prontas = [], ignoradas = [], concluido = false, gravouAlgo = false, empresaFeita = null, seqPrevia = 0;
   const m = abrirModal({
     titulo: 'Importar planilha de produtos',
-    subtitulo: 'Planilha Excel (.xlsx) com as colunas <strong>codigo</strong>, <strong>nome</strong>, <strong>unidade</strong> e <strong>codigo_barras</strong>. Códigos que já existem são atualizados.',
+    subtitulo: 'Planilha do Excel (.xlsx) com as colunas <strong>codigo</strong> e <strong>nome</strong>; <strong>unidade</strong> e <strong>codigo_barras</strong> são opcionais. Códigos que já existem são atualizados, e uma célula vazia não apaga o que já está cadastrado.',
     largura: 'lg',
     corpo: `
       <div class="form-group" id="impGrupoEmpresa"><label class="form-label" for="impEmpresa">Empresa</label>
@@ -203,7 +229,7 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
       <div class="form-group" id="impGrupoArquivo"><span class="form-label" id="impRotulo">Arquivo</span>
         <label class="zona-arquivo">${ICONS.baixar.replace('<svg', '<svg style="transform:rotate(180deg);width:18px;height:18px;color:var(--text-faint)"')}
           <span class="zona-arquivo-nome" id="impNome">Escolha a planilha (.xlsx)</span>
-          <input type="file" id="impArquivo" accept=".xlsx,.xls" class="sr-only" aria-labelledby="impRotulo impNome"/></label>
+          <input type="file" id="impArquivo" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="sr-only" aria-labelledby="impRotulo impNome"/></label>
         <span class="form-hint">Não tem a planilha no formato? <button type="button" class="link" id="impModelo">Baixar modelo</button></span></div>
       <div id="impPrevia" aria-live="polite"></div>`,
     acoes: [
@@ -211,7 +237,7 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
       { texto: 'Importar', classe: 'btn-primary', tipo: 'submit', id: 'btnImportar' },
     ],
     aoEnviar: importar,
-    aoFechar: () => { if (concluido) aoConcluir(empresaFeita); },
+    aoFechar: () => { if (concluido || gravouAlgo) aoConcluir(empresaFeita); },
   });
   const btnImp = m.$('#btnImportar');
   btnImp.disabled = true;
@@ -225,6 +251,7 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
       ws.addRow(['100101', 'Arroz Branco Tipo 1 5kg', 'PCT', '7891234567895']);
       ws.addRow(['100102', 'Queijo Muçarela Fatiado', 'KG', '']);
       ws.getRow(1).font = { bold: true };
+      ws.getColumn(1).numFmt = '@';
       ws.getColumn(4).numFmt = '@';
       baixarArquivo(new Blob([await wb.xlsx.writeBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'modelo-produtos-audistock.xlsx');
     } catch (err) { showToast(mensagemErro(err, 'baixar modelo'), 'error'); }
@@ -233,71 +260,115 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
   m.$('#impArquivo').addEventListener('change', async e => {
     const arquivo = e.target.files[0];
     const previa = m.$('#impPrevia');
-    linhas = []; btnImp.disabled = true;
+    lida = null; prontas = []; btnImp.disabled = true; ++seqPrevia;
     m.$('#impNome').textContent = arquivo ? arquivo.name : 'Escolha a planilha (.xlsx)';
     m.$('#impNome').classList.toggle('escolhido', !!arquivo);
     if (!arquivo) { previa.innerHTML = ''; return; }
+    if (!/\.xlsx$/i.test(arquivo.name)) {
+      previa.innerHTML = `<div class="aviso aviso-perigo">${ICONS.erro}<p>Este arquivo não é uma planilha .xlsx. No Excel, use “Salvar como” e escolha “Pasta de Trabalho do Excel (.xlsx)”.</p></div>`;
+      return;
+    }
+    previa.innerHTML = '<p class="form-hint">Lendo a planilha…</p>';
     try {
-      const XLSX = await carregarScript(`${CDN}/xlsx/0.18.5/xlsx.full.min.js`, 'XLSX');
-      const wb = XLSX.read(await arquivo.arrayBuffer(), { type: 'array' });
-      linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' }).map(normalizarLinhaPlanilha)
-        .map(l => ({ ...l, codigo: l.codigo.toUpperCase(), unidade: l.unidade.toUpperCase() }));
-      // Linha sem código ou nome, ou código repetido na própria planilha, fica de fora
-      const vistos = new Map();
-      const problemas = [];
-      linhas.forEach((l, i) => {
-        const n = i + 2;
-        if (!l.codigo || !l.nome) { problemas.push({ n, motivo: !l.codigo ? 'sem código' : 'sem nome' }); l.ignorar = true; return; }
-        if (vistos.has(l.codigo)) { problemas.push({ n, motivo: `código ${l.codigo} repetido (já está na linha ${vistos.get(l.codigo)})` }); l.ignorar = true; return; }
-        vistos.set(l.codigo, n);
-      });
-      const validas = linhas.filter(l => !l.ignorar).length;
-      if (!validas) {
-        previa.innerHTML = `<div class="aviso aviso-aviso">${ICONS.alerta}<div><p><strong>Nenhum produto reconhecido nesta planilha.</strong> A primeira linha precisa ter os cabeçalhos <strong>codigo</strong> e <strong>nome</strong> (unidade e codigo_barras são opcionais).</p></div></div>`;
-        return;
-      }
-      previa.innerHTML = `
-        <div class="aviso ${problemas.length ? 'aviso-aviso' : ''}">${problemas.length ? ICONS.alerta : ICONS.ok}
-          <div><p><strong>${plural(validas, 'produto pronto', 'produtos prontos')} para importar</strong>${problemas.length ? ` · ${plural(problemas.length, 'linha será ignorada', 'linhas serão ignoradas')}` : ''}.</p>
-          ${problemas.length ? `<ul class="lista-erros">${problemas.slice(0, 5).map(x => `<li>Linha ${x.n}: ${escapeHtml(x.motivo)}</li>`).join('')}${problemas.length > 5 ? `<li>e mais ${problemas.length - 5}</li>` : ''}</ul>` : ''}</div></div>
-        <div class="tabela-wrap" style="border:1px solid var(--border);border-radius:var(--r)"><table>
-          <thead><tr><th scope="col">Código</th><th scope="col">Nome</th><th scope="col">Unidade</th></tr></thead>
-          <tbody>${linhas.filter(l => !l.ignorar).slice(0, 3).map(l => `<tr><td class="codigo">${escapeHtml(l.codigo)}</td><td>${escapeHtml(l.nome)}</td><td>${escapeHtml(l.unidade || '—')}</td></tr>`).join('')}</tbody>
-        </table></div>
-        ${validas > 3 ? `<p class="form-hint" style="margin-top:6px">Primeiros 3 de ${plural(validas, 'produto', 'produtos')}.</p>` : ''}`;
-      btnImp.disabled = false;
+      lida = await lerPlanilha(arquivo);
+      await desenharPrevia();
     } catch (err) {
+      console.warn('[importação]', err);
       previa.innerHTML = `<div class="aviso aviso-perigo">${ICONS.erro}<p>${escapeHtml(/carregar/.test(err.message) ? err.message : 'Não foi possível ler o arquivo. Confira se é uma planilha .xlsx válida.')}</p></div>`;
     }
   });
+  // A conferência dos códigos de barras depende da empresa escolhida
+  m.$('#impEmpresa').addEventListener('change', () => { if (lida) desenharPrevia(); });
+
+  async function desenharPrevia() {
+    const minha = ++seqPrevia;
+    const previa = m.$('#impPrevia');
+    btnImp.disabled = true;
+    let catalogo = [], semConferir = false;
+    try { catalogo = await listarCatalogo(m.$('#impEmpresa').value); } catch (_) { semConferir = true; }
+    if (minha !== seqPrevia) return;   // trocou de arquivo ou de empresa no meio
+
+    const donoDoEan = new Map(catalogo.filter(x => x.codigo_barras).map(x => [x.codigo_barras, x]));
+    const codigos = new Map(), eans = new Map();
+    prontas = []; ignoradas = [];
+    for (const l of lida.linhas) {
+      const codigo = l.codigo.toUpperCase(), ean = l.codigo_barras;
+      let motivo = null;
+      if (!codigo || !l.nome) motivo = !codigo ? 'sem código' : 'sem nome';
+      else if (codigos.has(codigo)) motivo = `código ${codigo} repetido (já está na linha ${codigos.get(codigo)})`;
+      else if (ean && eans.has(ean)) motivo = `código de barras ${ean} repetido (já está na linha ${eans.get(ean)})`;
+      else if (ean && donoDoEan.has(ean) && donoDoEan.get(ean).codigo_produto !== codigo) {
+        const dono = donoDoEan.get(ean);
+        motivo = `código de barras ${ean} já é do produto ${dono.codigo_produto} · ${dono.nome_produto}`;
+      }
+      if (motivo) { ignoradas.push({ n: l.n, motivo }); continue; }
+      codigos.set(codigo, l.n);
+      if (ean) eans.set(ean, l.n);
+      prontas.push({ ...l, codigo, unidade: l.unidade.toUpperCase() });
+    }
+
+    if (!prontas.length) {
+      // Só linhas repetidas: mostra quais; nenhuma com código e nome: o cabeçalho não foi reconhecido
+      previa.innerHTML = ignoradas.some(x => !/^sem /.test(x.motivo))
+        ? avisoProblemas()
+        : `<div class="aviso aviso-aviso">${ICONS.alerta}<div><p><strong>Nenhum produto reconhecido nesta planilha.</strong> A primeira linha precisa ter os cabeçalhos <strong>codigo</strong> e <strong>nome</strong> (unidade e codigo_barras são opcionais).</p>${ignoradas.length ? listaProblemas() : ''}</div></div>`;
+      return;
+    }
+    const faltam = [!lida.colunas.unidade && 'unidade', !lida.colunas.codigo_barras && 'codigo_barras'].filter(Boolean);
+    const colBarras = lida.colunas.codigo_barras;
+    previa.innerHTML = `
+      ${avisoProblemas()}
+      ${faltam.length ? `<p class="form-hint">A planilha não tem a coluna ${faltam.map(c => `<strong>${c}</strong>`).join(' nem ')}: nos produtos que já existem, ${faltam.length > 1 ? 'esses campos ficam' : 'esse campo fica'} como ${faltam.length > 1 ? 'estão' : 'está'}.</p>` : ''}
+      ${semConferir ? '<p class="form-hint">Não foi possível conferir os códigos de barras com o cadastro agora; um código repetido será recusado na gravação.</p>' : ''}
+      <div class="tabela-wrap" style="border:1px solid var(--border);border-radius:var(--r)"><table>
+        <thead><tr><th scope="col">Linha</th><th scope="col">Código</th><th scope="col">Nome</th><th scope="col">Unidade</th>${colBarras ? '<th scope="col">Código de barras</th>' : ''}</tr></thead>
+        <tbody>${prontas.slice(0, 3).map(l => `<tr><td class="num muted">${l.n}</td><td class="codigo">${escapeHtml(l.codigo)}</td><td>${escapeHtml(l.nome)}</td><td>${escapeHtml(l.unidade || '—')}</td>${colBarras ? `<td class="codigo">${escapeHtml(l.codigo_barras || '—')}</td>` : ''}</tr>`).join('')}</tbody>
+      </table></div>
+      ${prontas.length > 3 ? `<p class="form-hint" style="margin-top:6px">Primeiros 3 de ${plural(prontas.length, 'produto', 'produtos')}.</p>` : ''}`;
+    btnImp.disabled = false;
+  }
+  const listaProblemas = () => `<ul class="lista-erros">${ignoradas.slice(0, 5).map(x => `<li>Linha ${x.n}: ${escapeHtml(x.motivo)}</li>`).join('')}${ignoradas.length > 5 ? `<li>e mais ${ignoradas.length - 5}</li>` : ''}</ul>`;
+  const avisoProblemas = () => `<div class="aviso ${ignoradas.length ? 'aviso-aviso' : ''}">${ignoradas.length ? ICONS.alerta : ICONS.ok}
+      <div><p><strong>${plural(prontas.length, 'produto pronto', 'produtos prontos')} para importar</strong>${ignoradas.length ? ` · ${plural(ignoradas.length, 'linha será ignorada', 'linhas serão ignoradas')}` : ''}.</p>
+      ${ignoradas.length ? listaProblemas() : ''}</div></div>`;
 
   async function importar(mm) {
     if (concluido) { mm.fechar(); return; }
+    if (!prontas.length) return;
     const empresaId = mm.$('#impEmpresa').value;
+    const campos = [mm.$('#impEmpresa'), mm.$('#impArquivo')];
     mm.ocupado(true, 'Importando…');
+    campos.forEach(c => { c.disabled = true; });
     const previa = mm.$('#impPrevia');
-    previa.insertAdjacentHTML('afterbegin', `<div class="importando" id="impProgresso"><div class="importando-linha"><span>Gravando os produtos…</span><strong id="impPct">0%</strong></div>
+    previa.insertAdjacentHTML('afterbegin', `<div class="importando" id="impProgresso"><div class="importando-linha"><span>Gravando os produtos… não feche esta janela.</span><strong id="impPct">0%</strong></div>
       <div class="barra" role="progressbar" aria-label="Progresso da importação" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i style="width:0%"></i></div></div>`);
     const progredir = (feitos, total) => {
       const pct = total ? Math.round(feitos / total * 100) : 100;
+      if (feitos) { gravouAlgo = true; empresaFeita = empresaId; }
       mm.$('#impPct').textContent = `${pct}%`;
       mm.$('#impProgresso .barra').setAttribute('aria-valuenow', pct);
       mm.$('#impProgresso .barra i').style.width = `${pct}%`;
     };
     try {
-      const r = await importarProdutosExcel(empresaId, linhas.filter(l => !l.ignorar), perfil.id, { aoProgredir: progredir });
+      const r = await importarProdutosExcel(empresaId, prontas, perfil.id, { aoProgredir: progredir, totalLinhas: lida.linhas.length, ignoradas });
       concluido = true; empresaFeita = empresaId;
       mm.semAlteracoes();
       const nomeEmp = empresas.find(e => e.id === empresaId)?.nome ?? '';
-      const partes = [r.criados && plural(r.criados, 'produto criado', 'produtos criados'), r.atualizados && plural(r.atualizados, 'atualizado', 'atualizados'), r.erros.length && plural(r.erros.length, 'linha com erro', 'linhas com erro')].filter(Boolean);
+      const falhas = [...ignoradas.map(x => ({ linha: x.n, motivo: x.motivo })), ...r.erros].sort((a, b) => a.linha - b.linha);
+      const partes = [r.criados && plural(r.criados, 'produto criado', 'produtos criados'), r.atualizados && plural(r.atualizados, 'atualizado', 'atualizados'), falhas.length && plural(falhas.length, 'linha não importada', 'linhas não importadas')].filter(Boolean);
       mm.$('#impGrupoEmpresa').hidden = true; mm.$('#impGrupoArquivo').hidden = true;
-      mm.$('#impPrevia').innerHTML = `<div class="aviso ${r.erros.length ? 'aviso-aviso' : 'aviso-sucesso'}">${r.erros.length ? ICONS.alerta : ICONS.ok}
+      previa.innerHTML = `<div class="aviso ${falhas.length ? 'aviso-aviso' : 'aviso-sucesso'}">${falhas.length ? ICONS.alerta : ICONS.ok}
         <div><p><strong>Importação concluída em ${escapeHtml(nomeEmp)}.</strong> ${partes.join(' · ') || 'Nenhuma alteração'}.</p>
-        ${r.erros.length ? `<ul class="lista-erros">${r.erros.slice(0, 5).map(x => `<li>Linha ${x.linha}: ${escapeHtml(x.motivo)}</li>`).join('')}${r.erros.length > 5 ? `<li>e mais ${r.erros.length - 5}</li>` : ''}</ul>` : ''}</div></div>`;
+        ${falhas.length ? `<ul class="lista-erros">${falhas.slice(0, 5).map(x => `<li>Linha ${x.linha}: ${escapeHtml(x.motivo)}</li>`).join('')}${falhas.length > 5 ? `<li>e mais ${falhas.length - 5}</li>` : ''}</ul>` : ''}</div></div>`;
       mm.ocupado(false);
       btnImp.textContent = 'Ver produtos';
       mm.$('.modal-rodape .btn-secondary').hidden = true;
-    } catch (err) { mm.$('#impProgresso')?.remove(); mm.ocupado(false); showToast(mensagemErro(err, 'importar planilha'), 'error'); }
+      btnImp.focus();
+    } catch (err) {
+      mm.$('#impProgresso')?.remove(); mm.ocupado(false);
+      campos.forEach(c => { c.disabled = false; });
+      showToast(mensagemErro(err, 'importar planilha'), 'error', 9000);
+    }
   }
 }
 
@@ -324,7 +395,7 @@ function abrirClonagem(empresas, empresaAtual, aoConcluir) {
       const origem = mm.$('#clOrigem').value, destino = mm.$('#clDestino').value;
       if (!destino) { marcarInvalido(mm.$('#clDestino'), 'Escolha a empresa de destino.'); mm.$('#clDestino').focus(); return; }
       if (nDestino) {
-        const ok = await fmConfirm({ titulo: `${nome(destino)} já tem produtos`, msg: `Ela já tem ${plural(nDestino, 'produto cadastrado', 'produtos cadastrados')}. Os ${plural(nOrigem ?? 0, 'produto', 'produtos')} de ${nome(origem)} serão somados, e os códigos repetidos terão nome, unidade e código de barras atualizados.`, confirmTxt: 'Clonar mesmo assim' });
+        const ok = await fmConfirm({ titulo: `${nome(destino)} já tem produtos`, msg: `Ela já tem ${plural(nDestino, 'produto cadastrado', 'produtos cadastrados')}. Os ${plural(nOrigem ?? 0, 'produto', 'produtos')} de ${nome(origem)} serão somados. Nos códigos repetidos, nome, unidade e código de barras são atualizados, e um produto inativo com o mesmo código volta a ficar ativo.`, confirmTxt: 'Clonar mesmo assim' });
         if (!ok) return;
       }
       mm.ocupado(true, 'Clonando…');
@@ -332,9 +403,13 @@ function abrirClonagem(empresas, empresaAtual, aoConcluir) {
         const r = await clonarProdutos(origem, destino);
         mm.fechar();
         const partes = [r.criados && plural(r.criados, 'produto copiado', 'produtos copiados'), r.atualizados && plural(r.atualizados, 'atualizado', 'atualizados')].filter(Boolean);
-        showToast(`${partes.join(' e ') || 'Nenhum produto copiado'} para ${nome(destino)}.`, 'success');
+        showToast(`${partes.join(' e ') || 'Nenhum produto copiado'} para ${nome(destino)}.${r.semEan ? ` ${plural(r.semEan, 'código de barras não foi copiado porque já é', 'códigos de barras não foram copiados porque já são')} de outro produto lá.` : ''}`, r.semEan ? 'warning' : 'success', r.semEan ? 8000 : 4000);
         await aoConcluir(destino);
-      } catch (err) { mm.ocupado(false); showToast(mensagemErro(err, 'clonar produtos'), 'error'); }
+      } catch (err) {
+        mm.ocupado(false);
+        showToast(mensagemErro(err, 'clonar produtos'), 'error', 9000);
+        if (err.parcial) await aoConcluir(destino);   // parte já foi copiada: a lista mostra o destino
+      }
     },
   });
   const atualizarResumo = async () => {

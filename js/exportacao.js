@@ -341,7 +341,8 @@ export async function gerarExcel({ aud, resumo, itens, naoContados, filtroRotulo
     ] });
   }
   ws.pageSetup = { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '1:1', margins: { left: 0.4, right: 0.4, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 } };
-  ws.headerFooter.oddFooter = `&L${aud.numero_auditoria} · ${aud.empresas?.nome ?? ''}&RPágina &P de &N`;
+  // No rodapé do Excel "&" é código de controle: o "&" do texto vira "&&"
+  ws.headerFooter.oddFooter = `&L${`${aud.numero_auditoria} · ${aud.empresas?.nome ?? ''}`.replace(/&/g, '&&')}&RPágina &P de &N`;
 
   // Aba Não contados
   if (naoContados?.length) {

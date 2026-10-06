@@ -8,7 +8,7 @@ import { hasRole } from '../auth.js';
 import { listarAuditorias, iniciarAuditoria, auditoriaEmAndamentoPorEmpresa } from '../auditorias.js';
 import { listarEmpresas, contarProdutosPorEmpresa } from '../empresas.js';
 import { escapeHtml, fmtDate, fmtInt, badgeStatus, vazioHtml, erroCargaHtml, abrirModal, fmConfirm, showToast,
-         normalizar, debounce, marcarInvalido, ICONS, mensagemErro } from '../ui.js';
+         normalizar, debounce, marcarInvalido, ICONS, mensagemErro, partesHtml } from '../ui.js';
 
 const FILTROS = [
   { id: 'todas', rotulo: 'Todas', vazio: 'Nenhuma auditoria' },
@@ -45,7 +45,7 @@ export async function render(el, { perfil, params }) {
     const det = `href="app.html?tela=historico&id=${encodeURIComponent(a.id)}"`;
     if (a.status === 'em_andamento') return `<a class="btn btn-secondary btn-sm" href="contagem.html?id=${encodeURIComponent(a.id)}">Continuar contagem</a><a class="btn btn-ghost btn-sm" ${det}>Detalhes</a>`;
     if (a.status === 'finalizada') return `<a class="btn btn-secondary btn-sm" href="relatorios.html?id=${encodeURIComponent(a.id)}">Relatório</a><a class="btn btn-ghost btn-sm" ${det}>Detalhes</a>`;
-    return `<a class="btn btn-secondary btn-sm" ${det}>Detalhes</a>`;
+    return `<a class="btn btn-ghost btn-sm" ${det}>Detalhes</a>`;
   };
 
   const desenhar = () => {
@@ -73,13 +73,14 @@ export async function render(el, { perfil, params }) {
     }
     card.innerHTML = `<div class="tabela-wrap"><table class="tabela-lista tabela-fixa">
       <colgroup><col style="width:150px"><col><col style="width:110px"><col style="width:100px"><col style="width:140px"><col style="width:250px"></colgroup>
-      <thead><tr><th scope="col">Número</th><th scope="col">Empresa</th><th scope="col">Início</th><th scope="col">Contagem</th><th scope="col">Situação</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead>
+      <thead><tr><th scope="col">Número</th><th scope="col">Empresa</th><th scope="col" class="col-larga">Início</th><th scope="col" class="col-larga">Contagem</th><th scope="col">Situação</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead>
       <tbody>${visiveis.map(a => `<tr>
         <td class="l-titulo"><a class="linha-link codigo forte" href="app.html?tela=historico&id=${encodeURIComponent(a.id)}">${escapeHtml(a.numero_auditoria)}</a>
-          <span class="sub so-celular-bloco"><span class="forte" style="color:var(--text)">${escapeHtml(a.empresas?.nome ?? '—')}</span> · <span class="nowrap">${fmtDate(a.data_inicio)}</span> · ${a.auditoria_cega ? 'cega' : 'visível'}</span></td>
+          <span class="sub so-celular-bloco">${partesHtml([`<span class="forte" style="color:var(--text)">${escapeHtml(a.empresas?.nome ?? '—')}</span>`, fmtDate(a.data_inicio), a.auditoria_cega ? 'cega' : 'visível'])}</span>
+          <span class="sub so-medio-bloco">${partesHtml([fmtDate(a.data_inicio), a.auditoria_cega ? 'cega' : 'visível'])}</span></td>
         <td class="so-desktop"><span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span></td>
-        <td class="so-desktop nowrap">${fmtDate(a.data_inicio)}</td>
-        <td class="so-desktop">${a.auditoria_cega ? 'Cega' : 'Visível'}</td>
+        <td class="so-desktop col-larga nowrap">${fmtDate(a.data_inicio)}</td>
+        <td class="so-desktop col-larga">${a.auditoria_cega ? 'Cega' : 'Visível'}</td>
         <td>${badgeStatus(a.status)}</td>
         <td class="l-linha"><div class="acoes-linha">${acoes(a)}</div></td>
       </tr>`).join('')}</tbody>
@@ -152,7 +153,7 @@ async function abrirNovaAuditoria(perfil) {
     sel.innerHTML = !emps.length ? '<option value="">Nenhuma empresa ativa</option>'
       : '<option value="">Selecione a empresa</option>' + emps.map((e, i) => {
         const motivo = aberta.has(e.id) ? `${aberta.get(e.id)} em andamento` : nProdutos[i] === 0 ? 'sem produtos' : '';
-        return `<option value="${escapeHtml(e.id)}" ${motivo ? 'disabled' : ''}>${escapeHtml(e.nome)}${motivo ? ` (${motivo})` : ''}</option>`;
+        return `<option value="${escapeHtml(e.id)}" ${motivo ? 'disabled' : ''}>${escapeHtml(e.nome)}${motivo ? ` (${escapeHtml(motivo)})` : ''}</option>`;
       }).join('');
   } catch (err) {
     sel.innerHTML = '<option value="">Não foi possível carregar</option>';

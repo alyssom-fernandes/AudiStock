@@ -6,7 +6,7 @@
 import supabase from '../supabaseClient.js';
 import { listarEmpresas } from '../empresas.js';
 import { buscarTodos } from '../consulta.js';
-import { escapeHtml, fmtDate, fmtInt, plural, vazioHtml, erroCargaHtml, normalizar, debounce, ICONS } from '../ui.js';
+import { escapeHtml, fmtDate, fmtInt, plural, vazioHtml, erroCargaHtml, normalizar, debounce, ICONS, partesHtml } from '../ui.js';
 
 const LIMITE = 200;
 
@@ -27,6 +27,7 @@ export async function render(el) {
   // Um único elemento na célula: no celular o rótulo fica à esquerda e o resultado junto, à direita
   const resultadoHtml = r => {
     if (!r) return '<span class="muted">…</span>';
+    if (!r.itens) return '<span class="muted">Nenhum item contado</span>';
     if (r.semSaldo === r.itens) return '<span class="muted">Sem saldo do sistema</span>';
     const partes = [
       r.faltas ? `<span class="dif-falta">${plural(r.faltas, 'falta', 'faltas')}</span>` : '',
@@ -41,6 +42,7 @@ export async function render(el) {
     const t = normalizar(busca);
     const visiveis = lista.filter(a => (!empresa || a.empresa_id === empresa)
       && (!t || normalizar(a.numero_auditoria).includes(t) || normalizar(a.empresas?.nome).includes(t)));
+    $('.toolbar').hidden = !lista.length;   // sem relatório, nada para buscar ou filtrar
     if (!lista.length) {
       card.innerHTML = vazioHtml({ titulo: 'Nenhum relatório ainda', texto: 'O relatório de divergências aparece aqui quando uma auditoria é finalizada.', acoes: '<a class="btn btn-secondary" href="app.html?tela=auditorias">Ir para Auditorias</a>' });
       return;
@@ -55,7 +57,7 @@ export async function render(el) {
       <thead><tr><th scope="col">Auditoria</th><th scope="col">Empresa</th><th scope="col">Finalizada em</th><th scope="col">Resultado</th><th scope="col">Criada por</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead>
       <tbody>${visiveis.map(a => `<tr>
           <td class="l-titulo"><a class="linha-link cobre codigo forte" href="relatorios.html?id=${encodeURIComponent(a.id)}">${escapeHtml(a.numero_auditoria)}</a>
-            <span class="sub so-celular-bloco"><span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span> · <span class="nowrap">${fmtDate(a.data_fim)}</span></span></td>
+            <span class="sub so-celular-bloco">${partesHtml([`<span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span>`, fmtDate(a.data_fim)])}</span></td>
           <td class="so-desktop"><span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span></td>
           <td class="so-desktop nowrap">${fmtDate(a.data_fim)}</td>
           <td>${resultadoHtml(resumo.get(a.id))}</td>
@@ -63,7 +65,7 @@ export async function render(el) {
           <td class="so-desktop"><div class="acoes-linha"><a class="btn btn-secondary btn-sm" href="relatorios.html?id=${encodeURIComponent(a.id)}" tabindex="-1">Abrir relatório</a></div></td>
         </tr>`).join('')}</tbody>
     </table></div>
-    ${total > lista.length ? `<div class="tabela-rodape"><span>Os ${fmtInt(LIMITE)} relatórios mais recentes de ${fmtInt(total)}. Filtre por empresa para ver os anteriores.</span></div>` : ''}`;
+    ${total > lista.length ? `<div class="tabela-rodape"><span>Os ${fmtInt(LIMITE)} relatórios mais recentes de ${fmtInt(total)}.${empresa ? '' : ' Filtre por empresa para ver os anteriores.'}</span></div>` : ''}`;
   };
 
   const carregar = async () => {

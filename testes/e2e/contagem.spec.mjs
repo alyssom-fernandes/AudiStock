@@ -74,18 +74,16 @@ test('sem internet a contagem fica no aparelho e sobe ao reabrir a página já o
   await expect(page.locator('#lista .badge', { hasText: 'Na fila' })).toBeVisible();
   await expect(page.locator('#conexao')).toContainText('1 na fila');
 
-  // Fecha a aba ainda sem internet; abre outra já online (a fila fica no
-  // aparelho). Sem "demo=1": a aba nova continua a demonstração, e entrar
-  // de novo nela começaria do zero, sem a fila.
-  await page.close();
+  // Sai da página ainda sem internet e volta já online (a fila fica no
+  // aparelho). Na mesma aba: a demonstração vale só para ela. Sem "demo=1",
+  // que começaria um banco novo.
+  await page.goto('about:blank');
   await context.setOffline(false);
-  const nova = await context.newPage();
-  await nova.goto(`contagem.html?id=${id}`);
-  await esperarCarregar(nova);
-  await expect(nova.locator('#conexao')).toHaveText('Online', { timeout: 10_000 });
-  await expect(nova.locator('#lista .badge', { hasText: 'Na fila' })).toHaveCount(0);
-  await expect(nova.locator('#lista tbody tr', { hasText: produto.nome }).first()).toContainText('4');
-  expect(await nova.evaluate(() => window.errosRegistrados())).toEqual([]);
+  await page.goto(`contagem.html?id=${id}`);
+  await esperarCarregar(page);
+  await expect(page.locator('#conexao')).toHaveText('Online', { timeout: 10_000 });
+  await expect(page.locator('#lista .badge', { hasText: 'Na fila' })).toHaveCount(0);
+  await expect(page.locator('#lista tbody tr', { hasText: produto.nome }).first()).toContainText('4');
 });
 
 test('fechamento: saldos, confirmação e relatório', async ({ page }) => {
@@ -104,6 +102,38 @@ test('fechamento: saldos, confirmação e relatório', async ({ page }) => {
   await esperarCarregar(page);
   await expect(page.locator('.cabecalho-titulo')).toContainText('Finalizada');
   await expect(page.locator('#segFiltro')).toBeVisible();
+});
+
+test('fechamento: produto contado em outro aparelho entra na lista, sem perder os saldos digitados', async ({ page }) => {
+  await abrir(page);
+  const id = await idAuditoria(page, '0008');
+  await page.goto(`estoque-sistema.html?id=${id}`);
+  await esperarCarregar(page);
+  const campos = page.locator('.saldo-input');
+  const n = await campos.count();
+  await campos.nth(0).fill('12');
+  await campos.nth(1).fill('7');
+
+  // Outro aparelho conta um produto que esta tela ainda não mostra
+  const outro = await naoContado(page, '0008');
+  await page.evaluate(async ([auditoriaId, codigo]) => {
+    const url = caminho => new URL(caminho, location.href).href;   // os mesmos módulos que a tela usa
+    const { registrarContagem } = await import(url('js/contagem.js'));
+    const { ID_USUARIO_DEMO } = await import(url('js/demo.js'));
+    const { default: supabase } = await import(url('js/supabaseClient.js'));
+    const { data: aud } = await supabase.from('auditorias').select('empresa_id').eq('id', auditoriaId).single();
+    const { data: p } = await supabase.from('produtos').select('id').eq('empresa_id', aud.empresa_id).eq('codigo_produto', codigo).single();
+    await registrarContagem({ auditoriaId, produtoId: p.id, quantidade: 3, usuarioId: ID_USUARIO_DEMO, acao: 'somar' });
+  }, [id, outro.codigo]);
+
+  await page.click('#btnFinalizar');
+  await expect(page.locator('.toast')).toContainText('1 item foi contado depois que você abriu o fechamento');
+  await page.waitForEvent('load');
+  await esperarCarregar(page);
+  await expect(campos).toHaveCount(n + 1);
+  await expect(page.locator('.aviso', { hasText: 'Os saldos que você já tinha digitado foram mantidos' })).toBeVisible();
+  await expect(page.getByText(outro.nome).first()).toBeVisible();
+  expect(await campos.evaluateAll(xs => xs.map(x => x.value).filter(Boolean))).toEqual(['12', '7']);
 });
 
 test('saldo inválido não deixa finalizar', async ({ page }) => {

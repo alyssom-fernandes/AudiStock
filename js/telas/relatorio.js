@@ -50,13 +50,13 @@ async function iniciar() {
   // O número fica no título da página; a barra diz só "Relatório"
   definirTitulo('Relatório');
   document.title = `Relatório ${aud.numero_auditoria} · AudiStock`;
-  const comparado = temComparacao(resumo);
+  const comparado = temComparacao(resumo, aud);
   const titulo = tituloRelatorio(aud);
   let filtro = 'todos', ordem = comparado ? 'diferenca' : 'nome', limite = POR_PAGINA;
   const emissor = getPerfil()?.nome ?? '';
   const comSaldo = resumo.auditados - resumo.sem_saldo;
   const pctOk = comSaldo ? Math.floor(resumo.ok / comSaldo * 1000) / 10 : 0;
-  const pctContados = resumo.total_produtos ? Math.round(resumo.auditados / resumo.total_produtos * 100) : 0;
+  const pctContados = resumo.total_produtos ? Math.floor(resumo.auditados / resumo.total_produtos * 100) : 0;   // 299 de 300 não vira 100%
   const empresa = aud.empresas?.nome ?? '—';
   const criador = aud.usuarios?.nome ?? '—';
 

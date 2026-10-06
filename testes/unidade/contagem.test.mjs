@@ -1,12 +1,16 @@
-// Registro da contagem no banco da demonstração: o app usa a função
-// atômica registrar_contagem (a trava de verdade fica no Postgres e é
-// conferida em testes/banco), o histórico, a recusa em auditoria
-// fechada e o envio repetido da fila sem internet.
+// Registro da contagem e fechamento no banco da demonstração: o app usa as
+// funções atômicas registrar_contagem e finalizar_auditoria (a concorrência
+// de verdade, no Postgres, é conferida com dois aparelhos: veja
+// docs/teste-real.md), o histórico, a recusa em auditoria fechada e o envio
+// repetido da fila sem internet.
 import './ambiente.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { registrarContagem, editarContagem, historicoItem, buscarItemContado, preencherEstoquesSistema, listarItensContados, JA_CONTADO } = await import('../../js/contagem.js');
+const { default: supabase } = await import('../../js/supabaseClient.js');
+const { registrarContagem, editarContagem, historicoItem, buscarItemContado, preencherEstoquesSistema, listarItensContados, finalizarComSaldos,
+        JA_CONTADO, ITENS_NOVOS, JA_ENCERRADA } = await import('../../js/contagem.js');
+const { ehFalhaPassageira } = await import('../../js/offline.js');
 const { ID_USUARIO_DEMO } = await import('../../js/demo.js');
 
 const banco = () => JSON.parse(sessionStorage.getItem('audistock-demo-db')).tabelas;
@@ -51,11 +55,24 @@ test('não registra contagem em auditoria finalizada nem quantidade negativa', a
   await assert.rejects(registrarContagem({ auditoriaId: aud.id, produtoId: q.id, quantidade: -1, usuarioId: ID_USUARIO_DEMO }), /negativa/);
 });
 
-test('o fechamento grava os saldos de todos os itens, em grupos', async () => {
+test('o fechamento em etapas grava os saldos de todos os itens, no máximo 8 ao mesmo tempo', async () => {
   const aud = auditoria('0008');
   const { data: itens } = await listarItensContados(aud.id);
-  const r = await preencherEstoquesSistema(aud.id, itens.map((i, n) => ({ produto_id: i.produto_id, quantidade: n + 1 })));
+  // Conta quantas gravações estão no ar ao mesmo tempo
+  const original = supabase.from;
+  let noAr = 0, pico = 0;
+  supabase.from = tabela => {
+    const q = original.call(supabase, tabela);
+    if (tabela !== 'auditoria_itens') return q;
+    const then = q.then.bind(q);
+    q.then = (ok, falha) => { noAr++; pico = Math.max(pico, noAr); return then(r => { noAr--; return ok(r); }, falha); };
+    return q;
+  };
+  let r;
+  try { r = await preencherEstoquesSistema(aud.id, itens.map((i, n) => ({ produto_id: i.produto_id, quantidade: n + 1 }))); }
+  finally { supabase.from = original; }
   assert.deepEqual(r, { ok: itens.length, erros: 0 });
+  assert.ok(pico > 1 && pico <= 8, `pico de ${pico} gravações`);
   const depois = banco().auditoria_itens.filter(i => i.auditoria_id === aud.id);
   assert.ok(depois.every(i => i.estoque_sistema != null && i.diferenca === Math.round((i.quantidade_contada - i.estoque_sistema) * 1000) / 1000));
 });
@@ -75,6 +92,41 @@ test('o mesmo envio (id_cliente) repetido conta uma vez só', async () => {
   const envio = () => registrarContagem({ auditoriaId: aud.id, produtoId: p.id, quantidade: 2, usuarioId: ID_USUARIO_DEMO, acao: 'somar', idCliente });
   await envio(); await envio(); await envio();
   assert.equal(Number((await buscarItemContado(aud.id, p.id)).quantidade_contada), 2);
+});
+
+test('finalizar grava os saldos e encerra junto; recusa item contado depois que a tela abriu', async () => {
+  const aud = auditoria('0007');
+  const { data: itens } = await listarItensContados(aud.id);
+  const saldos = Object.fromEntries(itens.map((i, n) => [i.id, n === 0 ? null : 10]));
+  // Outro aparelho conta um produto que a tela não mostrava
+  const [p] = produtoNaoContado(aud);
+  await registrarContagem({ auditoriaId: aud.id, produtoId: p.id, quantidade: 1, usuarioId: ID_USUARIO_DEMO, acao: 'somar' });
+  const recusa = await finalizarComSaldos(aud.id, saldos).catch(e => e);
+  assert.equal(recusa.code, ITENS_NOVOS);
+  assert.equal(recusa.details, '1');
+  assert.equal(auditoria('0007').status, 'em_andamento', 'nada foi finalizado');
+  assert.ok(banco().auditoria_itens.filter(i => i.auditoria_id === aud.id).every(i => i.estoque_sistema == null), 'nenhum saldo foi gravado');
+
+  const { data: atuais } = await listarItensContados(aud.id);
+  await finalizarComSaldos(aud.id, Object.fromEntries(atuais.map(i => [i.id, i.id === itens[0].id ? null : 10])));
+  assert.equal(auditoria('0007').status, 'finalizada');
+  const gravados = banco().auditoria_itens.filter(i => i.auditoria_id === aud.id);
+  assert.equal(gravados.find(i => i.id === itens[0].id).estoque_sistema, null, 'o saldo apagado fica vazio');
+  assert.ok(gravados.filter(i => i.id !== itens[0].id).every(i => i.estoque_sistema === 10));
+
+  const de_novo = await finalizarComSaldos(aud.id, {}).catch(e => e);
+  assert.equal(de_novo.code, JA_ENCERRADA);
+});
+
+test('fila sem internet: só falha passageira espera; recusa do banco não segura a fila', () => {
+  assert.ok(ehFalhaPassageira(new TypeError('Failed to fetch')));
+  assert.ok(ehFalhaPassageira({ message: 'erro', status: 503 }));
+  assert.ok(ehFalhaPassageira({ message: 'erro', status: 429 }));
+  assert.ok(ehFalhaPassageira({ code: 'PGRST301', message: 'JWT expired' }));
+  assert.ok(ehFalhaPassageira({ message: 'Unexpected token < in JSON at position 0' }));
+  assert.equal(ehFalhaPassageira({ code: '22003', status: 400, message: 'numeric field overflow' }), false);
+  assert.equal(ehFalhaPassageira({ code: '42501', status: 403, message: 'new row violates row-level security policy' }), false);
+  assert.equal(ehFalhaPassageira({ code: '23514', message: 'violates check constraint' }), false);
 });
 
 test('nenhum erro registrado pelo app', () => assert.deepEqual(globalThis.errosDoApp, []));

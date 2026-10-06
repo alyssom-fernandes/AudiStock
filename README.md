@@ -164,41 +164,55 @@ recorded 2. The app now sends every scan to this function: a test fires
 20 at once against the demo database and expects 20, and the check with
 two real devices is in the real-world checklist. When two devices count
 a product for the first time, the second one gets the add-or-replace
-question instead of overwriting the first.
+question instead of overwriting the first. Closing an audit is a single
+function as well (`finalizar_auditoria`): it saves the system balances and
+finishes the audit together, and refuses if someone counted a product the
+closing screen was not showing yet.
+
+`schema.sql` can be run again on an existing database: it creates what is
+missing, updates functions, triggers and permissions, and deletes no data.
 
 Permissions live in the database: each role only sees its company, an
 auditor counts and finishes but cannot cancel, only the supremo deletes,
 and triggers stop anyone from promoting themselves or changing a finished
 count. [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql)
-signs in as each role and checks 42 of these rules; it runs in any
+signs in as each role and checks 48 of these rules; it runs in any
 project's SQL Editor and deletes what it creates.
 
 ## Tests
 
 ```bash
 npm install
-npm test            # unit (Node) and database (PGlite): 39 tests
-npm run test:e2e    # end to end in the browser (Playwright): 30 runs
+npm test            # unit (Node) and database (PGlite): 56 tests
+npm run test:e2e    # end to end in the browser (Playwright): 31 runs
 ```
 
 - **Unit:** the real `js/` code running on Node against the demo
   database: scan totals, a repeated send applied once, history, quantity
   parsing ("1.234" is one thousand two hundred thirty-four), batched
   import that never erases missing columns, CSV, report numbers,
-  user-creation rules.
+  closing, user-creation rules.
 - **Database:** `schema.sql` and `permissoes.sql` on a real Postgres
-  (PGlite), with nothing to install.
+  (PGlite), with nothing to install, including running the schema again
+  over a database from the previous version.
 - **End to end:** keyboard and scanner counting, offline counts that are
-  sent when the page is reopened, closing, exports (the PDF must embed
+  sent when the page is reopened, closing (including a product counted
+  on another device meanwhile), exports (the PDF must embed
   the font and every CDN script must carry its hash), spreadsheet import,
   records, focus after saving, tables at tablet widths, keyboard and
-  phone: 25 runs at desktop size (one phone-only test is skipped there)
+  phone: 26 runs at desktop size (one phone-only test is skipped there)
   and 5 on a phone. Every test ends by checking that `errosRegistrados()`
   is empty.
 
 The end-to-end tests use the installed Google Chrome. Without it, run
-`npx playwright install chromium` once and then `PW_CHANNEL=chromium npm
-run test:e2e` (or `PW_CHANNEL=msedge` for Edge).
+`npx playwright install chromium` once and then, in PowerShell:
+
+```powershell
+$env:PW_CHANNEL='chromium'; npm run test:e2e
+```
+
+In bash, `PW_CHANNEL=chromium npm run test:e2e`. With `msedge` instead of
+`chromium`, the tests use Edge.
 
 Everything runs on GitHub Actions on every push to `main` and on pull
 requests. The checklist for a

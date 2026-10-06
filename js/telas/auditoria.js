@@ -84,7 +84,7 @@ export async function render(el, { perfil, params, irPara }) {
     }
     const pagina = filtrados.slice(0, limite);
     $('#itCorpo').innerHTML = `<div class="tabela-wrap"><table class="tabela-lista">
-      <thead><tr><th scope="col">Produto</th>${finalizada ? '<th scope="col" class="num">Sistema</th>' : ''}<th scope="col" class="num">Contado</th>${finalizada ? '<th scope="col" class="num">Diferença</th>' : ''}<th scope="col">Contado por</th><th scope="col">Registro</th><th scope="col"><span class="sr-only">Correções</span></th></tr></thead>
+      <thead><tr><th scope="col">Produto</th>${finalizada ? '<th scope="col" class="num">Sistema</th>' : ''}<th scope="col" class="num">Contado</th>${finalizada ? '<th scope="col" class="num">Diferença</th>' : ''}<th scope="col" class="col-larga">Contado por</th><th scope="col" class="col-larga">Registro</th><th scope="col"><span class="sr-only">Correções</span></th></tr></thead>
       <tbody>${pagina.map(i => {
         const un = i.produtos?.unidade_medida;
         const detalhe = finalizada
@@ -92,12 +92,13 @@ export async function render(el, { perfil, params, irPara }) {
           : [escapeHtml(i.usuarios?.nome ?? '—'), fmtDateTime(i.data_registro)];
         return `<tr>
           <td class="l-titulo"><span class="forte">${escapeHtml(i.produtos?.nome_produto ?? '—')}</span>${i.atualizado_em ? ' <span class="badge badge-calmo">corrigido</span>' : ''}
-            <span class="sub">${partesHtml([`<span class="codigo">${escapeHtml(i.produtos?.codigo_produto ?? '')}</span>`, ...detalhe.map(html => ({ html, classe: 'so-celular' }))])}</span></td>
+            <span class="sub">${partesHtml([`<span class="codigo">${escapeHtml(i.produtos?.codigo_produto ?? '')}</span>`, ...detalhe.map(html => ({ html, classe: 'so-celular' }))])}</span>
+            <span class="sub so-medio-bloco">${partesHtml([escapeHtml(i.usuarios?.nome ?? '—'), fmtDateTime(i.data_registro)])}</span></td>
           ${finalizada ? `<td class="num so-desktop">${qtdHtml(i.estoque_sistema, un)}</td>` : ''}
           <td class="num${finalizada ? ' so-desktop' : ''}">${qtdHtml(i.quantidade_contada, un)}</td>
           ${finalizada ? `<td class="num">${difHtml(i.diferenca, un)}</td>` : ''}
-          <td class="so-desktop">${escapeHtml(i.usuarios?.nome ?? '—')}</td>
-          <td class="nowrap so-desktop">${fmtDateTime(i.data_registro)}</td>
+          <td class="so-desktop col-larga">${escapeHtml(i.usuarios?.nome ?? '—')}</td>
+          <td class="nowrap so-desktop col-larga">${fmtDateTime(i.data_registro)}</td>
           <td>${i.atualizado_em ? `<div class="acoes-linha"><button type="button" class="btn btn-ghost btn-sm" data-acao="correcoes" data-id="${escapeHtml(i.id)}" aria-label="Ver correções de ${escapeHtml(i.produtos?.nome_produto ?? 'item')}">Ver correções</button></div>` : ''}</td>
         </tr>`;
       }).join('')}</tbody>

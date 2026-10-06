@@ -94,11 +94,7 @@ export function situacaoTexto(diferenca) {
 // ─────────────────────────────────────────────────────────────
 export async function exportarCSV(auditoriaId, filtro = 'todos', ordem = 'diferenca', aud = null, { comparado = true } = {}) {
   const { itens } = await gerarRelatorio(auditoriaId, { filtro, ordem });
-  const texto = v => {
-    let s = String(v ?? '');
-    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;      // impede que o Excel trate como fórmula
-    return /[;"\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  };
+  const texto = csvTexto;
   const num = n => n == null || n === '' ? '' : Number(n).toLocaleString('pt-BR', { useGrouping: false, maximumFractionDigits: 3 });
 
   const cabecalho = ['Auditoria', 'Empresa', 'Código', 'Produto', 'Unidade', ...(comparado ? ['Sistema', 'Contado', 'Diferença', 'Situação'] : ['Contado'])].join(';');
@@ -109,6 +105,14 @@ export async function exportarCSV(auditoriaId, filtro = 'todos', ordem = 'difere
       : [num(i.quantidade_contada)]),
   ].join(';'));
   return [cabecalho, ...linhas].join('\r\n') + '\r\n';
+}
+
+// Um campo de CSV: entre aspas quando precisa, e nunca lido como fórmula
+// pelo Excel (=, +, -, @ no começo)
+export function csvTexto(v) {
+  let s = String(v ?? '');
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return /[;"\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
 // ─────────────────────────────────────────────────────────────

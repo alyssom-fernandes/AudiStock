@@ -118,6 +118,10 @@ export async function render(el, { perfil }) {
   await carregar();
 }
 
+// Valor do seletor para "Todas as empresas" (empresa_id vazio no banco):
+// escolha explícita, nunca o padrão do formulário
+const TODAS = 'todas';
+
 function abrirUsuario(u, { papeis, empresas, perfil, aoSalvar }) {
   const editando = !!u;
   // O administrador de uma empresa só cadastra gente da própria empresa
@@ -126,6 +130,7 @@ function abrirUsuario(u, { papeis, empresas, perfil, aoSalvar }) {
   const m = abrirModal({
     titulo: editando ? 'Editar usuário' : 'Novo usuário',
     corpo: `
+      <div id="usrAviso" aria-live="polite"></div>
       <div class="form-group"><label class="form-label" for="usrNome">Nome</label>
         <input class="form-input" id="usrNome" maxlength="120" autocomplete="off" value="${escapeHtml(u?.nome ?? '')}" required/></div>
       <div class="form-group"><label class="form-label" for="usrEmail">E-mail</label>
@@ -139,7 +144,10 @@ function abrirUsuario(u, { papeis, empresas, perfil, aoSalvar }) {
           <select class="form-input" id="usrRole" aria-describedby="usrPapelDica">${papeis.map(r => `<option value="${r}" ${r === (u?.role ?? 'auditor') ? 'selected' : ''}>${NOMES_PAPEL[r]}</option>`).join('')}</select>
           <span class="form-hint" id="usrPapelDica" aria-live="polite"></span></div>
         <div class="form-group"><label class="form-label" for="usrEmpresa">Empresa</label>
-          <select class="form-input" id="usrEmpresa" ${fixa ? 'disabled' : ''}>${fixa ? '' : '<option value="">Todas as empresas</option>'}${empresasOpc.map(e => `<option value="${escapeHtml(e.id)}" ${e.id === (u?.empresa_id ?? fixa?.id) ? 'selected' : ''}>${escapeHtml(e.nome)}</option>`).join('')}</select></div>
+          <select class="form-input" id="usrEmpresa" aria-describedby="usrEmpresaDica" ${fixa ? 'disabled' : ''}>${fixa ? ''
+            : `<option value="" ${editando ? '' : 'selected'} disabled>Escolha a empresa</option>`}${empresasOpc.map(e => `<option value="${escapeHtml(e.id)}" ${e.id === (u?.empresa_id ?? fixa?.id) ? 'selected' : ''}>${escapeHtml(e.nome)}</option>`).join('')}${fixa ? ''
+            : `<option value="${TODAS}" ${editando && !u?.empresa_id ? 'selected' : ''}>Todas as empresas</option>`}</select>
+          <span class="form-hint" id="usrEmpresaDica" aria-live="polite">${fixa ? 'Você cadastra pessoas só da sua empresa.' : ''}</span></div>
       </div>`,
     acoes: [
       { texto: 'Cancelar', classe: 'btn-secondary', acao: mm => mm.fechar() },
@@ -147,9 +155,12 @@ function abrirUsuario(u, { papeis, empresas, perfil, aoSalvar }) {
     ],
     aoEnviar: async mm => {
       const nome = mm.$('#usrNome'), email = mm.$('#usrEmail'), senha = mm.$('#usrSenha');
-      const role = mm.$('#usrRole').value, empresa_id = (fixa?.id ?? mm.$('#usrEmpresa').value) || null;
+      const role = mm.$('#usrRole').value, escolha = fixa?.id ?? mm.$('#usrEmpresa').value;
+      const empresa_id = escolha === TODAS ? null : escolha || null;
       const invalido = (c, msg) => { marcarInvalido(c, msg); c.focus(); };
+      mm.$('#usrAviso').innerHTML = '';
       if (!nome.value.trim()) return invalido(nome, 'Informe o nome.');
+      if (!escolha) return invalido(mm.$('#usrEmpresa'), 'Escolha a empresa, ou “Todas as empresas”.');
       if (!editando && !/^\S+@\S+\.\S+$/.test(email.value.trim())) return invalido(email, 'Informe um e-mail válido.');
       if (!editando && senha.value.length < 6) return invalido(senha, 'A senha precisa ter pelo menos 6 caracteres.');
       mm.ocupado(true, 'Salvando…');
@@ -157,20 +168,27 @@ function abrirUsuario(u, { papeis, empresas, perfil, aoSalvar }) {
         if (editando) {
           const { error } = await supabase.from('usuarios').update({ nome: nome.value.trim(), role, empresa_id }).eq('id', u.id);
           if (error) throw new Error(error.message);
-        } else {
-          await criarUsuario({ nome: nome.value, email: email.value, senha: senha.value, role, empresa_id });
         }
+        const r = editando ? {} : await criarUsuario({ nome: nome.value, email: email.value, senha: senha.value, role, empresa_id });
         mm.fechar();
-        showToast(editando ? `Dados de ${nome.value.trim()} atualizados.` : `Cadastro de ${nome.value.trim()} criado (${NOMES_PAPEL[role].toLowerCase()}).`, 'success');
+        const alcance = empresa_id ? '' : ', com acesso a todas as empresas';
+        if (r.confirmarEmail) showToast(`Cadastro de ${nome.value.trim()} criado${alcance}. O Supabase exige confirmar o e-mail: a pessoa precisa abrir o link enviado para ${email.value.trim().toLowerCase()} antes do primeiro login.`, 'warning', 12000);
+        else showToast(editando ? `Dados de ${nome.value.trim()} atualizados.` : `Cadastro de ${nome.value.trim()} criado (${NOMES_PAPEL[role].toLowerCase()}${alcance}).`, 'success');
         await aoSalvar();
       } catch (err) {
         mm.ocupado(false);
         const msg = mensagemErro(err, 'salvar usuário');
-        if (!editando && /e-mail/i.test(msg)) invalido(email, msg); else showToast(msg, 'error');
+        // Só o que é sobre o e-mail digitado marca o campo; avisos de
+        // configuração do Supabase aparecem na janela
+        if (!editando && /já existe um usuário com este e-mail|e-mail válido|não aceitou este e-mail/i.test(msg)) invalido(email, msg);
+        else mm.$('#usrAviso').innerHTML = `<div class="aviso aviso-perigo">${ICONS.erro}<p>${escapeHtml(msg)}</p></div>`;
       }
     },
   });
   const dica = () => { m.$('#usrPapelDica').textContent = DESCRICAO_PAPEL[m.$('#usrRole').value] ?? ''; };
   m.$('#usrRole').addEventListener('change', dica);
   dica();
+  if (!fixa) m.$('#usrEmpresa').addEventListener('change', e => {
+    m.$('#usrEmpresaDica').textContent = e.target.value === TODAS ? 'Enxerga e conta em todas as empresas.' : '';
+  });
 }

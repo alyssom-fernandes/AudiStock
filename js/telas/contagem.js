@@ -4,10 +4,11 @@
 //  (cada leitura soma 1) ou câmera.
 //
 //  Sem internet: o cadastro de produtos da empresa é carregado ao abrir
-//  a tela e a busca acontece no aparelho; os registros ficam numa fila
-//  (js/offline.js) e sobem quando há rede. Uma falha de rede no meio de
-//  um envio também cai na fila, com o mesmo id de envio, para nunca
-//  somar duas vezes.
+//  a tela e a busca acontece no aparelho (com rede, o que não estiver
+//  nele é procurado no servidor: um produto cadastrado depois); os
+//  registros ficam numa fila (js/offline.js) e sobem quando há rede. Uma
+//  falha passageira no meio de um envio (rede, servidor fora do ar) também
+//  cai na fila, com o mesmo id de envio, para nunca somar duas vezes.
 //
 //  Na contagem visível, quem conta vê o último saldo do sistema de cada
 //  produto (o da auditoria anterior da empresa).
@@ -19,7 +20,7 @@ import { initLayout, definirTitulo, escapeHtml, fmtInt, fmtDate, plural, fmtQtd,
 import { listarCatalogo, buscarNoCatalogo, acharNoCatalogo, buscarProdutoUnificado, buscarProdutoPorCodigo, buscarProdutoPorBarras } from '../produtos.js';
 import { buscarAuditoria, progresso, listarAuditorias } from '../auditorias.js';
 import { registrarContagem, buscarItemContado, editarContagem, listarItensContados, JA_CONTADO } from '../contagem.js';
-import { initOfflineSync, isOnline, ehErroDeRede, registrarOffline, contarPendentes, listarFila, descartarRegistro, tentarDeNovo } from '../offline.js';
+import { initOfflineSync, isOnline, ehErroDeRede, ehFalhaPassageira, registrarOffline, resumoFila, listarFila, descartarRegistro, tentarDeNovo } from '../offline.js';
 import supabase from '../supabaseClient.js';
 
 const auth = await requireAuth();
@@ -141,10 +142,15 @@ async function iniciar() {
     const dados = r => ({ produtoId: r.produto_id, codigo: r.produto?.codigo ?? '', nome: r.produto?.nome ?? 'Produto', un: r.produto?.un ?? '', hora: r.criado_em });
     const projetadas = new Map();
     for (const r of fila.filter(r => r.status === 'pending')) {
-      const base = Number(projetadas.get(r.produto_id)?.qtd ?? noServidor.get(r.produto_id)?.qtd ?? 0);
-      const d = dados(r);
+      const antes = projetadas.get(r.produto_id);
+      const base = Number(antes?.qtd ?? noServidor.get(r.produto_id)?.qtd ?? 0);
       projetadas.delete(r.produto_id);
-      projetadas.set(r.produto_id, { ...d, id: `fila-${r.produto_id}`, qtd: Math.round((r.acao === 'somar' ? base + Number(r.quantidade) : Number(r.quantidade)) * 1000) / 1000, situacao: 'fila' });
+      projetadas.set(r.produto_id, {
+        ...dados(r), id: `fila-${r.produto_id}`, situacao: 'fila',
+        qtd: Math.round((r.acao === 'somar' ? base + Number(r.quantidade) : Number(r.quantidade)) * 1000) / 1000,
+        filaIds: [...(antes?.filaIds ?? []), r.id],
+        deOutros: (antes?.deOutros ?? false) || r.usuario_id !== perfil.id,
+      });
     }
     const recusadas = fila.filter(r => r.status === 'error').reverse()
       .map(r => ({ ...dados(r), id: `erro-${r.id}`, filaId: r.id, qtd: r.quantidade, acao: r.acao, erro: r.erro, situacao: 'erro' }));
@@ -155,7 +161,8 @@ async function iniciar() {
   const produtosContados = () => new Set(estado.lista.filter(i => i.situacao !== 'erro').map(i => i.produtoId)).size;
 
   const hora = iso => iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
-  const rotuloSituacao = i => i.situacao === 'fila' ? 'na fila' : i.situacao === 'erro' ? 'não enviada' : hora(i.hora);
+  const rotuloSituacao = i => i.situacao === 'fila' ? (i.deOutros ? 'na fila, de outra pessoa' : 'na fila') : i.situacao === 'erro' ? 'não enviada' : hora(i.hora);
+  const podeDescartarFila = i => !i.deOutros || hasRole('administrador');
   const desenharLista = (destacar = null, { rolar = true } = {}) => {
     $('#qtdItens').textContent = fmtInt(produtosContados());
     $('#buscaLista').hidden = !estado.lista.length;
@@ -176,14 +183,16 @@ async function iniciar() {
     }
     alvo.innerHTML = `<table class="tabela-lista">
       <thead><tr><th scope="col">Produto</th><th scope="col" class="num">Quantidade</th><th scope="col">Hora</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead>
-      <tbody>${visiveis.slice(0, estado.limite).map(i => `<tr class="${i.id === destacar ? 'recente' : ''}" ${i.situacao === 'erro' && i.erro ? `title="${escapeHtml(i.erro)}"` : ''}>
-        <td class="l-titulo"><span class="forte">${escapeHtml(i.nome)}</span><span class="sub">${partesHtml([`<span class="codigo">${escapeHtml(i.codigo)}</span>`, { html: rotuloSituacao(i), classe: 'so-celular' }])}</span></td>
+      <tbody>${visiveis.slice(0, estado.limite).map(i => `<tr class="${i.id === destacar ? 'recente' : ''}">
+        <td class="l-titulo"><span class="forte">${escapeHtml(i.nome)}</span><span class="sub">${partesHtml([`<span class="codigo">${escapeHtml(i.codigo)}</span>`, { html: rotuloSituacao(i), classe: 'so-celular' }])}</span>
+          ${i.situacao === 'erro' && i.erro ? `<span class="sub motivo-recusa">Recusada: ${escapeHtml(i.erro)}</span>` : ''}</td>
         <td class="num"><span class="forte">${i.situacao === 'erro' && i.acao === 'somar' ? '+' : ''}${fmtQtd(i.qtd, i.un)}</span>${unHtml(i.un)}</td>
-        <td class="so-desktop">${i.situacao === 'fila' ? '<span class="badge badge-aviso">Na fila</span>' : i.situacao === 'erro' ? '<span class="badge badge-perigo">Não enviada</span>' : `<span class="muted">${hora(i.hora)}</span>`}</td>
+        <td class="so-desktop">${i.situacao === 'fila' ? `<span class="badge badge-aviso">${i.deOutros ? 'Na fila · outra pessoa' : 'Na fila'}</span>` : i.situacao === 'erro' ? '<span class="badge badge-perigo">Não enviada</span>' : `<span class="muted">${hora(i.hora)}</span>`}</td>
         <td>${!podeContar ? '' : i.situacao === 'ok' ? `<div class="acoes-linha"><button type="button" class="btn btn-ghost btn-sm" data-acao="editar" data-id="${escapeHtml(i.id)}" aria-label="Corrigir ${escapeHtml(i.nome)}">Corrigir</button></div>`
           : i.situacao === 'erro' ? `<div class="acoes-linha">
               <button type="button" class="btn btn-ghost btn-sm" data-acao="reenviar" data-id="${escapeHtml(i.id)}" aria-label="Tentar enviar de novo ${escapeHtml(i.nome)}">Tentar de novo</button>
-              <button type="button" class="btn btn-ghost btn-sm" data-acao="descartar" data-id="${escapeHtml(i.id)}" aria-label="Descartar ${escapeHtml(i.nome)}">Descartar</button></div>` : ''}</td>
+              <button type="button" class="btn btn-ghost btn-sm" data-acao="descartar" data-id="${escapeHtml(i.id)}" aria-label="Descartar ${escapeHtml(i.nome)}">Descartar</button></div>`
+          : i.situacao === 'fila' && podeDescartarFila(i) ? `<div class="acoes-linha"><button type="button" class="btn btn-ghost btn-sm" data-acao="descartarFila" data-id="${escapeHtml(i.id)}" aria-label="Descartar da fila ${escapeHtml(i.nome)}">Descartar</button></div>` : ''}</td>
       </tr>`).join('')}</tbody>
     </table>
     ${visiveis.length > estado.limite ? `<div class="tabela-rodape"><span>Os ${fmtInt(estado.limite)} registros mais recentes de ${fmtInt(visiveis.length)}</span><button type="button" class="btn btn-secondary btn-sm" data-acao="todos">Mostrar todos</button></div>` : ''}`;
@@ -193,7 +202,8 @@ async function iniciar() {
   const desenharProgresso = () => {
     const p = estado.prog;
     if (!p || !$('#progPct')) return;
-    const contados = Math.max(p.contados, produtosContados());
+    // Um produto contado e inativado depois não faz o texto passar do total
+    const contados = Math.min(Math.max(p.contados, produtosContados()), p.totalProdutos || Infinity);
     const pct = p.totalProdutos ? Math.min(100, Math.round(contados / p.totalProdutos * 100)) : 0;
     $('#progTexto').textContent = `${fmtInt(contados)} de ${plural(p.totalProdutos, 'produto', 'produtos')}`;
     $('#progPct').textContent = `${pct}%`;
@@ -239,12 +249,23 @@ async function iniciar() {
       estado.lista = estado.lista.filter(i => i.id !== id);
       desenharLista();
     },
+    // Um registro guardado sem internet que não deve subir (bipe no campo
+    // errado, quantidade trocada): sai da fila antes de ser enviado
+    descartarFila: async ({ id }) => {
+      const item = estado.lista.find(i => i.id === id); if (!item) return;
+      const n = item.filaIds?.length ?? 0;
+      const ok = await fmConfirm({ titulo: 'Descartar da fila?', msg: `${n === 1 ? 'A contagem guardada' : `As ${fmtInt(n)} contagens guardadas`} de ${item.nome} neste aparelho ${n === 1 ? 'não vai' : 'não vão'} ser ${n === 1 ? 'enviada' : 'enviadas'}.${item.deOutros ? ' Elas são de outra pessoa.' : ''} Se precisar, registre o produto de novo.`, confirmTxt: 'Descartar', tipo: 'perigo' });
+      if (!ok) return;
+      for (const filaId of item.filaIds ?? []) await descartarRegistro(filaId);
+      await recarregarLista({ doServidor: false }); desenharLista(); desenharProgresso();
+    },
   });
 
   $('#btnFechamento')?.addEventListener('click', async () => {
-    if (await contarPendentes(auditoriaId).catch(() => 0)) {
+    const meus = async () => (await resumoFila(auditoriaId).catch(() => ({ meus: 0 }))).meus;
+    if (await meus()) {
       if (isOnline()) await offline.enviar();
-      if (await contarPendentes(auditoriaId).catch(() => 0)) { showToast('Ainda há contagens guardadas neste aparelho esperando internet. Elas precisam ser enviadas antes do fechamento.', 'warning', 7000); return; }
+      if (await meus()) { showToast(isOnline() ? 'Ainda há contagens suas guardadas neste aparelho sendo enviadas. Tente de novo em instantes.' : 'Ainda há contagens suas guardadas neste aparelho esperando internet. Elas precisam ser enviadas antes do fechamento.', 'warning', 7000); return; }
     }
     const recusadas = estado.lista.filter(i => i.situacao === 'erro').length;
     const contados = produtosContados(), total = estado.prog?.totalProdutos;
@@ -259,10 +280,27 @@ async function iniciar() {
   if (!podeContar || semProdutos) return;
 
   // ── Busca de produto (combobox) ───────────────────────────
-  // No catálogo do aparelho; se ele não carregou, no servidor.
-  const procurar = termo => estado.catalogo ? Promise.resolve(buscarNoCatalogo(estado.catalogo, termo)) : buscarProdutoUnificado(aud.empresa_id, termo);
-  const achar = async codigo => estado.catalogo ? acharNoCatalogo(estado.catalogo, codigo)
-    : (await buscarProdutoPorBarras(aud.empresa_id, codigo)) ?? (await buscarProdutoPorCodigo(aud.empresa_id, codigo));
+  // No catálogo do aparelho. O que não está nele (um produto cadastrado
+  // depois que a tela abriu) é procurado no servidor, com rede, e passa a
+  // fazer parte do catálogo.
+  const guardarNoCatalogo = ps => {
+    if (!estado.catalogo) return ps;
+    const ids = new Set(estado.catalogo.map(p => p.id));
+    estado.catalogo.push(...ps.filter(p => p && !ids.has(p.id)));
+    return ps;
+  };
+  const procurar = async termo => {
+    const locais = estado.catalogo ? buscarNoCatalogo(estado.catalogo, termo) : [];
+    if (estado.catalogo && (locais.length || !isOnline())) return locais;
+    return guardarNoCatalogo(await buscarProdutoUnificado(aud.empresa_id, termo));
+  };
+  const achar = async codigo => {
+    const local = estado.catalogo ? acharNoCatalogo(estado.catalogo, codigo) : null;
+    if (local || (estado.catalogo && !isOnline())) return local;
+    const p = (await buscarProdutoPorBarras(aud.empresa_id, codigo)) ?? (await buscarProdutoPorCodigo(aud.empresa_id, codigo));
+    if (p) guardarNoCatalogo([p]);
+    return p;
+  };
 
   const inp = $('#codigoInput'), sug = $('#sug'), qtd = $('#qtdInput');
   const fecharSug = () => { sug.hidden = true; inp.setAttribute('aria-expanded', 'false'); inp.removeAttribute('aria-activedescendant'); estado.sugIdx = -1; };
@@ -401,10 +439,13 @@ async function iniciar() {
           const item = await registrarContagem({ auditoriaId, produtoId: produto.id, quantidade: valor, usuarioId: perfil.id, acao, idCliente });
           entrada = { ...paraEntrada({ ...item, produtos: produto }), produtoId: produto.id };
           estado.servidor = [entrada, ...estado.servidor.filter(i => i.produtoId !== produto.id)];
-          estado.lista = [entrada, ...estado.lista.filter(i => i.produtoId !== produto.id || i.situacao === 'erro')];
+          // Se o produto ainda tem registros na fila, a linha mostra o total com eles
+          await recarregarLista({ doServidor: false });
+          entrada = estado.lista.find(i => i.produtoId === produto.id && i.situacao !== 'erro') ?? entrada;
         } catch (err) {
-          // Sem rede de verdade (Wi-Fi sem internet, sinal fraco): vai para a fila, sem perder a leitura
-          if (!ehErroDeRede(err)) throw err;
+          // Falha passageira (Wi-Fi sem internet, sinal fraco, servidor fora
+          // do ar, sessão vencida): vai para a fila, sem perder a leitura
+          if (!ehFalhaPassageira(err)) throw err;
           entrada = await guardar();
         }
       } else {

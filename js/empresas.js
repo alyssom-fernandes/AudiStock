@@ -109,12 +109,13 @@ export async function alternarStatusEmpresa(id) {
 //  contarProdutosPorEmpresa(empresaId) → número inteiro
 //  Útil para exibir na listagem de empresas.
 // ─────────────────────────────────────────────────────────────
-export async function contarProdutosPorEmpresa(empresaId) {
-  const { count, error } = await supabase
+export async function contarProdutosPorEmpresa(empresaId, { incluirInativos = false } = {}) {
+  let q = supabase
     .from('produtos')
     .select('id', { count: 'exact', head: true })
-    .eq('empresa_id', empresaId)
-    .eq('ativo', true);
+    .eq('empresa_id', empresaId);
+  if (!incluirInativos) q = q.eq('ativo', true);
+  const { count, error } = await q;
 
   if (error) throw new Error(error.message);
   return count ?? 0;

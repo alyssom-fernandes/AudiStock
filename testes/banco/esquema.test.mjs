@@ -1,7 +1,9 @@
 // ================================================================
 //  Esquema do banco num Postgres de verdade (PGlite, sem instalar
-//  nada): supabase/schema.sql precisa rodar inteiro, e as permissões
-//  de supabase/testes/permissoes.sql precisam passar todas.
+//  nada): supabase/schema.sql precisa rodar inteiro (e de novo, num
+//  banco que já existe), e as permissões de
+//  supabase/testes/permissoes.sql precisam passar todas, inclusive num
+//  banco criado pela versão anterior do esquema (esquema-15aac91.sql).
 // ================================================================
 
 import { test, before, after } from 'node:test';
@@ -25,6 +27,14 @@ const SUPABASE = `
   create role authenticated nologin;
   grant usage on schema auth to anon, authenticated;
 `;
+
+const VERIFICACOES = 48;
+const novoBanco = async () => { const b = new PGlite(); await b.exec(SUPABASE); return b; };
+const permissoes = async b => {
+  await b.exec(await ler('supabase/testes/permissoes.sql'));
+  const { rows } = await b.query('select verificacao, passou, detalhe from resultado order by n');
+  return { total: rows.length, falhas: rows.filter(r => !r.passou).map(r => `${r.verificacao} (${r.detalhe})`) };
+};
 
 let db;
 before(async () => {
@@ -51,7 +61,7 @@ test('o esquema cria as tabelas, as visões e as funções que o app usa', async
 test('todas as verificações de permissão passam', async () => {
   await db.exec(await ler('supabase/testes/permissoes.sql'));
   const { rows } = await db.query('select verificacao, passou, detalhe from resultado order by n');
-  assert.equal(rows.length, 42, 'o README cita 42 verificações');
+  assert.equal(rows.length, VERIFICACOES, `o README cita ${VERIFICACOES} verificações`);
   const falhas = rows.filter(r => !r.passou).map(r => `${r.verificacao} (${r.detalhe})`);
   assert.deepEqual(falhas, []);
   // O script apaga o que criou e devolve o contador da numeração
@@ -92,4 +102,55 @@ test('a diferença é calculada pelo banco (contado − sistema)', async () => {
       values ('2c000000-0000-4000-8000-000000000001', '2b000000-0000-4000-8000-000000000001', 14.442, 15.73);`);
   const { rows } = await db.query(`select diferenca::text, status_divergencia from public.vw_relatorio_divergencias where auditoria_id = '2c000000-0000-4000-8000-000000000001'`);
   assert.deepEqual(rows[0], { diferenca: '-1.288', status_divergencia: 'falta' });
+});
+
+test('o esquema roda de novo num banco que já existe, sem apagar dados', async () => {
+  const antes = (await db.query('select count(*)::int as n from public.auditorias')).rows[0].n;
+  await db.exec(await ler('supabase/schema.sql'));
+  const depois = (await db.query('select count(*)::int as n from public.auditorias')).rows[0].n;
+  assert.equal(depois, antes);
+  const r = await permissoes(db);
+  assert.equal(r.total, VERIFICACOES);
+  assert.deepEqual(r.falhas, []);
+});
+
+test('um banco da versão anterior (15aac91) é atualizado rodando o esquema, e as permissões passam', async () => {
+  const velho = await novoBanco();
+  try {
+    await velho.exec(await ler('testes/banco/esquema-15aac91.sql'));
+    // Dados de antes da atualização: uma auditoria encerrada sem retrato
+    await velho.exec(`
+      insert into public.empresas (id, nome) values ('3e000000-0000-4000-8000-000000000001', 'Antiga');
+      insert into public.produtos (id, empresa_id, codigo_produto, nome_produto) values ('3b000000-0000-4000-8000-000000000001', '3e000000-0000-4000-8000-000000000001', 'V1', 'Velho 1');
+      insert into public.auditorias (id, numero_auditoria, empresa_id, status) values ('3c000000-0000-4000-8000-000000000001', 'AUD-2025-001', '3e000000-0000-4000-8000-000000000001', 'em_andamento');
+      insert into public.auditoria_itens (auditoria_id, produto_id, quantidade_contada, estoque_sistema) values ('3c000000-0000-4000-8000-000000000001', '3b000000-0000-4000-8000-000000000001', 5, 4);
+      update public.auditorias set status = 'finalizada' where id = '3c000000-0000-4000-8000-000000000001';`);
+    await velho.exec(await ler('supabase/schema.sql'));
+
+    const r = await permissoes(velho);
+    assert.equal(r.total, VERIFICACOES);
+    assert.deepEqual(r.falhas, []);
+    // O que era da versão anterior e ficaria aberto foi removido
+    const { rows } = await velho.query(`select
+      (select count(*)::int from pg_policies where policyname = 'historico_criar') as politica,
+      (select count(*)::int from pg_proc where proname = 'gerar_numero_auditoria') as numeracao,
+      (select count(*)::int from pg_proc where proname = 'registrar_contagem') as contagem,
+      (select confdeltype from pg_constraint where conname = 'usuarios_empresa_id_fkey') as fk`);
+    assert.deepEqual(rows[0], { politica: 0, numeracao: 0, contagem: 1, fk: 'r' });
+    // A auditoria antiga continua no relatório
+    const { rows: rel } = await velho.query(`select diferenca::text from public.vw_relatorio_divergencias where auditoria_id = '3c000000-0000-4000-8000-000000000001'`);
+    assert.deepEqual(rel, [{ diferenca: '1.000' }]);
+  } finally { await velho.close(); }
+});
+
+test('o relatório de uma auditoria encerrada guarda o nome e a unidade do encerramento', async () => {
+  await db.exec(`
+    insert into public.empresas (id, nome) values ('4e000000-0000-4000-8000-000000000001', 'Retrato');
+    insert into public.produtos (id, empresa_id, codigo_produto, nome_produto, unidade_medida) values ('4b000000-0000-4000-8000-000000000001', '4e000000-0000-4000-8000-000000000001', 'R1', 'Nome antigo', 'UN');
+    insert into public.auditorias (id, numero_auditoria, empresa_id) values ('4c000000-0000-4000-8000-000000000001', 'AUD-1997-0001', '4e000000-0000-4000-8000-000000000001');
+    insert into public.auditoria_itens (auditoria_id, produto_id, quantidade_contada, estoque_sistema) values ('4c000000-0000-4000-8000-000000000001', '4b000000-0000-4000-8000-000000000001', 2, 2);
+    update public.auditorias set status = 'finalizada' where id = '4c000000-0000-4000-8000-000000000001';
+    update public.produtos set nome_produto = 'Nome novo', unidade_medida = 'CX' where id = '4b000000-0000-4000-8000-000000000001';`);
+  const { rows } = await db.query(`select nome_produto, unidade_medida from public.vw_relatorio_divergencias where auditoria_id = '4c000000-0000-4000-8000-000000000001'`);
+  assert.deepEqual(rows[0], { nome_produto: 'Nome antigo', unidade_medida: 'UN' });
 });

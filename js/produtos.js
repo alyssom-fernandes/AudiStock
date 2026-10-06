@@ -284,7 +284,7 @@ export async function importarProdutosExcel(empresaId, linhas, usuarioId, { aoPr
     const payload = { empresa_id: empresaId, codigo_produto: codigo, nome_produto: l.nome, ativo: true };
     if (l.unidade) payload.unidade_medida = l.unidade.toUpperCase();
     if (l.codigo_barras) payload.codigo_barras = l.codigo_barras;
-    porCodigo.set(codigo, { linha, payload });   // código repetido na planilha: vale a última linha
+    porCodigo.set(codigo, { linha, payload });   // código repetido: vale a última linha (a prévia da tela já deixa só a primeira)
   });
 
   const jaExistem = new Set((await buscarTodos(() => supabase.from('produtos')
@@ -340,9 +340,26 @@ export async function importarProdutosExcel(empresaId, linhas, usuarioId, { aoPr
 
 // Motivo legível de uma linha recusada pelo banco
 function _motivoProduto(e, payload) {
-  if (/produtos_barras_unico|codigo_barras/i.test(e.message)) return `código de barras ${payload.codigo_barras} já é de outro produto ativo`;
+  if (/produtos_barras_unico|codigo_barras/i.test(e.message)) {
+    return payload.codigo_barras
+      ? `código de barras ${payload.codigo_barras} já é de outro produto ativo`
+      : `o produto ${payload.codigo_produto} estava inativo e o código de barras dele hoje é de outro produto ativo`;
+  }
   if (/duplicate|23505/i.test(e.message)) return `código ${payload.codigo_produto} repetido`;
   return e.message;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  listarParaConferencia(empresaId) — todos os produtos da empresa,
+//  ativos e inativos, com o código de barras: a prévia da importação
+//  confere código de barras repetido e produto que vai ser reativado.
+// ─────────────────────────────────────────────────────────────
+export async function listarParaConferencia(empresaId) {
+  return buscarTodos(() => supabase
+    .from('produtos')
+    .select('id, codigo_produto, nome_produto, codigo_barras, ativo')
+    .eq('empresa_id', empresaId)
+    .order('codigo_produto'));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -362,34 +379,43 @@ export async function clonarProdutos(origemId, destinoId, ids = null) {
 
   const novos = fonte.map(p => ({ ...p, empresa_id: destinoId, ativo: true }));
 
-  // Códigos que já existem no destino serão atualizados, não criados
+  // Códigos que já existem no destino serão atualizados (e reativados), não criados
   const existentes = await buscarTodos(() => supabase.from('produtos').select('codigo_produto, codigo_barras, ativo').eq('empresa_id', destinoId).order('codigo_produto'));
   const noDestino = new Map(existentes.map(p => [p.codigo_produto, p]));
-  // Código de barras que no destino já é de outro produto ativo não é copiado
-  // (o banco recusaria o lote inteiro): o produto fica com o que já tinha
+  // Código de barras que no destino já é de outro produto ativo não é
+  // copiado (o banco recusaria): o produto fica com o que já tinha, se esse
+  // estiver livre, ou sem código de barras
   const donoDoEan = new Map(existentes.filter(p => p.ativo && p.codigo_barras).map(p => [p.codigo_barras, p.codigo_produto]));
+  const livre = (ean, codigo) => !ean || !donoDoEan.has(ean) || donoDoEan.get(ean) === codigo;
   let semEan = 0;
   for (const n of novos) {
-    const dono = n.codigo_barras && donoDoEan.get(n.codigo_barras);
-    if (dono && dono !== n.codigo_produto) { n.codigo_barras = noDestino.get(n.codigo_produto)?.codigo_barras ?? null; semEan++; }
+    if (livre(n.codigo_barras, n.codigo_produto)) continue;
+    const antigo = noDestino.get(n.codigo_produto)?.codigo_barras ?? null;
+    n.codigo_barras = livre(antigo, n.codigo_produto) ? antigo : null;
+    semEan++;
   }
 
-  // upsert para não duplicar por código, em lotes
+  // upsert para não duplicar por código, em lotes; um lote recusado é
+  // refeito linha a linha, para só as linhas com problema ficarem de fora
+  const gravar = itens => supabase.from('produtos').upsert(itens, { onConflict: 'empresa_id,codigo_produto', ignoreDuplicates: false });
   let gravados = 0;
+  const erros = [], foraDoAr = /fetch|network|load failed/i;
   for (let i = 0; i < novos.length; i += LOTE) {
-    const { error } = await supabase
-      .from('produtos')
-      .upsert(novos.slice(i, i + LOTE), { onConflict: 'empresa_id,codigo_produto', ignoreDuplicates: false });
-    if (error) {
+    const lote = novos.slice(i, i + LOTE);
+    const { error } = await gravar(lote);
+    if (!error) { gravados += lote.length; continue; }
+    if (foraDoAr.test(error.message)) {
       if (!gravados) throw new Error(error.message);
-      const e = new Error(`A clonagem parou no meio: ${plural(gravados, 'produto já foi copiado', 'produtos já foram copiados')}. Tente de novo; o que já foi copiado só é atualizado.`);
-      e.parcial = true;
-      throw e;
+      throw Object.assign(new Error(`A clonagem parou no meio, sem conexão: ${plural(gravados, 'produto já foi copiado', 'produtos já foram copiados')}. Tente de novo; o que já foi copiado só é atualizado.`), { parcial: true });
     }
-    gravados += novos.slice(i, i + LOTE).length;
+    for (const n of lote) {
+      const { error: e } = await gravar([n]);
+      if (e) erros.push({ codigo: n.codigo_produto, motivo: _motivoProduto(e, n) }); else gravados++;
+    }
   }
-  const atualizados = novos.filter(p => noDestino.has(p.codigo_produto)).length;
-  return { criados: novos.length - atualizados, atualizados, semEan };
+  const ok = novos.filter(p => !erros.some(e => e.codigo === p.codigo_produto));
+  const atualizados = ok.filter(p => noDestino.has(p.codigo_produto)).length;
+  return { criados: ok.length - atualizados, atualizados, semEan, erros };
 }
 
 // ─────────────────────────────────────────────────────────────

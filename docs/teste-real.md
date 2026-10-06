@@ -23,31 +23,29 @@ O `link` cria a pasta `supabase/.temp/`, que fica fora do git.
 ## 1. Banco
 
 1. No painel do Supabase, abra **SQL Editor**.
-2. Se o projeto é novo, rode [`supabase/schema.sql`](../supabase/schema.sql)
-   inteiro. Se o banco já existe, compare antes. O comando abaixo baixa o
-   esquema do projeto ligado no passo 0 e precisa do Docker aberto:
+2. Rode [`supabase/schema.sql`](../supabase/schema.sql) inteiro, seja o
+   projeto novo ou não. Ele pode ser rodado de novo num banco que já
+   existe: cria as tabelas e colunas que faltam, troca funções, gatilhos,
+   visões e políticas pela versão atual e não apaga dados. Se quiser uma
+   cópia do banco antes, o comando abaixo baixa o esquema do projeto
+   ligado no passo 0 (precisa do Docker aberto; o arquivo fica fora do
+   git):
 
    ```bash
    supabase db dump -f meu-esquema.sql
    ```
 
-   e aplique só o que faltar. O mais importante, se o banco for antigo:
-   - as funções `registrar_contagem` e `corrigir_contagem`: sem elas o app
-     funciona, mas leituras simultâneas do mesmo produto podem se perder e
-     a correção fica sem motivo no histórico;
-   - os gatilhos `auditorias_numeradas`, `usuarios_protegidos`,
-     `auditorias_protegidas`, `auditorias_retratadas`,
-     `itens_so_em_andamento` e `itens_historico` (as funções deles se
-     chamam `numerar_auditoria`, `proteger_*`, `retratar_auditoria` e
-     `historiar_item`);
-   - as tabelas `contagens_aplicadas` e `auditoria_retratos`;
-   - as políticas de RLS.
+3. Confira as mensagens (**NOTICE**) no fim da execução. Elas só aparecem
+   num banco antigo com dados que impedem uma regra nova, por exemplo dois
+   produtos ativos com o mesmo código de barras ou duas auditorias em
+   andamento na mesma empresa. A mensagem diz qual regra ficou de fora;
+   acerte os dados e rode o `schema.sql` de novo.
 
 ## 2. Permissões
 
 Rode [`supabase/testes/permissoes.sql`](../supabase/testes/permissoes.sql)
 no SQL Editor. Ele cria empresas, usuários e auditorias de teste, entra
-como cada perfil, confere 42 regras e **apaga tudo o que criou**. O
+como cada perfil, confere 48 regras e **apaga tudo o que criou**. O
 resultado é uma tabela: todas as linhas devem dizer `ok`.
 
 Se aparecer `FALHOU`, a coluna `detalhe` diz o que aconteceu (por exemplo,
@@ -64,9 +62,9 @@ Se aparecer `FALHOU`, a coluna `detalhe` diz o que aconteceu (por exemplo,
 2. Com a função publicada, desligue o cadastro aberto em
    **Authentication › Providers › Email › Allow new users to sign up**.
    Sem a função, o app usa o cadastro pelo navegador num cliente à parte,
-   que não troca a sessão de quem cadastra, mas exige essa opção ligada
-   **e** a opção **Confirm email** desligada (senão a pessoa só entra
-   depois de confirmar o e-mail, e o app avisa isso ao cadastrar).
+   que não troca a sessão de quem cadastra, mas exige essa opção ligada.
+   Com **Confirm email** também ligado, a pessoa é cadastrada, mas só
+   entra depois de confirmar o e-mail, e o app avisa isso ao cadastrar.
 3. Se o projeto tiver regras de senha mais rígidas que 6 caracteres
    (**Authentication › Policies**), o app mostra a regra que faltou.
 

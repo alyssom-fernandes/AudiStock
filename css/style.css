@@ -59,7 +59,7 @@ svg { display: block; flex-shrink: 0; }
 .print-only { display: none !important; }
 .pular { position: fixed; left: 12px; top: -100px; z-index: 600; padding: 8px 14px; border-radius: var(--r); background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); }
 .pular:focus { top: 8px; box-shadow: var(--shadow-modal); }
-.topbar-titulo:focus, [tabindex="-1"]:focus { outline: none; }
+.topbar-titulo:focus { outline: none; }   /* o título recebe o foco na troca de tela, para ser anunciado */
 .page-content:focus { outline: none; }
 .so-celular, .so-celular-bloco { display: none !important; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
@@ -265,7 +265,7 @@ details[open] .detalhes-rotulo svg { transform: rotate(180deg); }
 .seg .qtd { font-variant-numeric: tabular-nums; color: var(--text-muted); margin-left: 4px; font-weight: 400; }
 
 /* ── TABELAS ────────────────────────────────────────────── */
-.tabela-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; container: tabela / inline-size; }
+.tabela-wrap { position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch; container: tabela / inline-size; }
 /* Telas largas: em listas longas o cabeçalho da tabela fica preso sob o
    topo ao rolar. "clip" não cria área de rolagem, então o sticky segue a página. */
 @media screen and (min-width: 1181px) {
@@ -282,6 +282,33 @@ details[open] .detalhes-rotulo svg { transform: rotate(180deg); }
     .col-larga { display: none !important; }
     .so-medio-bloco { display: block !important; }
     .tabela-fixa td.email { min-width: 140px; }
+    .tabela-lista .resultado { flex-direction: column; }   /* faltas e sobras uma embaixo da outra, sem "·" sobrando no fim da linha */
+    .tabela-lista .resultado .sep { display: none; }
+}
+/* Lista estreita (até 700 px de largura útil, mesmo fora do celular: tablet
+   pequeno, janela dividida): a tabela vira a lista de cartões do celular,
+   em vez de rolar de lado */
+@container tabela (max-width: 699px) {
+    .tabela-lista thead, .tabela-lista colgroup { display: none; }
+    .tabela-lista, .tabela-lista tbody { display: block; }
+    .tabela-lista tr { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+    .tabela-lista tbody tr:last-child { border-bottom: 0; }
+    .tabela-lista td { display: block; padding: 0 !important; border: 0; }
+    .tabela-lista .so-desktop { display: none; }
+    .tabela-lista .so-celular-bloco { display: block !important; }
+    .tabela-lista span.so-celular, .tabela-lista .partes > .so-celular { display: inline !important; }
+    .tabela-lista .so-medio-bloco:not(.so-celular-bloco) { display: none !important; }
+    .tabela-lista td.l-titulo { grid-column: 1; grid-row: 1 / span 2; align-self: start; }
+    .tabela-lista td.l-linha { grid-column: 1 / -1 !important; justify-self: stretch !important; text-align: left !important; }
+    .tabela-lista td.l-linha .acoes-linha { justify-content: flex-start; margin-top: 6px; }
+    .tabela-lista td.l-linha .btn { flex: 1 1 0; }
+    .tabela-lista .linha-link.cobre::after { content: ''; position: absolute; inset: 0; }
+    .tabela-lista .resultado { justify-content: flex-end; flex-direction: column; align-items: flex-end; }
+    .tabela-lista .resultado .sep { display: none; }
+    .tabela-lista .sub .forte { color: var(--text); }
+    .tabela-lista td.num { align-self: start; }
+    .tabela-lista td:not(.l-titulo) { grid-column: 2; text-align: right; justify-self: end; }
+    .tabela-lista .acoes-linha { justify-content: flex-end; }
 }
 /* Tabela pequena dentro de janela, no celular: só as colunas essenciais */
 @container tabela (max-width: 479px) {
@@ -440,7 +467,8 @@ body:has(.barra-acoes) .toasts { bottom: 84px; }
 .card-colado { margin: 0; }
 .modal-texto-seguinte { margin-top: 10px; }
 .modal-texto-antes { margin-bottom: 14px; }
-.qtd-input::placeholder { font-weight: 400; color: var(--border-strong); }
+.qtd-input::placeholder { font-weight: 400; font-size: 18px; color: var(--text-faint); }   /* menor e mais leve que um valor digitado, mas legível */
+.motivo-recusa { color: var(--danger); }
 .estado-conexao { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
 .estado-conexao::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--success-solid); }
 .estado-conexao.off { color: var(--warning); }

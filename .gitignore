@@ -75,3 +75,6 @@ blob-report/
 
 # Supabase CLI (supabase link)
 supabase/.temp/
+
+# Cópia do banco do roteiro de teste real (supabase db dump)
+meu-esquema.sql

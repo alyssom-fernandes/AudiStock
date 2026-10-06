@@ -36,7 +36,9 @@ export async function render(el, { params, perfil }) {
 
   const desenhar = () => {
     $('#empToolbar').hidden = !lista.length;
-    const t = normalizar(busca), dig = /\d/.test(busca) ? limparCnpj(busca) : '';
+    // Busca por CNPJ só quando o termo parece um (sem espaço, com dígitos):
+    // "Loja 2" procura no nome, não nos CNPJs
+    const t = normalizar(busca), dig = !/\s/.test(busca.trim()) && (busca.match(/\d/g) ?? []).length >= 2 ? limparCnpj(busca) : '';
     const base = lista.filter(e => inativas || e.ativo);
     const visiveis = base.filter(e => !t || normalizar(e.nome).includes(t) || normalizar(e.cidade).includes(t) || (dig && limparCnpj(e.cnpj ?? '').includes(dig)));
     if (!lista.length) {

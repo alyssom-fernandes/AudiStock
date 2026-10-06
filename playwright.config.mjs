@@ -2,7 +2,7 @@
 //   npm run test:e2e
 // No computador usa o Chrome instalado; no GitHub Actions, o Chromium do Playwright.
 // Sem o Chrome: npx playwright install chromium, e rode com PW_CHANNEL=chromium
-// (ou PW_CHANNEL=msedge para usar o Edge).
+// (ou msedge, para usar o Edge). No PowerShell: $env:PW_CHANNEL='chromium'; npm run test:e2e
 import { defineConfig, devices } from '@playwright/test';
 
 const CI = !!process.env.CI;
@@ -31,6 +31,8 @@ export default defineConfig({
   webServer: {
     command: 'node testes/servidor.mjs 4173',
     url: 'http://localhost:4173/login.html',
-    reuseExistingServer: !CI,
+    // Sempre um servidor novo, desta pasta: com a porta ocupada, o teste
+    // para com um aviso em vez de rodar contra outra coisa
+    reuseExistingServer: false,
   },
 });

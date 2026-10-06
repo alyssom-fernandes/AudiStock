@@ -8,8 +8,8 @@
 import { hasRole } from '../auth.js';
 import { listarEmpresas, contarProdutosPorEmpresa } from '../empresas.js';
 import { listarProdutos, buscarProdutoPorId, criarProduto, atualizarProduto, importarProdutosExcel, clonarProdutos, lerPlanilha,
-         listarCatalogo, buscarProdutoPorBarras, buscarCadastroPorCodigo } from '../produtos.js';
-import { baixarArquivo } from '../relatorios.js';
+         listarParaConferencia, buscarProdutoPorBarras, buscarCadastroPorCodigo } from '../produtos.js';
+import { baixarArquivo, csvTexto } from '../relatorios.js';
 import { escapeHtml, fmtInt, plural, vazioHtml, erroCargaHtml, abrirModal, fmConfirm, showToast, debounce, delegarAcoes,
          marcarInvalido, ICONS, mensagemErro, carregarScript, partesHtml } from '../ui.js';
 
@@ -121,7 +121,7 @@ export async function render(el, { perfil, params }) {
   };
 
   // Depois de cadastrar, importar ou clonar, a lista mostra o resultado (na empresa certa)
-  const concluir = (id, opcoes) => trocarEmpresa(id ?? empresaId, opcoes);
+  const concluir = (id, opcoes) => el.isConnected ? trocarEmpresa(id ?? empresaId, opcoes) : undefined;
   delegarAcoes(el, {
     pag: ({ dir }, btn) => { btn.disabled = true; pagina = Math.max(1, pagina + Number(dir)); carregar().then(() => window.scrollTo({ top: 0 })); },
     limpar: () => { busca = ''; $('#prodBusca').value = ''; carregar(); },
@@ -218,10 +218,10 @@ async function abrirProduto(id, empresas, empresaAtual, aoSalvar) {
 // linha sem código ou nome, código repetido e código de barras repetido
 // (na própria planilha ou já usado por outro produto ativo da empresa).
 function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
-  let lida = null, prontas = [], ignoradas = [], concluido = false, gravouAlgo = false, empresaFeita = null, seqPrevia = 0;
+  let lida = null, prontas = [], ignoradas = [], reativados = 0, concluido = false, gravouAlgo = false, empresaFeita = null, seqPrevia = 0;
   const m = abrirModal({
     titulo: 'Importar planilha de produtos',
-    subtitulo: 'Planilha do Excel (.xlsx) com as colunas <strong>codigo</strong> e <strong>nome</strong>; <strong>unidade</strong> e <strong>codigo_barras</strong> são opcionais. Códigos que já existem são atualizados, e uma célula vazia não apaga o que já está cadastrado.',
+    subtitulo: 'Planilha do Excel (.xlsx) com as colunas <strong>codigo</strong> e <strong>nome</strong>; <strong>unidade</strong> e <strong>codigo_barras</strong> são opcionais. Códigos que já existem são atualizados (e voltam a ficar ativos), e uma célula vazia não apaga o que já está cadastrado.',
     largura: 'lg',
     corpo: `
       <div class="form-group" id="impGrupoEmpresa"><label class="form-label" for="impEmpresa">Empresa</label>
@@ -231,6 +231,7 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
           <span class="zona-arquivo-nome" id="impNome">Escolha a planilha (.xlsx)</span>
           <input type="file" id="impArquivo" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="sr-only" aria-labelledby="impRotulo impNome"/></label>
         <span class="form-hint">Não tem a planilha no formato? <button type="button" class="link" id="impModelo">Baixar modelo</button></span></div>
+      <div id="impProgressoArea"></div>
       <div id="impPrevia" aria-live="polite"></div>`,
     acoes: [
       { texto: 'Cancelar', classe: 'btn-secondary', acao: mm => mm.fechar() },
@@ -269,8 +270,11 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
       return;
     }
     previa.innerHTML = '<p class="form-hint">Lendo a planilha…</p>';
+    const minha = seqPrevia;
     try {
-      lida = await lerPlanilha(arquivo);
+      const lidaAgora = await lerPlanilha(arquivo);
+      if (minha !== seqPrevia) return;   // outro arquivo foi escolhido enquanto este era lido
+      lida = { ...lidaAgora, nome: arquivo.name.replace(/\.xlsx$/i, '') };
       await desenharPrevia();
     } catch (err) {
       console.warn('[importação]', err);
@@ -284,13 +288,14 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
     const minha = ++seqPrevia;
     const previa = m.$('#impPrevia');
     btnImp.disabled = true;
-    let catalogo = [], semConferir = false;
-    try { catalogo = await listarCatalogo(m.$('#impEmpresa').value); } catch (_) { semConferir = true; }
+    let cadastro = [], semConferir = false;
+    try { cadastro = await listarParaConferencia(m.$('#impEmpresa').value); } catch (_) { semConferir = true; }
     if (minha !== seqPrevia) return;   // trocou de arquivo ou de empresa no meio
 
-    const donoDoEan = new Map(catalogo.filter(x => x.codigo_barras).map(x => [x.codigo_barras, x]));
+    const donoDoEan = new Map(cadastro.filter(x => x.ativo && x.codigo_barras).map(x => [x.codigo_barras, x]));
+    const inativos = new Map(cadastro.filter(x => !x.ativo).map(x => [x.codigo_produto, x]));
     const codigos = new Map(), eans = new Map();
-    prontas = []; ignoradas = [];
+    prontas = []; ignoradas = []; reativados = 0;
     for (const l of lida.linhas) {
       const codigo = l.codigo.toUpperCase(), ean = l.codigo_barras;
       let motivo = null;
@@ -300,8 +305,13 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
       else if (ean && donoDoEan.has(ean) && donoDoEan.get(ean).codigo_produto !== codigo) {
         const dono = donoDoEan.get(ean);
         motivo = `código de barras ${ean} já é do produto ${dono.codigo_produto} · ${dono.nome_produto}`;
+      } else if (!ean && inativos.has(codigo)) {
+        // Reativar um inativo que guarda um código de barras hoje usado por outro produto
+        const velho = inativos.get(codigo).codigo_barras, dono = velho && donoDoEan.get(velho);
+        if (dono && dono.codigo_produto !== codigo) motivo = `o produto ${codigo} está inativo e o código de barras dele (${velho}) hoje é do produto ${dono.codigo_produto} · ${dono.nome_produto}; informe outro código de barras na planilha`;
       }
       if (motivo) { ignoradas.push({ n: l.n, motivo }); continue; }
+      if (inativos.has(codigo)) reativados++;
       codigos.set(codigo, l.n);
       if (ean) eans.set(ean, l.n);
       prontas.push({ ...l, codigo, unidade: l.unidade.toUpperCase() });
@@ -318,6 +328,7 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
     const colBarras = lida.colunas.codigo_barras;
     previa.innerHTML = `
       ${avisoProblemas()}
+      ${reativados ? `<p class="form-hint">${reativados === 1 ? 'Um produto inativo volta' : `${fmtInt(reativados)} produtos inativos voltam`} a ficar ativo${reativados === 1 ? '' : 's'}.</p>` : ''}
       ${faltam.length ? `<p class="form-hint">A planilha não tem a coluna ${faltam.map(c => `<strong>${c}</strong>`).join(' nem ')}: nos produtos que já existem, ${faltam.length > 1 ? 'esses campos ficam' : 'esse campo fica'} como ${faltam.length > 1 ? 'estão' : 'está'}.</p>` : ''}
       ${semConferir ? '<p class="form-hint">Não foi possível conferir os códigos de barras com o cadastro agora; um código repetido será recusado na gravação.</p>' : ''}
       <div class="tabela-wrap" style="border:1px solid var(--border);border-radius:var(--r)"><table>
@@ -340,7 +351,7 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
     mm.ocupado(true, 'Importando…');
     campos.forEach(c => { c.disabled = true; });
     const previa = mm.$('#impPrevia');
-    previa.insertAdjacentHTML('afterbegin', `<div class="importando" id="impProgresso"><div class="importando-linha"><span>Gravando os produtos… não feche esta janela.</span><strong id="impPct">0%</strong></div>
+    mm.$('#impProgressoArea').insertAdjacentHTML('afterbegin', `<div class="importando" id="impProgresso"><div class="importando-linha"><span>Gravando os produtos… não feche esta janela.</span><strong id="impPct">0%</strong></div>
       <div class="barra" role="progressbar" aria-label="Progresso da importação" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i style="width:0%"></i></div></div>`);
     const progredir = (feitos, total) => {
       const pct = total ? Math.round(feitos / total * 100) : 100;
@@ -357,9 +368,13 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
       const falhas = [...ignoradas.map(x => ({ linha: x.n, motivo: x.motivo })), ...r.erros].sort((a, b) => a.linha - b.linha);
       const partes = [r.criados && plural(r.criados, 'produto criado', 'produtos criados'), r.atualizados && plural(r.atualizados, 'atualizado', 'atualizados'), falhas.length && plural(falhas.length, 'linha não importada', 'linhas não importadas')].filter(Boolean);
       mm.$('#impGrupoEmpresa').hidden = true; mm.$('#impGrupoArquivo').hidden = true;
+      mm.$('#impProgresso')?.remove();
       previa.innerHTML = `<div class="aviso ${falhas.length ? 'aviso-aviso' : 'aviso-sucesso'}">${falhas.length ? ICONS.alerta : ICONS.ok}
         <div><p><strong>Importação concluída em ${escapeHtml(nomeEmp)}.</strong> ${partes.join(' · ') || 'Nenhuma alteração'}.</p>
-        ${falhas.length ? `<ul class="lista-erros">${falhas.slice(0, 5).map(x => `<li>Linha ${x.linha}: ${escapeHtml(x.motivo)}</li>`).join('')}${falhas.length > 5 ? `<li>e mais ${falhas.length - 5}</li>` : ''}</ul>` : ''}</div></div>`;
+        ${falhas.length ? `<ul class="lista-erros">${falhas.slice(0, 5).map(x => `<li>Linha ${x.linha}: ${escapeHtml(x.motivo)}</li>`).join('')}${falhas.length > 5 ? `<li>e mais ${falhas.length - 5}</li>` : ''}</ul>` : ''}
+        ${falhas.length > 5 ? '<p><button type="button" class="link" id="impBaixarFalhas">Baixar a lista das linhas não importadas</button></p>' : ''}</div></div>`;
+      mm.$('#impBaixarFalhas')?.addEventListener('click', () => baixarArquivo(
+        ['Linha;Motivo', ...falhas.map(x => `${x.linha};${csvTexto(x.motivo)}`)].join('\r\n') + '\r\n', `linhas-nao-importadas_${lida.nome ?? 'planilha'}.csv`));
       mm.ocupado(false);
       btnImp.textContent = 'Ver produtos';
       mm.$('.modal-rodape .btn-secondary').hidden = true;
@@ -395,7 +410,7 @@ function abrirClonagem(empresas, empresaAtual, aoConcluir) {
       const origem = mm.$('#clOrigem').value, destino = mm.$('#clDestino').value;
       if (!destino) { marcarInvalido(mm.$('#clDestino'), 'Escolha a empresa de destino.'); mm.$('#clDestino').focus(); return; }
       if (nDestino) {
-        const ok = await fmConfirm({ titulo: `${nome(destino)} já tem produtos`, msg: `Ela já tem ${plural(nDestino, 'produto cadastrado', 'produtos cadastrados')}. Os ${plural(nOrigem ?? 0, 'produto', 'produtos')} de ${nome(origem)} serão somados. Nos códigos repetidos, nome, unidade e código de barras são atualizados, e um produto inativo com o mesmo código volta a ficar ativo.`, confirmTxt: 'Clonar mesmo assim' });
+        const ok = await fmConfirm({ titulo: `${nome(destino)} já tem produtos`, msg: `Ela já tem ${plural(nDestino, 'produto cadastrado', 'produtos cadastrados')}, contando os inativos. Os ${plural(nOrigem ?? 0, 'produto', 'produtos')} de ${nome(origem)} serão somados. Nos códigos repetidos, nome, unidade e código de barras são atualizados, e um produto inativo com o mesmo código volta a ficar ativo.`, confirmTxt: 'Clonar mesmo assim' });
         if (!ok) return;
       }
       mm.ocupado(true, 'Clonando…');
@@ -403,7 +418,9 @@ function abrirClonagem(empresas, empresaAtual, aoConcluir) {
         const r = await clonarProdutos(origem, destino);
         mm.fechar();
         const partes = [r.criados && plural(r.criados, 'produto copiado', 'produtos copiados'), r.atualizados && plural(r.atualizados, 'atualizado', 'atualizados')].filter(Boolean);
-        showToast(`${partes.join(' e ') || 'Nenhum produto copiado'} para ${nome(destino)}.${r.semEan ? ` ${plural(r.semEan, 'código de barras não foi copiado porque já é', 'códigos de barras não foram copiados porque já são')} de outro produto lá.` : ''}`, r.semEan ? 'warning' : 'success', r.semEan ? 8000 : 4000);
+        const avisos = [r.semEan && `${plural(r.semEan, 'código de barras não foi copiado porque já é', 'códigos de barras não foram copiados porque já são')} de outro produto lá.`,
+          r.erros?.length && `${plural(r.erros.length, 'produto não foi copiado', 'produtos não foram copiados')}: ${r.erros.slice(0, 3).map(e => `${e.codigo} (${e.motivo})`).join('; ')}${r.erros.length > 3 ? '…' : '.'}`].filter(Boolean);
+        showToast(`${partes.join(' e ') || 'Nenhum produto copiado'} para ${nome(destino)}.${avisos.length ? ' ' + avisos.join(' ') : ''}`, avisos.length ? 'warning' : 'success', avisos.length ? 10000 : 4000);
         await aoConcluir(destino);
       } catch (err) {
         mm.ocupado(false);
@@ -419,7 +436,7 @@ function abrirClonagem(empresas, empresaAtual, aoConcluir) {
     const destino = m.$('#clDestino').value;
     const btn = m.$('#btnClonar');
     try {
-      [nOrigem, nDestino] = await Promise.all([contarProdutosPorEmpresa(origem), destino ? contarProdutosPorEmpresa(destino) : 0]);
+      [nOrigem, nDestino] = await Promise.all([contarProdutosPorEmpresa(origem), destino ? contarProdutosPorEmpresa(destino, { incluirInativos: true }) : 0]);
       if (minha !== seq) return;   // a pessoa já trocou a seleção de novo
       btn.disabled = nOrigem === 0;
       m.$('#clResumo').innerHTML = nOrigem === 0 ? `<strong>${escapeHtml(nome(origem))}</strong> não tem produtos ativos para copiar.`

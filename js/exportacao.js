@@ -19,8 +19,10 @@ export function tituloRelatorio(aud) {
   return aud.status === 'finalizada' ? 'Relatório de divergências'
     : aud.status === 'cancelada' ? 'Contagens registradas (auditoria cancelada)' : 'Relatório parcial da contagem';
 }
-// Há com o que comparar? (pelo menos um item com saldo do sistema)
-export const temComparacao = resumo => resumo.auditados > 0 && resumo.sem_saldo < resumo.auditados;
+// Há com o que comparar? Só na auditoria finalizada, com pelo menos um
+// item com saldo do sistema. Em andamento ou cancelada, mesmo com saldos
+// gravados (uma finalização que falhou no meio), sai só a contagem.
+export const temComparacao = (resumo, aud) => (!aud || aud.status === 'finalizada') && resumo.auditados > 0 && resumo.sem_saldo < resumo.auditados;
 // Por que não há divergência, quando não há
 export const semDivergenciaMotivo = aud => aud.status === 'finalizada' ? 'nenhum saldo do sistema informado'
   : aud.status === 'cancelada' ? 'auditoria cancelada sem fechamento' : 'calculadas no fechamento';
@@ -83,7 +85,7 @@ function _montarPDF(jsPDF, { aud, resumo, itens, naoContados = [], filtroRotulo,
   const L = 14, R = 196, LARG = R - L, emitidoEm = fmtDateTime(new Date().toISOString());
   const TINTA = [28, 27, 25], CINZA = [100, 96, 88], LINHA = [214, 210, 202], ACENTO = [154, 52, 18];
   const VERDE = [21, 128, 61], VERMELHO = [185, 28, 28];
-  const titulo = tituloRelatorio(aud), comparado = temComparacao(resumo);
+  const titulo = tituloRelatorio(aud), comparado = temComparacao(resumo, aud);
   const empresa = aud.empresas?.nome ?? '—';
   const caber = (txt, larg) => {          // uma linha, com reticências se não couber
     let s = String(txt);
@@ -261,7 +263,7 @@ const dataLocal = iso => { const d = new Date(iso); return new Date(d.getTime() 
 export async function gerarExcel({ aud, resumo, itens, naoContados, filtroRotulo, emissor }) {
   const ExcelJS = await carregarScript(`${CDN}/exceljs/4.4.0/exceljs.min.js`, 'ExcelJS');
   const wb = new ExcelJS.Workbook();
-  const titulo = tituloRelatorio(aud), comparado = temComparacao(resumo);
+  const titulo = tituloRelatorio(aud), comparado = temComparacao(resumo, aud);
   wb.creator = emissor || 'AudiStock'; wb.created = new Date();
   wb.title = `${titulo} ${aud.numero_auditoria}`;
 
@@ -288,7 +290,8 @@ export async function gerarExcel({ aud, resumo, itens, naoContados, filtroRotulo
     ...(comparado ? [
       ['Sem divergência', resumo.ok], ['Itens com falta', resumo.faltas], ['Itens com sobra', resumo.sobras],
       ...(resumo.sem_saldo ? [['Sem saldo do sistema', resumo.sem_saldo]] : []),
-      ['Acerto da contagem', (resumo.auditados - resumo.sem_saldo) ? resumo.ok / (resumo.auditados - resumo.sem_saldo) : 0],
+      // Arredondado para baixo, como na tela: 299 de 300 é 99,6%, nunca 100% ao lado de uma falta
+      ['Acerto da contagem', (resumo.auditados - resumo.sem_saldo) ? Math.floor(resumo.ok / (resumo.auditados - resumo.sem_saldo) * 1000) / 1000 : 0],
     ] : [['Divergências', semDivergenciaMotivo(aud).replace(/^./, c => c.toUpperCase())]]),
   ];
   linhasResumo.forEach((l, i) => {

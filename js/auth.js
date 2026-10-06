@@ -6,13 +6,13 @@
 //  usuário (JWT) e a tabela `usuarios` para dados de perfil/role.
 //  O campo `usuarios.id` deve corresponder ao `auth.users.id`.
 //
-//  Como criar um usuário:
-//  1. Supabase Dashboard > Authentication > Users > Invite user
-//  2. Ou via SQL:
-//     SELECT auth.sign_up('email@x.com', 'senha');
-//  3. Depois insira o perfil em `usuarios`:
+//  Como criar o primeiro usuário (o supremo):
+//  1. Supabase Dashboard > Authentication > Users > Add user
+//     (com e-mail e senha, e "Auto Confirm User" marcado)
+//  2. Depois insira o perfil em `usuarios`, no SQL Editor:
 //     INSERT INTO usuarios (id, nome, email, role)
 //     VALUES ('<uid do auth>', 'Nome', 'email@x.com', 'supremo');
+//  Os demais são cadastrados pelo próprio app (tela Usuários).
 // ================================================================
 
 import supabase from './supabaseClient.js';
@@ -54,9 +54,18 @@ export async function login(email, senha) {
 //  logout()
 // ─────────────────────────────────────────────────────────────
 export async function logout() {
-  await supabase.auth.signOut();
+  // Sem rede, o signOut não chega ao servidor e a sessão ficaria no
+  // aparelho: apaga ao menos a cópia local (importante num coletor
+  // compartilhado)
+  const { error } = await supabase.auth.signOut().catch(e => ({ error: e }));
+  if (error) await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
   _currentUser   = null;
   _currentPerfil = null;
+  if (!navigator.onLine) {
+    // A tela de entrada não carrega sem internet: abre quando a rede voltar
+    window.addEventListener('online', () => { window.location.href = 'login.html'; }, { once: true });
+    return;
+  }
   window.location.href = 'login.html';
 }
 
@@ -98,7 +107,9 @@ export async function requireAuth() {
   if (!_vigiandoSessao) {
     _vigiandoSessao = true;
     supabase.auth.onAuthStateChange(evento => {
-      if (evento === 'SIGNED_OUT') window.location.href = 'login.html';
+      if (evento !== 'SIGNED_OUT') return;
+      if (navigator.onLine) window.location.href = 'login.html';
+      else window.addEventListener('online', () => { window.location.href = 'login.html'; }, { once: true });
     });
   }
 

@@ -25,7 +25,9 @@ truncate resultado;
 begin;
 
 -- O teste cria uma auditoria pelo app, o que avança a numeração real:
--- guarda o contador para devolver no fim
+-- guarda o contador para devolver no fim. A trava faz uma auditoria real
+-- criada durante o teste esperar o fim dele (e receber o número certo).
+lock table public.auditoria_numeracao in exclusive mode;
 create temp table teste_numeracao on commit drop as select * from public.auditoria_numeracao;
 
 -- ── Ferramentas do teste (apagadas no fim) ──────────────────────
@@ -194,6 +196,12 @@ do $$ declare q numeric; begin
   perform teste_audistock.anotar('O mesmo envio repetido (fila em duas abas, resposta perdida) não soma de novo', q = 1, 'quantidade ' || q);
 end $$;
 
+do $$ declare n int; begin
+  perform teste_audistock.como('0a000000-0000-4000-8000-000000000005');
+  select count(*) into n from public.contagens_aplicadas where id_cliente = '0f000000-0000-4000-8000-000000000001';
+  perform teste_audistock.anotar('Auditor da B não vê os envios de contagem da A', n = 0, n || ' visíveis');
+end $$;
+
 do $$ declare h int; u uuid; begin
   perform teste_audistock.como('0a000000-0000-4000-8000-000000000003');
   update public.auditoria_itens set quantidade_contada = 6
@@ -212,6 +220,16 @@ do $$ declare m text; begin
   select x.motivo into m from public.auditoria_itens_historico x join public.auditoria_itens i on i.id = x.auditoria_item_id
    where i.auditoria_id = '0c000000-0000-4000-8000-000000000002' and i.produto_id = '0b000000-0000-4000-8000-000000000002' and x.quantidade_nova = 7;
   perform teste_audistock.anotar('Correção pela função guarda o motivo no histórico', m = 'recontagem do corredor 3', coalesce(m, 'sem motivo'));
+end $$;
+
+do $$ declare msg text; begin
+  begin
+    perform teste_audistock.como('0a000000-0000-4000-8000-000000000004');
+    perform public.corrigir_contagem((select id from public.auditoria_itens
+      where auditoria_id = '0c000000-0000-4000-8000-000000000002' and produto_id = '0b000000-0000-4000-8000-000000000002'), 1, 'teste');
+  exception when others then msg := sqlerrm;
+  end;
+  perform teste_audistock.anotar('Visualizador não corrige contagem, e a mensagem diz por quê', msg like '%perfil%', coalesce(msg, 'foi aceito'));
 end $$;
 
 do $$ begin
@@ -356,16 +374,58 @@ do $$ declare n int; c uuid; begin
     n = 1 and c = '0a000000-0000-4000-8000-000000000002', n || ' linha alterada');
 end $$;
 
-do $$ declare num text; msg text; begin
+do $$ declare num text; msg text; a public.auditorias; begin
   begin
     perform teste_audistock.como('0a000000-0000-4000-8000-000000000002');
-    insert into public.auditorias (numero_auditoria, empresa_id, criado_por) values
-      ('AUD-2099-9999', '0e000000-0000-4000-8000-0000000000a1', '0a000000-0000-4000-8000-000000000002')
-    returning numero_auditoria into num;
+    insert into public.auditorias (numero_auditoria, empresa_id, criado_por, data_inicio, data_fim, criado_em, cancelado_em, motivo_cancelamento) values
+      ('AUD-2099-9999', '0e000000-0000-4000-8000-0000000000a1', '0a000000-0000-4000-8000-000000000002',
+       '1999-01-01', '1999-01-02', '1999-01-01', '1999-01-03', 'forjado')
+    returning * into a;
+    num := a.numero_auditoria;
   exception when others then msg := sqlerrm;
   end;
   perform teste_audistock.anotar('Administrador da A inicia auditoria na A, com o número dado pelo banco (não o enviado)',
     num is not null and num <> 'AUD-2099-9999' and num ~ '^AUD-[0-9]{4}-[0-9]{4,}$', coalesce(msg, num));
+  perform teste_audistock.anotar('Início, término e cancelamento de uma auditoria nova são do banco, não do navegador',
+    coalesce(a.data_inicio = now() and a.criado_em = now() and a.data_fim is null and a.cancelado_em is null and a.motivo_cancelamento is null, false),
+    coalesce(msg, 'início ' || a.data_inicio));
+end $$;
+
+-- Fechamento: um item contado que a tela não mostrava impede finalizar;
+-- com todos os itens, os saldos e a finalização entram juntos
+do $$ declare aud uuid; cod text; msg text; begin
+  perform teste_audistock.dono();
+  select id into aud from public.auditorias where empresa_id = '0e000000-0000-4000-8000-0000000000a1' and status = 'em_andamento';
+  begin
+    perform teste_audistock.como('0a000000-0000-4000-8000-000000000003');
+    perform public.registrar_contagem(aud, '0b000000-0000-4000-8000-000000000001', 4, 'somar');
+  exception when others then get stacked diagnostics cod = returned_sqlstate; msg := 'contagem: ' || sqlerrm;
+  end;
+  if msg is null then
+    begin   -- bloco à parte: a recusa esperada não desfaz a contagem acima
+      perform teste_audistock.como('0a000000-0000-4000-8000-000000000003');
+      perform public.finalizar_auditoria(aud, '{}'::jsonb);
+    exception when others then get stacked diagnostics cod = returned_sqlstate; msg := sqlerrm;
+    end;
+  end if;
+  perform teste_audistock.anotar('Finalizar é recusado se há item contado que a tela de fechamento não mostrava', coalesce(cod = 'AS002', false),
+    coalesce(cod || ': ' || msg, 'foi aceito'));
+end $$;
+
+do $$ declare aud uuid; item uuid; st text; saldo numeric; msg text; begin
+  perform teste_audistock.dono();
+  select a.id, i.id into aud, item from public.auditorias a join public.auditoria_itens i on i.auditoria_id = a.id
+   where a.empresa_id = '0e000000-0000-4000-8000-0000000000a1' and a.status = 'em_andamento';
+  begin
+    perform teste_audistock.como('0a000000-0000-4000-8000-000000000003');
+    perform public.finalizar_auditoria(aud, jsonb_build_object(item::text, 3));
+  exception when others then msg := sqlerrm;
+  end;
+  perform teste_audistock.dono();
+  select a.status, i.estoque_sistema into st, saldo from public.auditorias a join public.auditoria_itens i on i.auditoria_id = a.id where a.id = aud;
+  perform teste_audistock.anotar('Auditor finaliza pela função: saldos gravados e auditoria encerrada na mesma operação',
+    coalesce(st = 'finalizada' and saldo = 3, false),
+    coalesce(msg, st || ', saldo ' || coalesce(saldo::text, 'vazio'), 'auditoria não encontrada'));
 end $$;
 
 do $$ declare n int; begin
@@ -421,14 +481,16 @@ do $$ declare n int; begin
   perform teste_audistock.anotar('Cada um altera o próprio nome', n = 1, n || ' linha alterada');
 end $$;
 
-do $$ declare ok boolean := true; msg text; begin
+do $$ declare ok boolean := true; msg text; e text; begin
   begin
     perform teste_audistock.como('0a000000-0000-4000-8000-000000000002');
     insert into public.usuarios (id, nome, email, role, empresa_id) values
-      ('0a000000-0000-4000-8000-000000000007', 'Teste Novo 1', 'teste-novo-1@audistock.test', 'auditor', '0e000000-0000-4000-8000-0000000000a1');
+      ('0a000000-0000-4000-8000-000000000007', 'Teste Novo 1', 'Outro-Email@Audistock.test', 'auditor', '0e000000-0000-4000-8000-0000000000a1');
   exception when others then ok := false; msg := sqlerrm;
   end;
   perform teste_audistock.anotar('Administrador da A cadastra auditor na A', ok, coalesce(msg, 'aceito'));
+  select email into e from public.usuarios where id = '0a000000-0000-4000-8000-000000000007';
+  perform teste_audistock.anotar('O perfil cadastrado fica com o e-mail do login, não com o digitado', e = 'teste-novo-1@audistock.test', coalesce(e, 'sem perfil'));
 end $$;
 
 do $$ begin

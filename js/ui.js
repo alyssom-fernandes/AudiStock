@@ -118,6 +118,7 @@ export function initLayout(titulo, { ativa = null } = {}) {
         main.innerHTML = topo + '<main class="page-content" id="pageContent" tabindex="-1"></main>';
         // Pelo teclado, pula o menu e vai direto ao conteúdo
         document.body.insertAdjacentHTML('afterbegin', '<a class="pular" href="#pageContent">Pular para o conteúdo</a>');
+        document.querySelector('.pular').addEventListener('click', e => { e.preventDefault(); document.getElementById('pageContent')?.focus(); });
         shell.appendChild(main);
         const corpo = document.getElementById('pageBody');
         if (corpo) document.getElementById('pageContent').appendChild(corpo);
@@ -147,8 +148,9 @@ async function _sair() {
             if (!ok) return;
         }
     } catch (_) {}
-    // Sem internet a tela de entrada não abre: a demonstração segue funcionando
+    // Sem internet a tela de entrada não carrega: a demonstração segue funcionando
     if (demo && !navigator.onLine) { showToast('Sem internet agora: a tela de entrada não carrega. A demonstração continua funcionando aqui.', 'warning', 6000); return; }
+    if (!demo && !navigator.onLine) showToast('Você saiu deste aparelho. A tela de entrada abre quando a internet voltar.', 'warning', 10000);
     logout();
 }
 
@@ -175,11 +177,17 @@ function _garantirCamadas() {
 }
 
 // Leitor de tela: lê a mensagem pela região viva (polida ou urgente)
+// Mensagens que chegam juntas são lidas juntas (a segunda não apaga a primeira)
+const _anuncios = { polido: [], urgente: [] };
 export function anunciar(msg, urgente = false) {
     _garantirCamadas();
+    const tipo = urgente ? 'urgente' : 'polido';
+    const fila = _anuncios[tipo];
+    fila.push(msg);
+    if (fila.length > 1) return;
     const alvo = document.getElementById(urgente ? 'anuncioUrgente' : 'anuncio');
     alvo.textContent = '';
-    setTimeout(() => { alvo.textContent = msg; }, 60);
+    setTimeout(() => { alvo.textContent = fila.join(' '); fila.length = 0; }, 80);
 }
 
 export function toggleSidebar() {
@@ -329,13 +337,17 @@ function _devolverFoco(origem) {
     const seletor = _seletorDe(origem);
     if (origem?.isConnected) origem.focus({ preventScroll: true });
     const perdido = () => !document.activeElement || document.activeElement === document.body;
-    let n = 0;
-    const vigia = setInterval(() => {
-        if (_pilha.length || ++n > 40) { clearInterval(vigia); return; }
+    let n = 0, vigia = null;
+    // A pessoa clicou ou teclou: o foco agora é dela
+    const parar = () => { clearInterval(vigia); document.removeEventListener('pointerdown', parar, true); document.removeEventListener('keydown', parar, true); };
+    document.addEventListener('pointerdown', parar, true);
+    document.addEventListener('keydown', parar, true);
+    vigia = setInterval(() => {
+        if (_pilha.length || ++n > 40) { parar(); return; }
         if (!perdido()) return;
         const novo = seletor && document.querySelector(seletor);
-        if (novo) novo.focus();
-        else if (n >= 10) document.getElementById('pageContent')?.focus({ preventScroll: true });
+        if (novo) { novo.focus({ preventScroll: true }); novo.scrollIntoView({ block: 'nearest' }); }
+        else if (n >= 10) document.getElementById('topbarTitle')?.focus({ preventScroll: true });   // a linha saiu da lista
     }, 50);
 }
 
@@ -343,6 +355,27 @@ function _devolverFoco(origem) {
 export function fecharModais() {
     while (_pilha.length) _pilha[_pilha.length - 1].fechar(false, { semFoco: true });
 }
+
+// Antes de trocar de tela com uma janela aberta: a que está gravando não
+// fecha (quem chama desfaz a navegação); a que tem algo digitado pergunta
+// antes de descartar. Retorna se pode seguir.
+export async function liberarParaNavegar() {
+    if (!_pilha.length) return true;
+    if (_pilha.some(m => m.travado)) {
+        showToast('Aguarde: a janela aberta ainda está gravando.', 'warning', 4000);
+        return false;
+    }
+    if (_pilha.some(m => m.estaAlterado?.())) {
+        const ok = await fmConfirm({ titulo: 'Descartar o que foi preenchido?', msg: 'O que você digitou na janela aberta será perdido.', confirmTxt: 'Descartar', cancelTxt: 'Continuar editando', tipo: 'perigo' });
+        if (!ok) return false;
+    }
+    fecharModais();
+    return true;
+}
+
+// Fechar ou recarregar a página com uma janela gravando pergunta antes
+const _avisarSaida = e => { if (_pilha.some(m => m.travado)) { e.preventDefault(); e.returnValue = ''; } };
+window.addEventListener?.('beforeunload', _avisarSaida);
 
 export function abrirModal({ titulo, subtitulo = '', corpo = '', acoes = [], largura = 'md', aoEnviar = null, aoFechar = null, papel = 'dialog' } = {}) {
     const id = `modal${++_seqModal}`;
@@ -394,6 +427,7 @@ export function abrirModal({ titulo, subtitulo = '', corpo = '', acoes = [], lar
     let alterado = false;
     form.addEventListener('input', () => { alterado = true; });
     modal.semAlteracoes = () => { alterado = false; };
+    modal.estaAlterado = () => alterado;
     modal.dispensar = async () => {
         if (modal.travado) return;
         if (alterado && !form.querySelector('[type=submit]:disabled')) {
@@ -508,7 +542,9 @@ const FRACIONADAS = new Set(['KG', 'G', 'L', 'LT', 'ML', 'M', 'M2', 'M3', 'TON']
 // Quantidade digitada em pt-BR: "1.234" é mil duzentos e trinta e quatro,
 // "1,5" é um e meio. Unidade inteira (UN, PCT…) não aceita fração. Em
 // unidade fracionada, "1.234" tanto pode ser mil quanto 1,234 kg: a pessoa
-// escolhe, em vez de o sistema adivinhar.
+// escolhe, em vez de o sistema adivinhar (com dois pontos ou mais, só pode
+// ser milhar). No máximo 3 casas decimais e menos de 100 bilhões, o limite
+// do banco: um código de barras lido no campo errado é recusado aqui.
 // Retorna { vazio: true } | { valor } | { erro }.
 export function lerQuantidade(txt, un) {
     const b = String(txt ?? '').trim().replace(/\s/g, '');
@@ -516,11 +552,14 @@ export function lerQuantidade(txt, un) {
     const formato = 'Use só números, com vírgula para decimais.';
     if (!/^[0-9.,]+$/.test(b) || (b.match(/,/g) ?? []).length > 1) return { erro: formato };
     const milhar = !b.includes(',') && /^\d{1,3}(\.\d{3})+$/.test(b);
-    if (milhar && un && casasDaUnidade(un) > 0) return { erro: `Use vírgula para decimais (${b.replace('.', ',')}) ou escreva sem ponto (${b.replace(/\./g, '')}).` };
+    if (milhar && b.split('.').length === 2 && un && casasDaUnidade(un) > 0) return { erro: `Use vírgula para decimais (${b.replace('.', ',')}) ou escreva sem ponto (${b.replace('.', '')}).` };
     const n = b.includes(',') ? Number(b.replace(/\./g, '').replace(',', '.'))
         : milhar ? Number(b.replace(/\./g, ''))
         : Number(b);
     if (!Number.isFinite(n)) return { erro: formato };
+    const decimais = b.includes(',') ? b.split(',')[1].length : milhar ? 0 : (b.split('.')[1] ?? '').length;
+    if (decimais > 3) return { erro: 'Use no máximo 3 casas decimais.' };
+    if (n >= 1e11) return { erro: 'Quantidade grande demais. Confira se o leitor não leu um código de barras neste campo.' };
     if (un && casasDaUnidade(un) === 0 && !Number.isInteger(n)) return { erro: `${String(un).toUpperCase()} não aceita frações.` };
     return { valor: Math.round(n * 1000) / 1000 };
 }

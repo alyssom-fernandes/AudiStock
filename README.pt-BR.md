@@ -166,41 +166,54 @@ toda leitura para essa função: um teste dispara 20 de uma vez no banco da
 demonstração e confere que registram 20, e a prova com dois aparelhos de
 verdade está no roteiro do teste real. Quando dois aparelhos contam um
 produto pela primeira vez, o segundo recebe a pergunta somar ou
-substituir, em vez de apagar o primeiro.
+substituir, em vez de apagar o primeiro. O fechamento também é uma função
+só (`finalizar_auditoria`): grava os saldos e encerra junto, e recusa se
+alguém contou um produto que a tela de fechamento ainda não mostrava.
+
+O `schema.sql` pode ser rodado de novo num banco que já existe: ele cria o
+que falta, atualiza funções, gatilhos e permissões e não apaga dados.
 
 As permissões ficam no banco: cada perfil só vê a sua empresa, o auditor
 conta e finaliza mas não cancela, só o supremo exclui, e gatilhos impedem
 que alguém promova a si mesmo ou altere uma contagem já finalizada.
 [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql) entra
-como cada perfil e confere 42 dessas regras; dá para rodar no SQL Editor
+como cada perfil e confere 48 dessas regras; dá para rodar no SQL Editor
 de qualquer projeto, e ele apaga o que criou.
 
 ## Testes
 
 ```bash
 npm install
-npm test            # unidade (Node) e banco (PGlite): 39 testes
-npm run test:e2e    # ponta a ponta no navegador (Playwright): 30 execuções
+npm test            # unidade (Node) e banco (PGlite): 56 testes
+npm run test:e2e    # ponta a ponta no navegador (Playwright): 31 execuções
 ```
 
 - **Unidade:** o código real de `js/` rodando no Node sobre o banco do
   modo demonstração: soma das leituras, envio repetido que conta uma vez,
   histórico, leitura das quantidades ("1.234" é mil duzentos e trinta e
   quatro), importação em lotes que não apaga as colunas ausentes, CSV,
-  números do relatório, regras de cadastro.
+  números do relatório, fechamento, regras de cadastro.
 - **Banco:** `schema.sql` e `permissoes.sql` num Postgres de verdade
-  (PGlite), sem instalar nada.
+  (PGlite), sem instalar nada, inclusive rodando o esquema de novo sobre
+  um banco da versão anterior.
 - **Ponta a ponta:** contagem pelo teclado e pelo leitor, contagem sem
-  internet que sobe ao reabrir a página, fechamento, exportações (o PDF
+  internet que sobe ao reabrir a página, fechamento (inclusive com um
+  produto contado em outro aparelho no meio), exportações (o PDF
   precisa sair com a fonte embutida, e todo script de CDN, com o hash),
   importação de planilha, cadastros, foco depois de salvar, tabelas em
-  largura de tablet, teclado e celular: 25 execuções em tela de
+  largura de tablet, teclado e celular: 26 execuções em tela de
   computador (um teste só de celular é pulado nela) e 5 no celular. Cada
   teste termina conferindo que `errosRegistrados()` está vazio.
 
 Os testes de ponta a ponta usam o Google Chrome instalado. Sem ele, rode
-uma vez `npx playwright install chromium` e depois `PW_CHANNEL=chromium
-npm run test:e2e` (ou `PW_CHANNEL=msedge` para usar o Edge).
+uma vez `npx playwright install chromium` e depois, no PowerShell:
+
+```powershell
+$env:PW_CHANNEL='chromium'; npm run test:e2e
+```
+
+No bash, `PW_CHANNEL=chromium npm run test:e2e`. Com `msedge` no lugar de
+`chromium`, os testes usam o Edge.
 
 Tudo roda no GitHub Actions a cada push na `main` e em cada pull request. O roteiro para o teste com o
 Supabase de verdade está em [`docs/teste-real.md`](docs/teste-real.md).

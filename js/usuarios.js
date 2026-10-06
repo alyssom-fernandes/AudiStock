@@ -21,13 +21,16 @@ async function _mensagemDaFuncao(error) {
   return error.message;
 }
 
-// A função ainda não foi publicada no projeto (404) ou não responde
+// A função ainda não foi publicada no projeto (404). Uma falha do
+// repasse (FunctionsRelayError) é passageira: vira erro, não cadastro pelo navegador.
 function _funcaoIndisponivel(error) {
-  return error?.name === 'FunctionsRelayError' || error?.context?.status === 404;
+  return error?.context?.status === 404;
 }
 
 // ─────────────────────────────────────────────────────────────
-//  criarUsuario({ nome, email, senha, role, empresa_id }) → { id }
+//  criarUsuario({ nome, email, senha, role, empresa_id }) → { id, confirmarEmail? }
+//  confirmarEmail: cadastrado, mas o Supabase exige que a pessoa confirme
+//  o e-mail antes do primeiro login (só no caminho sem a Edge Function)
 // ─────────────────────────────────────────────────────────────
 export async function criarUsuario({ nome, email, senha, role, empresa_id = null }) {
   const pedido = { nome: nome.trim(), email: email.trim().toLowerCase(), senha, role, empresa_id: empresa_id || null };
@@ -35,22 +38,23 @@ export async function criarUsuario({ nome, email, senha, role, empresa_id = null
   const { data, error } = await supabase.functions.invoke('criar-usuario', { body: pedido });
   if (!error) return data;
   if (error.name === 'FunctionsFetchError') throw new Error('Failed to fetch');
+  if (error.name === 'FunctionsRelayError') throw new Error('A função criar-usuario não respondeu agora. Tente de novo em instantes.');
   if (!_funcaoIndisponivel(error)) throw new Error(await _mensagemDaFuncao(error));
 
   // Sem a função: acesso pelo cliente à parte, perfil pelo cliente principal.
-  // Este caminho exige, no Supabase, o cadastro aberto ligado e a
-  // confirmação de e-mail desligada (docs/teste-real.md).
+  // Este caminho exige, no Supabase, o cadastro aberto ligado
+  // (docs/teste-real.md).
   const { data: auth, error: eAuth } = await criarClienteIsolado().auth.signUp({ email: pedido.email, password: senha });
   if (eAuth) {
-    if (/signups? not allowed|disabled/i.test(eAuth.message)) throw new Error('O cadastro pelo navegador está desligado no Supabase. Publique a função criar-usuario (veja o README).');
+    if (/signups? not allowed|disabled/i.test(eAuth.message)) throw new Error('O cadastro pelo navegador está desligado no Supabase. Publique a função criar-usuario (veja docs/teste-real.md).');
     throw new Error(traduzirErroAuth(eAuth.message));
   }
   // E-mail que já existe: o Supabase devolve um usuário sem identidades, sem erro
   if (!auth?.user || (Array.isArray(auth.user.identities) && !auth.user.identities.length)) throw new Error('Já existe um usuário com este e-mail.');
-  // Com a confirmação de e-mail ligada, não vem sessão: a pessoa não entraria com a senha combinada
-  if (auth.session === null && auth.user.email_confirmed_at == null && auth.user.confirmed_at == null) {
-    throw new Error(`O acesso de ${pedido.email} foi criado, mas o Supabase exige confirmar o e-mail antes do primeiro login. Desligue “Confirm email” em Authentication > Providers > Email, ou publique a função criar-usuario (veja o README).`);
-  }
+  // Com a confirmação de e-mail ligada, não vem sessão: o cadastro segue
+  // (o acesso já existe), e a tela avisa que a pessoa precisa confirmar
+  // o e-mail antes do primeiro login
+  const confirmarEmail = auth.session === null && auth.user.email_confirmed_at == null && auth.user.confirmed_at == null;
   const { error: ePerfil } = await supabase.from('usuarios').insert([{
     id: auth.user.id, nome: pedido.nome, email: pedido.email, role, empresa_id: pedido.empresa_id, senha_hash: 'auth-supabase', ativo: true,
   }]);
@@ -59,5 +63,5 @@ export async function criarUsuario({ nome, email, senha, role, empresa_id = null
     // O navegador não consegue apagar o acesso recém-criado
     throw new Error(`O acesso de ${pedido.email} foi criado, mas o perfil não foi gravado. Apague esse e-mail em Authentication > Users, no painel do Supabase, e tente de novo.`);
   }
-  return { id: auth.user.id };
+  return confirmarEmail ? { id: auth.user.id, confirmarEmail } : { id: auth.user.id };
 }

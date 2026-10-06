@@ -28,6 +28,9 @@ test('auditoria em andamento não tem com o que comparar', async () => {
   const r = await resumoAuditoria(auditoria('0007').id);
   assert.equal(r.sem_saldo, r.auditados);
   assert.equal(temComparacao(r), false);
+  // Em andamento, mesmo com algum saldo gravado (finalização que falhou no meio), só a contagem
+  assert.equal(temComparacao({ auditados: 3, sem_saldo: 1 }, { status: 'em_andamento' }), false);
+  assert.equal(temComparacao({ auditados: 3, sem_saldo: 1 }, { status: 'finalizada' }), true);
   assert.equal(tituloRelatorio({ status: 'em_andamento' }), 'Relatório parcial da contagem');
   assert.equal(semDivergenciaMotivo({ status: 'cancelada' }), 'auditoria cancelada sem fechamento');
   assert.deepEqual(fimRotulo({ status: 'cancelada', cancelado_em: 'x', data_fim: null }), ['Cancelada em', 'x']);

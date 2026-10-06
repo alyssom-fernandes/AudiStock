@@ -42,26 +42,32 @@ export async function render(el) {
     const t = normalizar(busca);
     const visiveis = lista.filter(a => (!empresa || a.empresa_id === empresa)
       && (!t || normalizar(a.numero_auditoria).includes(t) || normalizar(a.empresas?.nome).includes(t)));
-    $('.toolbar').hidden = !lista.length;   // sem relatório, nada para buscar ou filtrar
-    if (!lista.length) {
+    // Sem relatório nenhum, nada para buscar ou filtrar; com uma empresa
+    // filtrada sem relatório, o filtro continua à vista para voltar atrás
+    $('.toolbar').hidden = !lista.length && !empresa;
+    if (!lista.length && !empresa) {
       card.innerHTML = vazioHtml({ titulo: 'Nenhum relatório ainda', texto: 'O relatório de divergências aparece aqui quando uma auditoria é finalizada.', acoes: '<a class="btn btn-secondary" href="app.html?tela=auditorias">Ir para Auditorias</a>' });
       return;
     }
     if (!visiveis.length) {
       card.innerHTML = vazioHtml({ titulo: t ? `Nada encontrado para “${busca.trim()}”` : 'Nenhum relatório desta empresa', acoes: '<button type="button" class="btn btn-secondary btn-sm" id="relLimpar">Limpar filtros</button>', compacto: true });
-      $('#relLimpar').onclick = () => { busca = ''; empresa = ''; $('#relBusca').value = ''; $('#relEmpresa').value = ''; desenhar(); };
+      $('#relLimpar').onclick = () => {
+        busca = ''; $('#relBusca').value = '';
+        if (empresa) { $('#relEmpresa').value = ''; $('#relEmpresa').dispatchEvent(new Event('change')); }   // pode precisar buscar de novo no servidor
+        else desenhar();
+      };
       return;
     }
     // No celular a linha inteira abre o relatório (mesmo formato da lista de Auditorias)
     card.innerHTML = `<div class="tabela-wrap"><table class="tabela-lista">
-      <thead><tr><th scope="col">Auditoria</th><th scope="col">Empresa</th><th scope="col">Finalizada em</th><th scope="col">Resultado</th><th scope="col">Criada por</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead>
+      <thead><tr><th scope="col">Auditoria</th><th scope="col">Empresa</th><th scope="col">Finalizada em</th><th scope="col">Resultado</th><th scope="col" class="col-larga">Criada por</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead>
       <tbody>${visiveis.map(a => `<tr>
           <td class="l-titulo"><a class="linha-link cobre codigo forte" href="relatorios.html?id=${encodeURIComponent(a.id)}">${escapeHtml(a.numero_auditoria)}</a>
             <span class="sub so-celular-bloco">${partesHtml([`<span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span>`, fmtDate(a.data_fim)])}</span></td>
           <td class="so-desktop"><span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span></td>
           <td class="so-desktop nowrap">${fmtDate(a.data_fim)}</td>
           <td>${resultadoHtml(resumo.get(a.id))}</td>
-          <td class="so-desktop">${escapeHtml(a.usuarios?.nome ?? '—')}</td>
+          <td class="so-desktop col-larga">${escapeHtml(a.usuarios?.nome ?? '—')}</td>
           <td class="so-desktop"><div class="acoes-linha"><a class="btn btn-secondary btn-sm" href="relatorios.html?id=${encodeURIComponent(a.id)}" tabindex="-1">Abrir relatório</a></div></td>
         </tr>`).join('')}</tbody>
     </table></div>

@@ -5,7 +5,10 @@
 //
 //  Entra com ?demo=1 em qualquer página (ou pelo botão do login) e
 //  sai pelo "Sair". Nada sai do navegador: o banco fica no
-//  sessionStorage da aba e some quando ela é fechada.
+//  sessionStorage da aba e some quando ela é fechada. Uma aba aberta a
+//  partir da demonstração (Ctrl+clique, botão do meio, "abrir em nova
+//  aba") continua nela, com uma cópia do banco; uma aba que já abriu no
+//  sistema real nunca vira demonstração.
 //
 //  O cliente imita só o pedaço da API do supabase-js que o sistema
 //  usa (from/select/filtros/ordem/insert/update/delete/upsert, rpc e
@@ -17,9 +20,10 @@ import { normalizarPedido, validarPedido } from '../supabase/functions/criar-usu
 
 const CHAVE_MODO  = 'audistock-demo';      // 'completo' | 'vazio'
 const CHAVE_BANCO = 'audistock-demo-db';
-const VERSAO_BANCO = 3;
-const CHAVE_LEMBRAR = 'audistock-demo-aberta';   // localStorage: abas novas abertas a partir da demonstração
-const VALIDADE_LEMBRAR = 6 * 3600e3;
+const VERSAO_BANCO = 4;
+const CHAVE_REAL  = 'audistock-sistema-real';   // sessionStorage: esta aba já abriu no sistema real
+const CHAVE_PASSE = 'audistock-demo-passe';     // localStorage, por segundos: a aba que está sendo aberta a partir da demonstração
+const VALIDADE_PASSE = 30e3;
 const FILA_DEMO = 'audistock-offline-demo';      // IndexedDB da fila sem internet (js/offline.js)
 export const ID_USUARIO_DEMO = '6f1c2a90-4b7e-4d21-9c3a-0d5e8f7a1b2c';
 
@@ -27,29 +31,48 @@ export const ID_USUARIO_DEMO = '6f1c2a90-4b7e-4d21-9c3a-0d5e8f7a1b2c';
 //  Entrada e saída
 // ─────────────────────────────────────────────────────────────
 _lerPedidoDaUrl();
+_adotarPasse();
+if (demoAtivo()) _passarParaAbasNovas();
+else { try { sessionStorage.setItem(CHAVE_REAL, '1'); } catch (_) {} }
 
-// A demonstração vale para a aba (sessionStorage). Uma aba nova aberta a
-// partir dela (Ctrl+clique, clique do meio) continua na demonstração por
-// algumas horas, com o banco de partida.
+// A demonstração vale para a aba (sessionStorage)
 export function demoAtivo() {
-  try {
-    if (sessionStorage.getItem(CHAVE_MODO)) return true;
-    const lembrar = JSON.parse(localStorage.getItem(CHAVE_LEMBRAR) || 'null');
-    if (lembrar && Date.now() - lembrar.em < VALIDADE_LEMBRAR) {
-      sessionStorage.setItem(CHAVE_MODO, lembrar.modo);
-      return true;
-    }
-  } catch (_) {}
-  return false;
+  try { return !!sessionStorage.getItem(CHAVE_MODO); } catch (_) { return false; }
 }
 
 export function sairDemo() {
-  try { sessionStorage.removeItem(CHAVE_MODO); sessionStorage.removeItem(CHAVE_BANCO); localStorage.removeItem(CHAVE_LEMBRAR); } catch (_) {}
+  try { sessionStorage.removeItem(CHAVE_MODO); sessionStorage.removeItem(CHAVE_BANCO); localStorage.removeItem(CHAVE_PASSE); } catch (_) {}
   _apagarFila();
 }
 
+// Aba nova sem nada no sessionStorage, aberta segundos depois de um
+// Ctrl+clique na demonstração: continua nela, com a cópia do banco
+function _adotarPasse() {
+  try {
+    const passe = JSON.parse(localStorage.getItem(CHAVE_PASSE) || 'null');
+    if (passe && Date.now() > passe.ate) { localStorage.removeItem(CHAVE_PASSE); return; }
+    if (!passe || sessionStorage.getItem(CHAVE_MODO) || sessionStorage.getItem(CHAVE_REAL)) return;
+    sessionStorage.setItem(CHAVE_MODO, passe.modo);
+    if (passe.banco) sessionStorage.setItem(CHAVE_BANCO, passe.banco);
+  } catch (_) {}
+}
+
+// Na demonstração, abrir um link do app em outra aba deixa um passe curto
+function _passarParaAbasNovas() {
+  const deixarPasse = e => {
+    const a = e.target?.closest?.('a[href]');
+    if (!a || a.origin !== location.origin) return;
+    if (e.type === 'click' && !(e.ctrlKey || e.metaKey || e.shiftKey) && a.target !== '_blank') return;
+    if (e.type === 'auxclick' && e.button !== 1) return;
+    try {
+      localStorage.setItem(CHAVE_PASSE, JSON.stringify({ modo: sessionStorage.getItem(CHAVE_MODO), banco: sessionStorage.getItem(CHAVE_BANCO), ate: Date.now() + VALIDADE_PASSE }));
+    } catch (_) {}
+  };
+  for (const tipo of ['click', 'auxclick', 'contextmenu']) document.addEventListener?.(tipo, deixarPasse, true);
+}
+
 // A fila sem internet da demonstração não passa de uma visita para a outra
-function _apagarFila() { try { indexedDB.deleteDatabase(FILA_DEMO); } catch (_) {} }
+function _apagarFila() { try { indexedDB.deleteDatabase(FILA_DEMO); } catch (_) {} }   // as outras abas fecham a conexão delas (js/offline.js)
 
 // ?demo=1 entra (banco novo), ?demo=vazio entra sem cadastros, ?demo=0 sai.
 // O parâmetro sai da barra de endereço para não ser copiado adiante.
@@ -63,7 +86,7 @@ function _lerPedidoDaUrl() {
       const modo = pedido === 'vazio' ? 'vazio' : 'completo';
       sessionStorage.setItem(CHAVE_MODO, modo);
       sessionStorage.removeItem(CHAVE_BANCO);
-      localStorage.setItem(CHAVE_LEMBRAR, JSON.stringify({ modo, em: Date.now() }));
+      sessionStorage.removeItem(CHAVE_REAL);
       _apagarFila();
     }
   } catch (_) {}
@@ -89,6 +112,7 @@ export function criarClienteDemo() {
       await _espera();
       if (nome === 'registrar_contagem') return _registrarContagem(banco, args);
       if (nome === 'corrigir_contagem') return _corrigirContagem(banco, args);
+      if (nome === 'finalizar_auditoria') return _finalizarAuditoria(banco, args);
       return _falhaNaoSuportada(`rpc('${nome}')`);
     },
 
@@ -175,11 +199,14 @@ function _registrarContagem(banco, { p_auditoria_id, p_produto_id, p_quantidade,
   return { data: { ...item }, error: null };
 }
 
-// Igual à função corrigir_contagem: troca o valor e o motivo vai para o histórico
+// Igual à função corrigir_contagem: troca o valor e o motivo vai para o
+// histórico; cada recusa tem a sua mensagem
 function _corrigirContagem(banco, { p_item_id, p_quantidade, p_motivo = null } = {}) {
   if (!(Number(p_quantidade) >= 0)) return _erro('Quantidade não pode ser negativa.', '22023');
+  if ((NIVEL[_eu(banco)?.role] ?? 0) < NIVEL.auditor) return _erro('Seu perfil não pode corrigir contagens.', '42501');
   const item = banco.tabelas.auditoria_itens.find(i => i.id === p_item_id);
-  if (!item || _fechada(banco, item.auditoria_id)) return ERRO_FECHADA();
+  if (!item) return _erro('Item não encontrado. Ele pode ter sido excluído, ou é de uma empresa fora do seu acesso.', '42501');
+  if (_fechada(banco, item.auditoria_id)) return ERRO_FECHADA();
   const anterior = item.quantidade_contada;
   item.quantidade_contada = _arred(Number(p_quantidade));
   _recalcular('auditoria_itens', item);
@@ -188,26 +215,55 @@ function _corrigirContagem(banco, { p_item_id, p_quantidade, p_motivo = null } =
   return { data: { ...item }, error: null };
 }
 
-// Gatilho numerar_auditoria: o próximo AUD-AAAA-NNNN, ignorando o número enviado
+// Igual à função finalizar_auditoria: grava os saldos de todos os itens e
+// finaliza junto; recusa item contado que a tela não mostrava (AS002) e
+// auditoria já encerrada (AS003)
+function _finalizarAuditoria(banco, { p_auditoria_id, p_saldos } = {}) {
+  if ((NIVEL[_eu(banco)?.role] ?? 0) < NIVEL.auditor) return _erro('Seu perfil não finaliza auditorias.', '42501');
+  const aud = banco.tabelas.auditorias.find(a => a.id === p_auditoria_id);
+  if (!aud) return _erro('Auditoria não encontrada.', '42501');
+  if (aud.status !== 'em_andamento') return _erro('A auditoria já foi finalizada ou cancelada.', 'AS003', aud.status);
+  const saldos = p_saldos ?? {};
+  const itens = banco.tabelas.auditoria_itens.filter(i => i.auditoria_id === aud.id);
+  const faltam = itens.filter(i => !(i.id in saldos)).length;
+  if (faltam) return _erro('Há itens contados que a tela de fechamento ainda não mostrava.', 'AS002', String(faltam));
+  for (const i of itens) {
+    const v = saldos[i.id];
+    i.estoque_sistema = typeof v === 'number' ? _arred(v) : null;
+    _recalcular('auditoria_itens', i);
+  }
+  Object.assign(aud, { status: 'finalizada', data_fim: new Date().toISOString() });
+  _retratar(banco, aud);
+  _salvar(banco);
+  return { data: { ...aud }, error: null };
+}
+
+// Gatilho numerar_auditoria: o próximo AUD-AAAA-NNNN, ignorando o número
+// enviado. O contador só sobe: o número de uma auditoria excluída não volta.
 function _proximoNumero(banco) {
   const ano = Number(new Intl.DateTimeFormat('en', { timeZone: 'America/Sao_Paulo', year: 'numeric' }).format(new Date()));
   const prefixo = `AUD-${ano}-`;
-  const maior = banco.tabelas.auditorias
+  banco.numeracao ??= {};
+  banco.numeracao[ano] ??= banco.tabelas.auditorias
     .filter(a => a.numero_auditoria?.startsWith(prefixo))
     .reduce((m, a) => Math.max(m, Number(a.numero_auditoria.slice(prefixo.length)) || 0), 0);
-  return prefixo + String(maior + 1).padStart(4, '0');
+  banco.numeracao[ano]++;
+  return prefixo + String(banco.numeracao[ano]).padStart(4, '0');
 }
 
-// Gatilho retratar_auditoria: ao encerrar, guarda os produtos que ficaram sem contar
+// Gatilho retratar_auditoria: ao encerrar, guarda os produtos que ficaram
+// sem contar e o código, o nome e a unidade dos contados
 function _retratar(banco, aud) {
   const t = banco.tabelas;
   if (t.auditoria_retratos.some(r => r.auditoria_id === aud.id)) return;
   const contados = new Set(t.auditoria_itens.filter(i => i.auditoria_id === aud.id).map(i => i.produto_id));
   const ativos = t.produtos.filter(p => p.empresa_id === aud.empresa_id && p.ativo);
+  const prod = new Map(t.produtos.map(p => [p.id, p]));
   t.auditoria_retratos.push({
     auditoria_id: aud.id, total_produtos: ativos.length, criado_em: new Date().toISOString(),
     nao_contados: ativos.filter(p => !contados.has(p.id)).sort((a, b) => a.nome_produto.localeCompare(b.nome_produto, 'pt-BR'))
       .map(p => ({ produto_id: p.id, codigo_produto: p.codigo_produto, nome_produto: p.nome_produto, unidade_medida: p.unidade_medida })),
+    contados: Object.fromEntries([...contados].map(id => { const p = prod.get(id) ?? {}; return [id, { codigo_produto: p.codigo_produto, nome_produto: p.nome_produto, unidade_medida: p.unidade_medida ?? null }]; })),
   });
 }
 
@@ -250,12 +306,22 @@ function _espera() { return new Promise(r => setTimeout(r, 60 + Math.random() * 
 // ─────────────────────────────────────────────────────────────
 //  Consulta encadeável (imita o PostgrestQueryBuilder)
 // ─────────────────────────────────────────────────────────────
+// Como os índices únicos do banco: o código de barras só não se repete
+// entre produtos ativos; uma auditoria em andamento por empresa; e-mail
+// sem diferença de maiúsculas
 const RESTRICOES_UNICAS = {
-  produtos:        [['empresa_id', 'codigo_produto'], ['empresa_id', 'codigo_barras']],
-  auditorias:      [['numero_auditoria']],
-  auditoria_itens: [['auditoria_id', 'produto_id']],
-  usuarios:        [['email']],
+  produtos: [
+    { nome: 'produtos_empresa_id_codigo_produto_key', cols: ['empresa_id', 'codigo_produto'] },
+    { nome: 'produtos_barras_unico_idx', cols: ['empresa_id', 'codigo_barras'], onde: l => l.ativo !== false },
+  ],
+  auditorias: [
+    { nome: 'auditorias_numero_auditoria_key', cols: ['numero_auditoria'] },
+    { nome: 'auditorias_uma_em_andamento_idx', cols: ['empresa_id'], onde: l => l.status === 'em_andamento' },
+  ],
+  auditoria_itens: [{ nome: 'auditoria_itens_auditoria_id_produto_id_key', cols: ['auditoria_id', 'produto_id'] }],
+  usuarios: [{ nome: 'usuarios_email_minusculo_idx', cols: ['email'], minusculas: true }],
 };
+const ERRO_UNICA = (r) => _erro(`duplicate key value violates unique constraint "${r.nome}"`, '23505');
 
 class Consulta {
   constructor(banco, tabela) {
@@ -352,7 +418,13 @@ class Consulta {
     // Como no banco: o histórico de correções só é gravado pelo gatilho
     if (this.tabela === 'auditoria_itens_historico') return _erro('permission denied for table auditoria_itens_historico', '42501');
     const novas = cargas.map(c => _completar(this.tabela, { ...c }));
-    if (this.tabela === 'auditorias') novas.forEach(n => { n.numero_auditoria = _proximoNumero(this.banco); });
+    if (this.tabela === 'auditorias') {
+      const agora = new Date().toISOString();
+      novas.forEach(n => Object.assign(n, {
+        numero_auditoria: _proximoNumero(this.banco), criado_por: ID_USUARIO_DEMO, status: 'em_andamento',
+        data_inicio: agora, criado_em: agora, data_fim: null, cancelado_por: null, cancelado_em: null, motivo_cancelamento: null,
+      }));
+    }
     if (this.tabela === 'auditoria_itens') {
       for (const n of novas) {
         if (_fechada(this.banco, n.auditoria_id)) return ERRO_FECHADA();
@@ -362,7 +434,7 @@ class Consulta {
     }
     for (const n of novas) {
       const conflito = _violaUnica(this.tabela, tabela.concat(novas.filter(x => x !== n)), n);
-      if (conflito) return _erro(`duplicate key value violates unique constraint "${this.tabela}_${conflito.join('_')}_key"`, '23505');
+      if (conflito) return ERRO_UNICA(conflito);
     }
     tabela.push(...novas);
     _salvar(this.banco);
@@ -372,11 +444,18 @@ class Consulta {
   _upsert() {
     const tabela = this.banco.tabelas[this.tabela];
     const chaves = String(this.opcoesUpsert.onConflict ?? 'id').split(',').map(s => s.trim());
+    // Num lote, o PostgREST manda a união das colunas: a que falta numa
+    // linha vai como null (por isso a importação agrupa as linhas pelos
+    // campos que têm)
+    const colunas = [...new Set(this.carga.flatMap(c => Object.keys(c)))];
+    const cargas = this.carga.map(c => Object.fromEntries(colunas.map(k => [k, k in c ? c[k] : null])));
     const afetadas = [], novas = [];
-    for (const c of this.carga) {
+    for (const c of cargas) {
       const existente = tabela.find(l => chaves.every(k => _igual(l[k], c[k])));
       if (existente) {
         if (this.opcoesUpsert.ignoreDuplicates) continue;
+        const conflito = _violaUnica(this.tabela, tabela.filter(x => x !== existente), { ...existente, ...c });
+        if (conflito) return ERRO_UNICA(conflito);
         Object.assign(existente, c); _recalcular(this.tabela, existente); afetadas.push(existente);
       } else novas.push(c);
     }
@@ -392,9 +471,12 @@ class Consulta {
     for (const l of alvo) {
       const depois = { ...l, ...this.carga };
       const conflito = _violaUnica(this.tabela, this.banco.tabelas[this.tabela].filter(x => x !== l), depois);
-      if (conflito) return _erro(`duplicate key value violates unique constraint "${this.tabela}_${conflito.join('_')}_key"`, '23505');
+      if (conflito) return ERRO_UNICA(conflito);
     }
     if (this.tabela === 'auditoria_itens' && alvo.some(l => _fechada(this.banco, l.auditoria_id))) return ERRO_FECHADA();
+    if (this.tabela === 'auditorias' && ['numero_auditoria', 'empresa_id', 'criado_por', 'data_inicio'].some(c => c in this.carga && alvo.some(l => !_igual(l[c], this.carga[c])))) {
+      return _erro('Número, empresa, autor e início da auditoria não podem mudar.', '42501');
+    }
     const agora = new Date().toISOString();
     alvo.forEach(l => {
       const antes = { ...l };
@@ -405,6 +487,7 @@ class Consulta {
         _historiar(this.banco, l, antes.quantidade_contada);
       }
       if (this.tabela === 'auditorias') {
+        l.criado_em = antes.criado_em;
         l.data_fim = l.status === 'finalizada' && antes.status !== 'finalizada' ? agora : antes.data_fim;
         if (l.status === 'cancelada' && antes.status !== 'cancelada') Object.assign(l, { cancelado_por: ID_USUARIO_DEMO, cancelado_em: agora });
         else Object.assign(l, { cancelado_por: antes.cancelado_por, cancelado_em: antes.cancelado_em });
@@ -534,8 +617,10 @@ function _recalcular(tabela, l) {
     ? null : _arred(Number(l.quantidade_contada) - Number(l.estoque_sistema));
 }
 function _violaUnica(tabela, outras, linha) {
-  for (const cols of RESTRICOES_UNICAS[tabela] ?? []) {
-    if (cols.every(c => linha[c] != null) && outras.some(o => cols.every(c => _igual(o[c], linha[c])))) return cols;
+  for (const r of RESTRICOES_UNICAS[tabela] ?? []) {
+    const vale = l => !r.onde || r.onde(l);
+    const igual = (a, b) => r.minusculas ? _igual(String(a ?? '').toLowerCase() || null, String(b ?? '').toLowerCase() || null) : _igual(a, b);
+    if (vale(linha) && r.cols.every(c => linha[c] != null) && outras.some(o => vale(o) && r.cols.every(c => igual(o[c], linha[c])))) return r;
   }
   return null;
 }
@@ -547,8 +632,9 @@ const _arred = n => Math.round(n * 1000) / 1000;
 const VISOES = {
   vw_relatorio_divergencias(banco) {
     const prod = new Map(banco.tabelas.produtos.map(p => [p.id, p]));
+    const retratos = new Map(banco.tabelas.auditoria_retratos.map(r => [r.auditoria_id, r]));
     return banco.tabelas.auditoria_itens.map(i => {
-      const p = prod.get(i.produto_id) ?? {};
+      const p = retratos.get(i.auditoria_id)?.contados?.[i.produto_id] ?? prod.get(i.produto_id) ?? {};
       const d = i.diferenca;
       return {
         auditoria_id: i.auditoria_id, item_id: i.id, produto_id: i.produto_id,

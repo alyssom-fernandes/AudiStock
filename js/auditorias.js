@@ -63,42 +63,34 @@ export async function buscarAuditoria(id) {
 // ─────────────────────────────────────────────────────────────
 //  iniciarAuditoria({ empresaId, usuarioId, auditoriaCega, observacoes })
 //  O número (AUD-AAAA-NNNN) é dado pelo banco, num gatilho: o app não o
-//  escolhe. Num banco antigo, sem o gatilho, pede o número à função
-//  gerar_numero_auditoria, como antes.
+//  escolhe. Num banco antigo, rode supabase/schema.sql de novo.
 // ─────────────────────────────────────────────────────────────
 export async function iniciarAuditoria({ empresaId, usuarioId, auditoriaCega = true, observacoes = '' }) {
-  const campos = {
+  // Número, início e autor são do banco (gatilhos em supabase/schema.sql):
+  // o relógio do computador de quem cria não entra no relatório
+  const { data, error } = await supabase.from('auditorias').insert([{
     empresa_id:     empresaId,
     criado_por:     usuarioId,
     auditoria_cega: auditoriaCega,
     status:         'em_andamento',
-    data_inicio:    new Date().toISOString(),
     observacoes:    observacoes.trim() || null,
-  };
-  let { data, error } = await supabase.from('auditorias').insert([campos]).select().single();
-
-  if (error?.code === '23502' && /numero_auditoria/.test(error.message)) {
-    const { data: numero, error: numErr } = await supabase.rpc('gerar_numero_auditoria', { p_empresa_id: empresaId });
-    if (numErr) throw new Error('Erro ao gerar número: ' + numErr.message);
-    ({ data, error } = await supabase.from('auditorias').insert([{ ...campos, numero_auditoria: numero }]).select().single());
-  }
+  }]).select().single();
   if (error) throw new Error(error.message);
   return data;
 }
 
 // ─────────────────────────────────────────────────────────────
 //  finalizarAuditoria(id)
-//  Seta status = 'finalizada' e data_fim = agora.
+//  Seta status = 'finalizada'; a hora (data_fim) é o banco que grava.
+//  O fechamento usa finalizarComSaldos (js/contagem.js), que grava os
+//  saldos junto.
 //  Após finalizar, a view vw_relatorio_divergencias já retorna
 //  os dados comparados.
 // ─────────────────────────────────────────────────────────────
 export async function finalizarAuditoria(id) {
   const { data, error } = await supabase
     .from('auditorias')
-    .update({
-      status:   'finalizada',
-      data_fim: new Date().toISOString(),
-    })
+    .update({ status: 'finalizada' })
     .eq('id', id)
     .eq('status', 'em_andamento')  // proteção: só finaliza se em andamento
     .select()
@@ -116,10 +108,8 @@ export async function cancelarAuditoria(id, usuarioId, motivo = '') {
   const { data, error } = await supabase
     .from('auditorias')
     .update({
-      status:             'cancelada',
-      cancelado_por:      usuarioId,
-      cancelado_em:       new Date().toISOString(),
-      motivo_cancelamento: motivo.trim() || null,
+      status:              'cancelada',
+      motivo_cancelamento: motivo.trim() || null,   // quem cancelou e quando, o banco grava
     })
     .eq('id', id)
     .eq('status', 'em_andamento')

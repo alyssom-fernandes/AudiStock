@@ -11,6 +11,7 @@
 
 import supabase from './supabaseClient.js';
 import { buscarTodos } from './consulta.js';
+import { finalizarAuditoria } from './auditorias.js';
 
 // ─────────────────────────────────────────────────────────────
 //  buscarItemContado(auditoriaId, produtoId)
@@ -41,9 +42,10 @@ export async function buscarItemContado(auditoriaId, produtoId) {
 const _semFuncao = new Set();   // funções que o banco não tem (projeto com esquema antigo)
 const _funcaoAusente = (e, nome) => e?.code === 'PGRST202' || new RegExp(`could not find the function|function .*${nome}.* does not exist`, 'i').test(e?.message ?? '');
 
-// O erro do banco vira Error sem perder o código (a fila offline decide por ele)
-export function erroDoBanco(error) {
-  return Object.assign(new Error(error.message), { code: error.code, details: error.details });
+// O erro do banco vira Error sem perder o código e o status HTTP (a fila
+// sem internet decide por eles se tenta de novo depois)
+export function erroDoBanco(error, status) {
+  return Object.assign(new Error(error.message), { code: error.code, details: error.details, status: status ?? error.status });
 }
 export const JA_CONTADO = 'AS001';
 const _jaContado = atual => Object.assign(new Error('Este produto já foi contado nesta auditoria.'), { code: JA_CONTADO, details: String(atual ?? '') });
@@ -59,11 +61,11 @@ export async function registrarContagem({
   if (!(quantidade >= 0)) throw new Error('Quantidade não pode ser negativa.');
 
   if (!_semFuncao.has('registrar_contagem')) {
-    const { data, error } = await supabase.rpc('registrar_contagem', {
+    const { data, error, status } = await supabase.rpc('registrar_contagem', {
       p_auditoria_id: auditoriaId, p_produto_id: produtoId, p_quantidade: quantidade, p_acao: acao, p_id_cliente: idCliente,
     });
     if (!error) return Array.isArray(data) ? data[0] : data;
-    if (!_funcaoAusente(error, 'registrar_contagem')) throw erroDoBanco(error);
+    if (!_funcaoAusente(error, 'registrar_contagem')) throw erroDoBanco(error, status);
     _semFuncao.add('registrar_contagem');
     console.warn('[contagem] O banco não tem a função registrar_contagem; usando o caminho em duas etapas. Veja supabase/schema.sql.');
   }
@@ -98,9 +100,9 @@ export async function registrarScannerLeitura(auditoriaId, produtoId, usuarioId)
 export async function editarContagem(itemId, novaQtd, usuarioId, motivo = '') {
   // A função corrigir_contagem leva o motivo para o histórico, que o banco grava
   if (!_semFuncao.has('corrigir_contagem')) {
-    const { data, error } = await supabase.rpc('corrigir_contagem', { p_item_id: itemId, p_quantidade: novaQtd, p_motivo: motivo.trim() || null });
+    const { data, error, status } = await supabase.rpc('corrigir_contagem', { p_item_id: itemId, p_quantidade: novaQtd, p_motivo: motivo.trim() || null });
     if (!error) return Array.isArray(data) ? data[0] : data;
-    if (!_funcaoAusente(error, 'corrigir_contagem')) throw erroDoBanco(error);
+    if (!_funcaoAusente(error, 'corrigir_contagem')) throw erroDoBanco(error, status);
     _semFuncao.add('corrigir_contagem');
   }
 
@@ -188,6 +190,41 @@ export async function preencherEstoquesSistema(auditoriaId, estoques) {
     console.error('[contagem] Erros ao preencher estoques:', erros);
   }
   return { ok: results.length - erros.length, erros: erros.length };
+}
+
+// ─────────────────────────────────────────────────────────────
+//  finalizarComSaldos(auditoriaId, saldos)
+//  saldos = { [item_id]: saldo | null } de TODOS os itens que a tela
+//  mostrou (o saldo apagado vai como null e fica vazio no banco).
+//
+//  Usa a função finalizar_auditoria (supabase/schema.sql): grava os saldos
+//  e finaliza numa só transação, e recusa se um item foi contado depois
+//  que a tela abriu (ITENS_NOVOS) ou se a auditoria já foi encerrada
+//  (JA_ENCERRADA). Num banco sem a função, confere, grava e finaliza em
+//  etapas.
+// ─────────────────────────────────────────────────────────────
+export const ITENS_NOVOS = 'AS002';
+export const JA_ENCERRADA = 'AS003';
+
+export async function finalizarComSaldos(auditoriaId, saldos) {
+  if (!_semFuncao.has('finalizar_auditoria')) {
+    const { data, error, status } = await supabase.rpc('finalizar_auditoria', { p_auditoria_id: auditoriaId, p_saldos: saldos });
+    if (!error) return Array.isArray(data) ? data[0] : data;
+    if (!_funcaoAusente(error, 'finalizar_auditoria')) throw erroDoBanco(error, status);
+    _semFuncao.add('finalizar_auditoria');
+    console.warn('[contagem] O banco não tem a função finalizar_auditoria; usando o caminho em etapas. Veja supabase/schema.sql.');
+  }
+
+  const { data: itens } = await listarItensContados(auditoriaId);
+  const faltam = itens.filter(i => !(i.id in saldos)).length;
+  if (faltam) throw Object.assign(new Error('Há itens contados que a tela de fechamento ainda não mostrava.'), { code: ITENS_NOVOS, details: String(faltam) });
+  const r = await preencherEstoquesSistema(auditoriaId, itens.map(i => ({ produto_id: i.produto_id, quantidade: saldos[i.id] ?? null })));
+  if (r.erros) throw new Error(`${r.erros === 1 ? '1 saldo não foi gravado' : `${r.erros} saldos não foram gravados`}. Nada foi finalizado; tente de novo.`);
+  try { return await finalizarAuditoria(auditoriaId); }
+  catch (err) {
+    if (/já foi finalizada ou cancelada/.test(err.message)) throw Object.assign(err, { code: JA_ENCERRADA });
+    throw err;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

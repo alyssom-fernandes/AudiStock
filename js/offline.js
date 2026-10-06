@@ -13,9 +13,10 @@
 //  * só uma aba envia por vez (Web Locks);
 //  * só sobem os registros de quem está logado; os de outra pessoa
 //    esperam o login dela;
-//  * falha de rede, servidor fora do ar ou sessão vencida não descartam
-//    nada: o registro fica na fila e é enviado depois. Só uma recusa de
-//    verdade (permissão, auditoria encerrada) vira "Não enviada".
+//  * só o que é passageiro (rede, servidor fora do ar, sessão vencida)
+//    fica esperando na fila. Qualquer outra recusa do banco vira "Não
+//    enviada", com Tentar de novo e Descartar, e não segura os registros
+//    seguintes.
 //
 //  A demonstração usa uma fila separada, para nunca misturar contagens
 //  fictícias com as de verdade.
@@ -30,17 +31,28 @@ const DB_NAME    = demoAtivo() ? 'audistock-offline-demo' : 'audistock-offline';
 const DB_VERSION = 1;
 const STORE      = 'fila_contagem';
 
+// Uma conexão por página. Se outra aba precisar apagar a fila (entrar de
+// novo na demonstração, restaurar os dados), esta fecha a sua e abre outra
+// na próxima operação, em vez de travar a exclusão.
+let _conexao = null;
 function openDB() {
-  return new Promise((resolve, reject) => {
+  _conexao ??= new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e) => {
       const store = e.target.result.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
       store.createIndex('auditoria_id', 'auditoria_id', { unique: false });
       store.createIndex('status',       'status',       { unique: false });
     };
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror   = (e) => reject(e.target.error);
+    req.onsuccess = (e) => {
+      const db = e.target.result;
+      db.onversionchange = () => { db.close(); _conexao = null; };
+      db.onclose = () => { _conexao = null; };
+      resolve(db);
+    };
+    req.onerror = (e) => { _conexao = null; reject(e.target.error); };
+    req.onblocked = () => { _conexao = null; reject(new Error('A fila deste aparelho está ocupada por outra aba. Feche as outras abas do AudiStock e tente de novo.')); };
   });
+  return _conexao;
 }
 
 function _todos(db) {
@@ -60,11 +72,20 @@ export function ehErroDeRede(err) {
   return /failed to fetch|networkerror|network request failed|load failed|fetch|timed? ?out|aborted/i.test(String(err?.message ?? err ?? ''));
 }
 
-// Recusa definitiva do banco: tentar de novo não muda o resultado
-function _recusaDefinitiva(err) {
-  return ['42501', '22023', '23505', '23503', 'AS001'].includes(err?.code)
-    || /row-level security|não está em andamento|não é da empresa|permission denied/i.test(String(err?.message ?? ''));
+// Falha que passa sozinha: tentar de novo depois resolve. Rede, servidor
+// fora do ar ou sobrecarregado (5xx, 408, 429, resposta em HTML de um
+// proxy) e sessão vencida, que o supabase-js renova.
+export function ehFalhaPassageira(err) {
+  const msg = String(err?.message ?? err ?? '');
+  return ehErroDeRede(err)
+    || (Number(err?.status) >= 500 || [408, 429].includes(Number(err?.status)))
+    || err?.code === 'PGRST301' || /jwt|token.*expir/i.test(msg)
+    || /service unavailable|bad gateway|gateway time|upstream|unexpected token <|<html/i.test(msg);
 }
+
+// O banco recusou por já ter aplicado este envio (banco sem a trava por
+// envio): conta como enviado
+const _jaAplicado = err => err?.code === '23505' && /contagens_aplicadas/i.test(String(err?.message ?? ''));
 
 // ─────────────────────────────────────────────────────────────
 //  registrarOffline({ auditoriaId, produtoId, quantidade, usuarioId, acao, produto, idCliente })
@@ -107,10 +128,9 @@ export async function resumoFila(auditoriaId = null) {
   };
 }
 
-// Quantos registros ainda não subiram (de qualquer pessoa)
+// Quantos registros de quem está logado ainda não subiram
 export async function contarPendentes(auditoriaId = null) {
-  const itens = await _todos(await openDB());
-  return itens.filter(i => i.status === 'pending' && (!auditoriaId || i.auditoria_id === auditoriaId)).length;
+  return (await resumoFila(auditoriaId)).meus;
 }
 
 // Tudo o que está no aparelho: 'pending' (esperando envio) e 'error'
@@ -135,10 +155,11 @@ export async function tentarDeNovo(id) {
 // ─────────────────────────────────────────────────────────────
 //  sincronizar() — envia a fila de quem está logado, na ordem em que
 //  foi gravada. Só uma aba por vez.
+//  Retorna { ok, erros, porAuditoria: { [id]: { ok, erros } } }.
 // ─────────────────────────────────────────────────────────────
 let _enviando = null;
 export function sincronizar() {
-  if (!isOnline()) return Promise.resolve({ ok: 0, erros: 0 });
+  if (!isOnline()) return Promise.resolve({ ok: 0, erros: 0, porAuditoria: {} });
   const enviar = async () => {
     const db = await openDB();
     const eu = getPerfil()?.id;
@@ -146,6 +167,8 @@ export function sincronizar() {
       .filter(i => i.status === 'pending' && (!eu || i.usuario_id === eu))
       .sort((a, b) => a.id - b.id);
     let ok = 0, erros = 0;
+    const porAuditoria = {};
+    const contar = (item, campo) => { (porAuditoria[item.auditoria_id] ??= { ok: 0, erros: 0 })[campo]++; };
     for (const item of pendentes) {
       try {
         await registrarContagem({
@@ -153,17 +176,15 @@ export function sincronizar() {
           usuarioId: item.usuario_id, acao: item.acao === 'novo' ? 'somar' : item.acao, idCliente: item.id_cliente ?? null,
         });
         await _alterar(item.id, null);
-        ok++;
+        ok++; contar(item, 'ok');
       } catch (err) {
-        if (_recusaDefinitiva(err)) {
-          await _alterar(item.id, x => ({ ...x, status: 'error', erro: err.message }));
-          erros++;
-          continue;
-        }
-        break;   // rede, servidor fora do ar, sessão vencida: tenta depois, sem perder nada
+        if (_jaAplicado(err)) { await _alterar(item.id, null); ok++; contar(item, 'ok'); continue; }
+        if (ehFalhaPassageira(err)) break;   // tenta depois, sem perder nada
+        await _alterar(item.id, x => ({ ...x, status: 'error', erro: err.message }));
+        erros++; contar(item, 'erros');
       }
     }
-    return { ok, erros };
+    return { ok, erros, porAuditoria };
   };
   _enviando ??= (navigator.locks?.request ? navigator.locks.request('audistock-fila', enviar) : enviar())
     .finally(() => { _enviando = null; });
@@ -173,7 +194,8 @@ export function sincronizar() {
 // ─────────────────────────────────────────────────────────────
 //  initOfflineSync(aoMudar, { auditoriaId })
 //  Mostra a faixa de conexão, envia a fila sempre que possível e chama
-//  aoMudar({ online, pendentes, deOutros, comErro, enviados }) a cada mudança.
+//  aoMudar({ online, pendentes, deOutros, comErro, enviados }) a cada
+//  mudança. Os números e os avisos são os da auditoria aberta.
 // ─────────────────────────────────────────────────────────────
 let _aoMudarGlobal = null;
 function _avisarMudanca() { _aoMudarGlobal?.(); }
@@ -204,9 +226,10 @@ export function initOfflineSync(aoMudar, { auditoriaId = null } = {}) {
     if (!isOnline() || !(await resumoFila()).meus) return atualizar();
     await atualizar();
     const r = await sincronizar();
-    if (r.ok) showToast(`${r.ok} ${r.ok === 1 ? 'contagem guardada foi enviada' : 'contagens guardadas foram enviadas'}.`, 'success');
-    if (r.erros) showToast(`${r.erros} ${r.erros === 1 ? 'contagem foi recusada pelo servidor' : 'contagens foram recusadas pelo servidor'}. Elas aparecem na lista como “Não enviada”.`, 'error', 9000);
-    await atualizar(r.ok + r.erros);
+    const aqui = auditoriaId ? (r.porAuditoria[auditoriaId] ?? { ok: 0, erros: 0 }) : r;
+    if (aqui.ok) showToast(`${aqui.ok} ${aqui.ok === 1 ? 'contagem guardada foi enviada' : 'contagens guardadas foram enviadas'}.`, 'success');
+    if (aqui.erros) showToast(`${aqui.erros} ${aqui.erros === 1 ? 'contagem foi recusada pelo servidor' : 'contagens foram recusadas pelo servidor'}. Elas aparecem na lista como “Não enviada”.`, 'error', 9000);
+    await atualizar(aqui.ok + aqui.erros);
   }
 
   _aoMudarGlobal = () => atualizar();

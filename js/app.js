@@ -6,7 +6,7 @@
 // ================================================================
 
 import { requireAuth, getPerfil, hasRole } from './auth.js';
-import { initLayout, definirTitulo, vazioHtml, mensagemErro, fecharModais } from './ui.js';
+import { initLayout, definirTitulo, vazioHtml, mensagemErro, fecharModais, liberarParaNavegar } from './ui.js';
 import * as dashboard from './telas/dashboard.js';
 import * as auditorias from './telas/auditorias.js';
 import * as auditoria from './telas/auditoria.js';
@@ -46,7 +46,11 @@ export function irPara(tela, params = {}, { substituir = false } = {}) {
 
 // focar: na troca de tela (não na primeira carga), o foco vai para o título
 // novo; o leitor de tela anuncia a tela e o próximo Tab já cai no conteúdo
+let urlAtual = location.href;
+const semHash = u => String(u).split('#')[0];
+
 async function rotear({ focar = true } = {}) {
+  urlAtual = location.href;
   fecharModais();   // um modal da tela anterior não fica aberto sobre a nova
   const params = new URLSearchParams(location.search);
   const nome = TELAS[params.get('tela')] ? params.get('tela') : 'dashboard';
@@ -75,11 +79,19 @@ async function rotear({ focar = true } = {}) {
   }
 }
 
-window.addEventListener('popstate', () => rotear());
-document.addEventListener('click', e => {
+// Voltar e Avançar do navegador. Só o hash mudou: nada a redesenhar. Uma
+// janela gravando, ou com algo digitado que a pessoa quer manter, desfaz
+// a navegação.
+window.addEventListener('popstate', async () => {
+  if (semHash(location.href) === semHash(urlAtual)) return;
+  if (!(await liberarParaNavegar())) { history.pushState({}, '', urlAtual); return; }
+  rotear();
+});
+document.addEventListener('click', async e => {
   const a = e.target.closest('a[href^="app.html?"]');
   if (!a || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || a.target) return;
   e.preventDefault();
+  if (!(await liberarParaNavegar())) return;
   history.pushState({}, '', a.href);
   rotear();
 });

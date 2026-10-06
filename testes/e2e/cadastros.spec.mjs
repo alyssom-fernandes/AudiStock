@@ -68,9 +68,11 @@ test('importa produtos de planilha, com prévia e progresso', async ({ page }) =
   expect(n).toBe(11);
 });
 
-// Monta um .xlsx no próprio navegador, com o ExcelJS que o app usa
+// Monta um .xlsx com o ExcelJS que o app usa, numa aba à parte: na aba do
+// app, a biblioteca já carregada pularia o carregamento com SRI que se quer testar
 async function planilha(page, linhas) {
-  const b64 = await page.evaluate(async linhas => {
+  const aba = await page.context().newPage();
+  const b64 = await aba.evaluate(async linhas => {
     const ExcelJS = await new Promise((ok, falha) => {
       const s = document.createElement('script');
       s.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
@@ -83,6 +85,7 @@ async function planilha(page, linhas) {
     let bin = ''; bytes.forEach(b => { bin += String.fromCharCode(b); });
     return btoa(bin);
   }, linhas);
+  await aba.close();
   return { name: 'produtos.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from(b64, 'base64') };
 }
 
@@ -116,6 +119,10 @@ test('cadastra usuário pela Edge Function; e-mail repetido é apontado no campo
   await page.locator(`${MODAL} #usrEmail`).fill('carla.souza@exemplo.com');
   await page.locator(`${MODAL} #usrSenha`).fill('segredo1');
   await page.locator(`${MODAL} #usrRole`).selectOption('auditor');
+  // Sem empresa escolhida, o cadastro não segue (não vira "todas" sem querer)
+  await page.locator(`${MODAL} .btn-primary`).click();
+  await expect(page.locator(`${MODAL} #usrEmpresa`)).toHaveAttribute('aria-invalid', 'true');
+  await page.locator(`${MODAL} #usrEmpresa`).selectOption({ label: 'Atacado Serra Azul' });
   await page.locator(`${MODAL} .btn-primary`).click();
   await expect(page.locator('.toast')).toContainText('Carla Souza');
 
@@ -123,6 +130,7 @@ test('cadastra usuário pela Edge Function; e-mail repetido é apontado no campo
   await page.locator(`${MODAL} #usrNome`).fill('Outra Carla');
   await page.locator(`${MODAL} #usrEmail`).fill('CARLA.SOUZA@exemplo.com');
   await page.locator(`${MODAL} #usrSenha`).fill('segredo1');
+  await page.locator(`${MODAL} #usrEmpresa`).selectOption({ label: 'Todas as empresas' });
   await page.locator(`${MODAL} .btn-primary`).click();
   await expect(page.locator(`${MODAL} .form-erro`)).toContainText('Já existe um usuário com este e-mail');
 });

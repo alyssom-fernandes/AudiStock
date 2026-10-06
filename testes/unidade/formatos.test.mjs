@@ -35,7 +35,9 @@ test('quantidade digitada: vírgula decimal, ponto de milhar e unidade inteira',
   assert.deepEqual(lerQuantidade('2,75', 'kg'), { valor: 2.75 });
   assert.match(lerQuantidade('1.234', 'KG').erro, /1,234.*1234/, 'em quilo, "1.234" é ambíguo: a pessoa escolhe');
   assert.deepEqual(lerQuantidade('12.5', 'KG'), { valor: 12.5 });
-  assert.deepEqual(lerQuantidade('0,1234', 'KG'), { valor: 0.123 });
+  assert.match(lerQuantidade('0,1234', 'KG').erro, /3 casas/, 'não arredonda em silêncio');
+  assert.match(lerQuantidade('7890000000001', 'PCT').erro, /grande demais/, 'código de barras lido no campo de quantidade');
+  assert.deepEqual(lerQuantidade('1.000.000', 'KG'), { valor: 1000000 }, 'com dois pontos, só pode ser milhar');
   assert.match(lerQuantidade('1,5', 'UN').erro, /não aceita frações/);
   assert.ok(lerQuantidade('1e3', 'UN').erro, 'notação científica não vale');
   assert.ok(lerQuantidade('-2', 'UN').erro);

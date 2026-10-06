@@ -120,7 +120,7 @@ async function iniciar() {
     const i = itens[n], lida = ler(n);
     inputs[n].toggleAttribute('aria-invalid', !!lida.erro);
     inputs[n].title = lida.erro ?? '';
-    $(`#dif${n}`).innerHTML = lida.erro ? `<span class="dif-nula">${escapeHtml(lida.erro)}</span>`
+    $(`#dif${n}`).innerHTML = lida.erro ? `<span class="dif-nula dif-erro">${escapeHtml(lida.erro)}</span>`
       : lida.vazio ? '<span class="dif-nula">—</span>'
       : difHtml(Math.round((Number(i.quantidade_contada) - lida.valor) * 1000) / 1000, i.produtos?.unidade_medida);
   };

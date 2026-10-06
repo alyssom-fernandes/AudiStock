@@ -283,6 +283,10 @@ details[open] .detalhes-rotulo svg { transform: rotate(180deg); }
     .so-medio-bloco { display: block !important; }
     .tabela-fixa td.email { min-width: 140px; }
 }
+/* Tabela pequena dentro de janela, no celular: só as colunas essenciais */
+@container tabela (max-width: 479px) {
+    .col-opcional { display: none; }
+}
 table { width: 100%; border-collapse: collapse; }
 th { padding: 10px 16px; text-align: left; font-size: 12px; font-weight: 500; color: var(--text-muted); background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
 td { padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
@@ -309,6 +313,7 @@ th:last-child, td:last-child { padding-right: 20px; }
 .dif-sobra { color: var(--success); font-weight: 500; }
 .dif-falta { color: var(--danger); font-weight: 500; }
 .dif-zero, .dif-nula { color: var(--text-faint); }
+.dif-erro { display: inline-block; white-space: normal; text-align: right; max-width: 22ch; }   /* a célula numérica não quebra linha; a mensagem quebra */
 .acoes-linha { display: flex; justify-content: flex-end; gap: 4px; }
 tr.inativa td { color: var(--text-faint); }
 tr.inativa .forte { color: var(--text-muted); }

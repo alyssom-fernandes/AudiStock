@@ -321,8 +321,8 @@ function abrirImportacao(empresas, empresaAtual, perfil, aoConcluir) {
       ${faltam.length ? `<p class="form-hint">A planilha não tem a coluna ${faltam.map(c => `<strong>${c}</strong>`).join(' nem ')}: nos produtos que já existem, ${faltam.length > 1 ? 'esses campos ficam' : 'esse campo fica'} como ${faltam.length > 1 ? 'estão' : 'está'}.</p>` : ''}
       ${semConferir ? '<p class="form-hint">Não foi possível conferir os códigos de barras com o cadastro agora; um código repetido será recusado na gravação.</p>' : ''}
       <div class="tabela-wrap" style="border:1px solid var(--border);border-radius:var(--r)"><table>
-        <thead><tr><th scope="col">Linha</th><th scope="col">Código</th><th scope="col">Nome</th><th scope="col">Unidade</th>${colBarras ? '<th scope="col">Código de barras</th>' : ''}</tr></thead>
-        <tbody>${prontas.slice(0, 3).map(l => `<tr><td class="num muted">${l.n}</td><td class="codigo">${escapeHtml(l.codigo)}</td><td>${escapeHtml(l.nome)}</td><td>${escapeHtml(l.unidade || '—')}</td>${colBarras ? `<td class="codigo">${escapeHtml(l.codigo_barras || '—')}</td>` : ''}</tr>`).join('')}</tbody>
+        <thead><tr><th scope="col" class="col-opcional">Linha</th><th scope="col">Código</th><th scope="col">Nome</th><th scope="col">Unidade</th>${colBarras ? '<th scope="col" class="col-opcional">Código de barras</th>' : ''}</tr></thead>
+        <tbody>${prontas.slice(0, 3).map(l => `<tr><td class="num muted col-opcional">${l.n}</td><td class="codigo">${escapeHtml(l.codigo)}</td><td>${escapeHtml(l.nome)}</td><td>${escapeHtml(l.unidade || '—')}</td>${colBarras ? `<td class="codigo col-opcional">${escapeHtml(l.codigo_barras || '—')}</td>` : ''}</tr>`).join('')}</tbody>
       </table></div>
       ${prontas.length > 3 ? `<p class="form-hint" style="margin-top:6px">Primeiros 3 de ${plural(prontas.length, 'produto', 'produtos')}.</p>` : ''}`;
     btnImp.disabled = false;

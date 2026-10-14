@@ -1,0 +1,8 @@
+/* IBM Plex servida pelo próprio site (licença OFL em fontes/OFL.txt):
+   nenhuma página pede nada ao Google. Subconjunto latino, que cobre o
+   português. O PDF usa as versões TTF da mesma pasta. */
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 400; font-display: swap; src: url(../fontes/plex-sans-400.woff2) format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 500; font-display: swap; src: url(../fontes/plex-sans-500.woff2) format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 600; font-display: swap; src: url(../fontes/plex-sans-600.woff2) format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url(../fontes/plex-mono-400.woff2) format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 500; font-display: swap; src: url(../fontes/plex-mono-500.woff2) format('woff2'); }

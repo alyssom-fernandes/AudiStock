@@ -68,8 +68,8 @@ function _carregarFontes() {
 
 // ── PDF ─────────────────────────────────────────────────────
 export async function gerarPDF(dados) {
-  await carregarScript(`${CDN}/jspdf/2.5.1/jspdf.umd.min.js`, 'jspdf');
-  await carregarScript(`${CDN}/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js`);
+  await carregarScript(`${CDN}/jspdf/4.2.1/jspdf.umd.min.js`, 'jspdf');
+  await carregarScript(`${CDN}/jspdf-autotable/5.0.8/jspdf.plugin.autotable.min.js`);
   const { jsPDF } = window.jspdf;
   // Se as assinaturas não couberem na última página, monta de novo levando
   // as últimas linhas da tabela junto: nunca uma folha só com as assinaturas.

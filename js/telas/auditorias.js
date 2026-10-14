@@ -94,7 +94,7 @@ export async function render(el, { perfil, params }) {
       desenhar();
     } catch (err) {
       console.error(err);
-      card.innerHTML = erroCargaHtml("irPara('auditorias')");
+      card.innerHTML = erroCargaHtml('auditorias');
     }
   };
 

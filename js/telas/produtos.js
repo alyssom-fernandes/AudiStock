@@ -43,7 +43,7 @@ export async function render(el, { perfil, params }) {
   $('#prodInativos').addEventListener('change', e => { inativos = e.target.checked; pagina = 1; if (empresas.length) carregar(); });
 
   try { empresas = await listarEmpresas({ apenasAtivas: true }); }
-  catch (err) { card.innerHTML = erroCargaHtml("irPara('produtos')"); return; }
+  catch (err) { card.innerHTML = erroCargaHtml('produtos'); return; }
 
   if (!empresas.length) {
     $('.toolbar').remove();
@@ -78,7 +78,7 @@ export async function render(el, { perfil, params }) {
     } catch (err) {
       if (minha !== req) return;
       console.error(err);
-      card.innerHTML = erroCargaHtml("irPara('produtos')");
+      card.innerHTML = erroCargaHtml('produtos');
     }
   }
 

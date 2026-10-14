@@ -77,7 +77,7 @@ export function initLayout(titulo, { ativa = null } = {}) {
             <div class="sidebar-marca">
                 <span class="marca-icone">${ICONS.marca}</span>
                 <span class="marca-nome">AudiStock</span>
-                <button type="button" class="btn-icone sidebar-fechar" onclick="window.__layoutFecharSidebar()" aria-label="Fechar menu">${ICONS.fechar}</button>
+                <button type="button" class="btn-icone sidebar-fechar" data-layout="fechar-menu" aria-label="Fechar menu">${ICONS.fechar}</button>
             </div>
             <nav class="sidebar-nav">${nav}</nav>
             <div class="sidebar-rodape">
@@ -87,18 +87,18 @@ export function initLayout(titulo, { ativa = null } = {}) {
                         <span class="usuario-nome" id="usuarioNome">${escapeHtml(nomeCurto)}</span>
                         <span class="usuario-papel">${escapeHtml(NOMES_PAPEL[perfil?.role] ?? '—')}</span>
                     </span>
-                    <button type="button" class="btn-icone" onclick="window.__layoutLogout()" aria-label="Sair" title="Sair">${ICONS.sair}</button>
+                    <button type="button" class="btn-icone" data-layout="sair" aria-label="Sair" title="Sair">${ICONS.sair}</button>
                 </div>
             </div>
         </aside>
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window.__layoutFecharSidebar()"></div>`;
+        <div class="sidebar-overlay" id="sidebarOverlay" data-layout="fechar-menu"></div>`;
 
     if (demoAtivo() && !document.querySelector('.demo-bar')) {
         document.body.classList.add('com-demo');
         document.body.insertAdjacentHTML('afterbegin', `
         <div class="demo-bar" role="note">
             <span><strong>Demonstração</strong><span class="demo-bar-longo"> · dados fictícios, nada é gravado de verdade</span></span>
-            <button type="button" class="link" onclick="window.__layoutLogout()">Sair da demonstração</button>
+            <button type="button" class="link" data-layout="sair">Sair da demonstração</button>
         </div>`);
     }
     // Avisos da demonstração: cópia do banco que não coube na aba nova,
@@ -114,9 +114,9 @@ export function initLayout(titulo, { ativa = null } = {}) {
     const topo = `
         <div class="offline-bar" id="offlineBar" role="status" aria-live="polite"></div>
         <header class="topbar">
-            <button type="button" class="btn-icone btn-hamburger" id="btnMenu" onclick="window.__layoutToggleSidebar()" aria-label="Abrir menu" aria-expanded="false" aria-controls="sidebar">${ICONS.menu}</button>
+            <button type="button" class="btn-icone btn-hamburger" id="btnMenu" data-layout="abrir-menu" aria-label="Abrir menu" aria-expanded="false" aria-controls="sidebar">${ICONS.menu}</button>
             <h1 class="topbar-titulo" id="topbarTitle" tabindex="-1">${escapeHtml(titulo ?? '')}</h1>
-            <button type="button" class="btn-icone" id="btnTema" onclick="window.__layoutToggleTheme()"></button>
+            <button type="button" class="btn-icone" id="btnTema" data-layout="tema"></button>
         </header>`;
 
     const shell = document.getElementById('appShell');
@@ -136,11 +136,20 @@ export function initLayout(titulo, { ativa = null } = {}) {
     _applyTheme(_temaAtual());
     definirTitulo(titulo);
 
-    window.__layoutLogout        = () => _sair();
-    window.__layoutToggleSidebar = () => toggleSidebar();
-    window.__layoutFecharSidebar = () => fecharSidebar();
-    window.__layoutToggleTheme   = () => toggleTheme();
 }
+
+// Botões do layout e "Tentar de novo": um só ouvinte, sem onclick no HTML
+// (a política de segurança das páginas não deixa rodar código embutido)
+document.addEventListener('click', e => {
+    const b = e.target.closest('[data-layout], [data-recarregar]');
+    if (!b) return;
+    if (b.hasAttribute('data-recarregar')) {
+        if (b.dataset.recarregar && window.irPara) window.irPara(b.dataset.recarregar);
+        else location.reload();
+        return;
+    }
+    ({ sair: _sair, 'abrir-menu': toggleSidebar, 'fechar-menu': fecharSidebar, tema: toggleTheme })[b.dataset.layout]?.();
+});
 
 // Contagens guardadas sem internet ainda não enviadas: avisa antes de sair
 async function _sair() {
@@ -559,8 +568,9 @@ export function vazioHtml({ titulo, texto = '', textoHtml = '', acoes = '', comp
         ${acoes ? `<div class="vazio-acoes">${acoes}</div>` : ''}
     </div>`;
 }
-export function erroCargaHtml(acao = 'location.reload()') {
-    return vazioHtml({ titulo: 'Não foi possível carregar', texto: 'Verifique a conexão e tente de novo.', acoes: `<button type="button" class="btn btn-secondary btn-sm" onclick="${acao}">Tentar de novo</button>`, compacto: true });
+// tela: a tela do app.html a abrir de novo; sem ela, recarrega a página
+export function erroCargaHtml(tela = '') {
+    return vazioHtml({ titulo: 'Não foi possível carregar', texto: 'Verifique a conexão e tente de novo.', acoes: `<button type="button" class="btn btn-secondary btn-sm" data-recarregar="${escapeHtml(tela)}">Tentar de novo</button>`, compacto: true });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -659,8 +669,8 @@ const _scripts = {};
 // Hash de cada biblioteca baixada na hora (os oficiais do cdnjs): se o
 // arquivo no CDN mudar, o navegador recusa e nada roda.
 const INTEGRIDADE = {
-    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js': 'sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==',
-    'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js': 'sha512-2/YdOMV+YNpanLCF5MdQwaoFRVbTmrJ4u4EpqS/USXAQNUDgI5uwYi6J98WVtJKcfe1AbgerygzDFToxAlOGEQ==',
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js': 'sha512-plOdviVmws4Y3JAvbnpfKb2hVxKM1lCwsi3vmElYRj+tiDLffZ4FVUj5a8vyKJ9pIgl8JCAHEJ4D1iUKBecswg==',
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/5.0.8/jspdf.plugin.autotable.min.js': 'sha512-QLh0AACvI+3C+bmn3QdH6blN0NWBxwGvBDgV67TvKV5Q2knO9+/+lguVL23JQ9DR7CnfuOSYUBURlXjmJeK11Q==',
     'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js': 'sha512-dlPw+ytv/6JyepmelABrgeYgHI0O+frEwgfnPdXDTOIZz+eDgfW07QXG02/O8COfivBdGNINy+Vex+lYmJ5rxw==',
 };
 

@@ -44,7 +44,7 @@ async function iniciar() {
     if (fila.meus) { await sincronizar().catch(() => {}); fila = await resumoFila(id).catch(() => fila); }
     ({ data: itens } = await listarItensContados(id));
   } catch (err) {
-    el.innerHTML = `<a class="voltar" href="app.html?tela=auditorias">${ICONS.voltar}Auditorias</a><div class="card">${vazioHtml({ titulo: aud ? 'Não foi possível carregar os itens' : 'Auditoria não encontrada', texto: aud ? mensagemErro(err, 'carregar fechamento') : 'Ela pode ter sido excluída, ou o link está incompleto.', acoes: '<button type="button" class="btn btn-secondary" onclick="location.reload()">Tentar de novo</button>' })}</div>`;
+    el.innerHTML = `<a class="voltar" href="app.html?tela=auditorias">${ICONS.voltar}Auditorias</a><div class="card">${vazioHtml({ titulo: aud ? 'Não foi possível carregar os itens' : 'Auditoria não encontrada', texto: aud ? mensagemErro(err, 'carregar fechamento') : 'Ela pode ter sido excluída, ou o link está incompleto.', acoes: '<button type="button" class="btn btn-secondary" data-recarregar>Tentar de novo</button>' })}</div>`;
     return;
   }
   definirTitulo('Fechamento');

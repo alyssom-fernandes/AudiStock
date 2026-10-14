@@ -9,6 +9,10 @@
 
 import { demoAtivo, criarClienteDemo } from './demo.js';
 
+// Trocou de projeto? O endereço também está no connect-src da política de
+// segurança (meta Content-Security-Policy) de cada página; o teste
+// testes/unidade/csp.test.mjs aponta as que ficarem para trás.
+
 const SUPABASE_URL      = 'https://qqrcqjaqbfodwgskztvf.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_vNiX8UtjrXR4AdcUr-5jyA_4oYwIEEk';
 

@@ -45,8 +45,8 @@ export async function render(el) {
 
   const $ = s => el.querySelector(s);
   await Promise.all([
-    _andamento($('#dAndamento')).catch(() => { $('#dAndamento').innerHTML = erroCargaHtml("irPara('dashboard')"); }),
-    _ultima(el).catch(() => { $('#dUltima').innerHTML = erroCargaHtml("irPara('dashboard')"); }),
+    _andamento($('#dAndamento')).catch(() => { $('#dAndamento').innerHTML = erroCargaHtml('dashboard'); }),
+    _ultima(el).catch(() => { $('#dUltima').innerHTML = erroCargaHtml('dashboard'); }),
   ]);
 }
 

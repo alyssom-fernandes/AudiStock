@@ -6,7 +6,11 @@ export const test = base.extend({
   // Erros que o próprio teste provoca de propósito (texto parcial)
   errosEsperados: [[], { option: true }],
   page: async ({ page, errosEsperados }, usar) => {
+    // Qualquer coisa barrada pela política de segurança (CSP) das páginas
+    const bloqueios = [];
+    page.on('console', m => { if (m.type() === 'error' && /Content Security Policy/i.test(m.text())) bloqueios.push(m.text()); });
     await usar(page);
+    expect(bloqueios, 'bloqueado pela política de segurança').toEqual([]);
     if (page.isClosed()) return;
     // Se a conferência falhar, o teste falha junto (não passa calado)
     const erros = await page.evaluate(() => window.errosRegistrados?.() ?? []);

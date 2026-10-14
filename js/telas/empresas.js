@@ -77,7 +77,7 @@ export async function render(el, { params, perfil }) {
       const n = await Promise.all(lista.map(e => contarProdutosPorEmpresa(e.id).catch(() => null)));
       contagens = new Map(lista.map((e, i) => [e.id, n[i]]));
       desenhar();
-    } catch (err) { console.error(err); card.innerHTML = erroCargaHtml("irPara('empresas')"); }
+    } catch (err) { console.error(err); card.innerHTML = erroCargaHtml('empresas'); }
   };
 
   $('#empBusca').addEventListener('input', debounce(e => { busca = e.target.value; desenhar(); }, 200));

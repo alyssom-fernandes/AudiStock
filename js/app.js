@@ -77,7 +77,7 @@ async function rotear({ focar = true } = {}) {
     if (minha !== _seq) return;
     console.error(err);
     window.__registrarErro?.('tela', `${nome}: ${err.message}`, err.stack);
-    el.innerHTML = `<div class="card">${vazioHtml({ titulo: 'Não foi possível abrir esta tela', texto: mensagemErro(err), acoes: '<button type="button" class="btn btn-secondary" onclick="location.reload()">Tentar de novo</button>' })}</div>`;
+    el.innerHTML = `<div class="card">${vazioHtml({ titulo: 'Não foi possível abrir esta tela', texto: mensagemErro(err), acoes: '<button type="button" class="btn btn-secondary" data-recarregar>Tentar de novo</button>' })}</div>`;
   }
 }
 

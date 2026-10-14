@@ -137,10 +137,13 @@ test('fechamento: produto contado em outro aparelho entra na lista, sem perder o
 });
 
 // Outra pessoa age no banco da demonstração com a tela aberta (os mesmos módulos que a tela usa)
+// A função é montada antes do primeiro await: a política de segurança da
+// página só deixa criar código a partir de texto durante a avaliação do teste
 const outroAparelho = (page, fn, arg) => page.evaluate(async ([corpo, a]) => {
+  const executar = new Function('m', 'a', `return (async () => { ${corpo} })()`);
   const url = c => new URL(c, location.href).href;
   const m = { ...(await import(url('js/contagem.js'))), ...(await import(url('js/demo.js'))), supabase: (await import(url('js/supabaseClient.js'))).default };
-  return new Function('m', 'a', `return (async () => { ${corpo} })()`)(m, a);
+  return executar(m, a);
 }, [fn, arg]);
 
 async function abrirFechamentoPreenchido(page) {

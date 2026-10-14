@@ -105,7 +105,8 @@ Captured from the demo mode.
   already used by another product). Only the columns in the sheet are
   written, so an empty cell never erases a unit or a barcode. Products can
   also be copied from another company's catalog.
-- Four roles: **supremo** (everything, including deleting audits),
+- Four roles: **general administrator** (`supremo` in the database:
+  everything, including deleting audits),
   **administrador** (records, creating and cancelling audits),
   **auditor** (records counts and does the closing) and **visualizador**
   (read only). Everyone changes their own password under Configurações.
@@ -176,7 +177,7 @@ of this repository: it creates what is missing, updates functions,
 triggers and permissions, and deletes no data.
 
 Permissions live in the database: each role only sees its company, an
-auditor counts and finishes but cannot cancel, only the supremo deletes,
+auditor counts and finishes but cannot cancel, only the general administrator deletes,
 and triggers stop anyone from promoting themselves or changing a finished
 count. [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql)
 signs in as each role and checks 54 of these rules; it runs in any

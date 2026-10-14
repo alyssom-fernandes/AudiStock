@@ -53,7 +53,8 @@ const NAV = [
     { secao: 'Sistema', itens: [ { label: 'Configurações', icon: 'config', tela: 'config' } ] },
 ];
 
-export const NOMES_PAPEL = { supremo: 'Supremo', administrador: 'Administrador', auditor: 'Auditor', visualizador: 'Visualizador' };
+// O perfil de acesso total se chama supremo no banco; na tela, Administrador geral
+export const NOMES_PAPEL = { supremo: 'Administrador geral', administrador: 'Administrador', auditor: 'Auditor', visualizador: 'Visualizador' };
 
 // ─────────────────────────────────────────────────────────────
 //  Layout
@@ -97,10 +98,11 @@ export function initLayout(titulo, { ativa = null } = {}) {
         document.body.classList.add('com-demo');
         document.body.insertAdjacentHTML('afterbegin', `
         <div class="demo-bar" role="note">
-            <span><strong>Demonstração</strong><span class="demo-bar-longo"> · dados fictícios, nada é gravado de verdade</span></span>
-            <button type="button" class="link" data-layout="sair">Sair da demonstração</button>
+            <span><strong>Demonstração</strong> · dados fictícios<span class="demo-bar-longo">, nada é gravado de verdade</span></span>
+            <button type="button" class="link" data-layout="sair" aria-label="Sair da demonstração">Sair<span class="demo-bar-longo"> da demonstração</span></button>
         </div>`);
     }
+    document.documentElement.classList.remove('demo-cedo');   // o espaço reservado (css) não fica sobrando
     // Avisos da demonstração: cópia do banco que não coube na aba nova,
     // banco que passou do espaço do navegador
     if (demoAtivo()) {

@@ -132,7 +132,8 @@ async function abrirEmpresa(id, lista, aoSalvar) {
       const nome = m.$('#empNome'), cnpj = m.$('#empCnpj');
       const digitos = limparCnpj(cnpj.value);
       if (!nome.value.trim()) { marcarInvalido(nome, 'Informe o nome da empresa.'); nome.focus(); return; }
-      if (digitos && !cnpjValido(digitos)) { marcarInvalido(cnpj, 'CNPJ inválido. Confira os 14 caracteres.'); cnpj.focus(); return; }
+      // Só confere o CNPJ digitado agora: um cadastro antigo com CNPJ inválido continua editável
+      if (digitos && digitos !== limparCnpj(e.cnpj ?? '') && !cnpjValido(digitos)) { marcarInvalido(cnpj, 'CNPJ inválido. Confira os 14 caracteres.'); cnpj.focus(); return; }
       const repetida = digitos && lista.find(x => x.id !== id && limparCnpj(x.cnpj ?? '') === digitos);
       if (repetida) { marcarInvalido(cnpj, `Este CNPJ já é de ${repetida.nome}.`); cnpj.focus(); return; }
       const campos = { nome: nome.value, cnpj: cnpj.value, estado: m.$('#empEstado').value, cidade: m.$('#empCidade').value, endereco: m.$('#empEndereco').value, observacoes: m.$('#empObs').value };

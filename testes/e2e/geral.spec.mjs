@@ -13,6 +13,36 @@ test('do login à demonstração @celular', async ({ page }) => {
   await expect(page.locator('.kpi-valor').first()).toHaveText(/\d+/);
 });
 
+test('no celular a faixa da demonstração diz que os dados são fictícios @celular', async ({ page }) => {
+  await abrir(page);
+  await expect(page.locator('.demo-bar')).toContainText('Demonstração · dados fictícios');
+  await expect(page.getByRole('button', { name: 'Sair da demonstração' })).toBeVisible();
+});
+
+test('na demonstração, o roteiro de 3 passos leva ao relatório e, fechado, não volta', async ({ page }) => {
+  await abrir(page);
+  const roteiro = page.locator('.roteiro');
+  await expect(roteiro).toContainText('Experimente em 3 passos');
+  await expect(roteiro.getByRole('link')).toHaveCount(3);
+  await roteiro.getByRole('link', { name: /Baixe o relatório/ }).click();
+  await page.waitForURL(/relatorios\.html\?id=/);
+  await abrir(page);
+  await roteiro.getByRole('button', { name: 'Fechar', exact: true }).click();
+  await expect(roteiro).toHaveCount(0);
+  await page.reload();
+  await esperarCarregar(page);
+  await expect(page.locator('.kpi-valor').first()).toHaveText(/\d+/);
+  await expect(roteiro).toHaveCount(0);
+});
+
+test('tela que não existe avisa, com o título certo na aba', async ({ page }) => {
+  await abrir(page, 'app.html?tela=naoexiste');
+  await expect(page).toHaveTitle('Página não encontrada · AudiStock');
+  await expect(page.getByText('Esta tela não existe')).toBeVisible();
+  await page.getByRole('link', { name: 'Ir para o Dashboard' }).click();
+  await expect(page).toHaveTitle('Dashboard · AudiStock');
+});
+
 test('com a demonstração aberta, o login avisa em vez de entrar nela', async ({ page }) => {
   await abrir(page);
   await page.goto('login.html');

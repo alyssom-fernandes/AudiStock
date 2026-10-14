@@ -32,7 +32,7 @@ test('CSV com auditoria e empresa em cada linha', async ({ page }) => {
   expect(nome).toMatch(/^AUD-\d{4}-0006_Atacado-Serra-Azul_\d{4}-\d{2}-\d{2}\.csv$/);
   expect([...bytes.subarray(0, 3)]).toEqual([0xEF, 0xBB, 0xBF]);
   const linhas = bytes.toString('utf8').slice(1).split('\r\n');
-  expect(linhas[0]).toBe('Auditoria;Empresa;Código;Produto;Unidade;Sistema;Contado;Diferença;Situação');
+  expect(linhas[0]).toBe('Auditoria;Empresa;Código;Produto;Unidade;Sistema;Contado;Diferença;Diferença %;Situação');
   expect(linhas[1]).toMatch(/^AUD-\d{4}-0006;Atacado Serra Azul;/);
 });
 

@@ -73,7 +73,7 @@ Se aparecer `FALHOU`, a coluna `detalhe` diz o que aconteceu (por exemplo,
 
 ## 4. Pelo navegador
 
-Entre com um usuário **supremo** e confira:
+Entre com um usuário **supremo** (Administrador geral, na tela) e confira:
 
 - [ ] Cadastre uma empresa, um administrador dessa empresa e um auditor.
       A sua sessão continua a mesma depois de cada cadastro.

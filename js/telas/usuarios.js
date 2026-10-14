@@ -11,7 +11,7 @@ import { listarEmpresas } from '../empresas.js';
 import { escapeHtml, fmtDateTime, badgeRole, vazioHtml, erroCargaHtml, abrirModal, fmConfirm, showToast, normalizar,
          debounce, delegarAcoes, marcarInvalido, ICONS, NOMES_PAPEL, mensagemErro, partesHtml, emailHtml } from '../ui.js';
 
-const PLURAL_PAPEL = { supremo: 'supremos', administrador: 'administradores', auditor: 'auditores', visualizador: 'visualizadores' };
+const PLURAL_PAPEL = { supremo: 'administradores gerais', administrador: 'administradores', auditor: 'auditores', visualizador: 'visualizadores' };
 const DESCRICAO_PAPEL = {
   supremo: 'Acesso total, inclusive excluir auditorias e gerenciar administradores.',
   administrador: 'Cadastra empresas, produtos e usuários; cria e cancela auditorias.',

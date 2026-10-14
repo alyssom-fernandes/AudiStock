@@ -55,9 +55,14 @@ async function rotear({ focar = true } = {}) {
   urlAtual = location.href;
   fecharModais();   // um modal da tela anterior não fica aberto sobre a nova
   const params = new URLSearchParams(location.search);
-  const nome = TELAS[params.get('tela')] ? params.get('tela') : 'dashboard';
+  // Sem ?tela=, o Dashboard; com uma tela que não existe, avisa em vez de
+  // mostrar outra no lugar (hasOwn: "toString" e afins não são telas)
+  const pedida = params.get('tela');
+  const naoExiste = !!pedida && !Object.hasOwn(TELAS, pedida);
+  const nome = pedida && !naoExiste ? pedida : 'dashboard';
   const tela = TELAS[nome];
-  definirTitulo(tela.titulo, tela.ativa ?? nome);
+  if (naoExiste) definirTitulo('Página não encontrada', '');
+  else definirTitulo(tela.titulo, tela.ativa ?? nome);
   if (focar) document.getElementById('topbarTitle')?.focus({ preventScroll: true });
 
   // Cada navegação ganha um contêiner novo: uma tela antiga que ainda
@@ -67,6 +72,10 @@ async function rotear({ focar = true } = {}) {
   const minha = ++_seq;
   window.scrollTo(0, 0);
 
+  if (naoExiste) {
+    el.innerHTML = `<div class="card">${vazioHtml({ titulo: 'Esta tela não existe', texto: 'O link pode estar incompleto ou ser de uma versão antiga do sistema.', acoes: '<a class="btn btn-secondary" href="app.html?tela=dashboard">Ir para o Dashboard</a>' })}</div>`;
+    return;
+  }
   if (tela.papel && !hasRole(tela.papel)) {
     el.innerHTML = `<div class="card">${vazioHtml({ titulo: 'Acesso restrito', texto: 'Esta área é só para administradores. Fale com quem administra o sistema se precisar dela.', acoes: '<a class="btn btn-secondary" href="app.html?tela=dashboard">Ir para o Dashboard</a>' })}</div>`;
     return;

@@ -6,25 +6,34 @@
 
 import supabase from '../supabaseClient.js';
 import { hasRole } from '../auth.js';
+import { demoAtivo } from '../demo.js';
 import { progresso } from '../auditorias.js';
-import { resumoAuditoria } from '../relatorios.js';
+import { resumoAuditoria, proporcaoTexto } from '../relatorios.js';
 import { escapeHtml, fmtDate, fmtInt, difHtml, vazioHtml, erroCargaHtml, partesHtml } from '../ui.js';
+
+// Esqueletos com a altura do conteúdo que vem depois: a tela não pula
+// quando os dados chegam (o celular lento é onde isso mais aparece)
+const ESQUELETO_ANDAMENTO = `<ul class="lista-andamento" aria-hidden="true">${`<li><div class="andamento">
+  <span class="esqueleto-linhas"><span class="skel" style="width:60%;height:14px"></span><span class="skel" style="width:45%"></span></span>
+  <span class="skel" style="width:72px"></span><span class="barra"></span></div></li>`.repeat(2)}</ul>`;
+const ESQUELETO_ULTIMA = `<div class="barra-empilhada"></div><div class="legenda" aria-hidden="true">${'<div class="legenda-item"><span class="skel" style="flex:1;height:21px"></span></div>'.repeat(3)}</div>`;
 
 const contar = q => q.then(({ count, error }) => { if (error) throw new Error(error.message); return count ?? 0; });
 
 export async function render(el) {
   el.innerHTML = `<div class="kpis" aria-busy="true">${'<div class="kpi"><span class="skel" style="width:60%"></span><span class="skel" style="width:35%;height:22px"></span></div>'.repeat(4)}</div>`;
 
-  const [empresas, produtos, emAndamento, finalizadas] = await Promise.all([
+  const [empresas, produtos, emAndamento, finalizadas, roteiro] = await Promise.all([
     contar(supabase.from('empresas').select('id', { count: 'exact', head: true }).eq('ativo', true)),
     contar(supabase.from('produtos').select('id', { count: 'exact', head: true }).eq('ativo', true)),
     contar(supabase.from('auditorias').select('id', { count: 'exact', head: true }).eq('status', 'em_andamento')),
     contar(supabase.from('auditorias').select('id', { count: 'exact', head: true }).eq('status', 'finalizada')),
+    _dadosRoteiro().catch(() => null),
   ]);
 
   if (empresas === 0) { el.innerHTML = _primeirosPassos(); return; }
 
-  el.innerHTML = `
+  el.innerHTML = `${roteiro ? _roteiroHtml(roteiro) : ''}
     <div class="kpis">
       <div class="kpi kpi-destaque"><div class="kpi-rotulo">Em andamento</div><div class="kpi-valor">${fmtInt(emAndamento)}</div><div class="kpi-apoio">em contagem agora</div></div>
       <div class="kpi"><div class="kpi-rotulo">Finalizadas</div><div class="kpi-valor">${fmtInt(finalizadas)}</div><div class="kpi-apoio" id="kpiUltima">&nbsp;</div></div>
@@ -34,20 +43,55 @@ export async function render(el) {
     <div class="duas-colunas">
       <section class="card" aria-labelledby="tAndamento">
         <div class="card-header"><h2 class="card-title" id="tAndamento">Em andamento</h2><a class="btn btn-ghost btn-sm" href="app.html?tela=auditorias">Ver todas</a></div>
-        <div id="dAndamento"><div class="carregando-bloco"><span class="skel"></span><span class="skel" style="width:70%"></span></div></div>
+        <div id="dAndamento">${ESQUELETO_ANDAMENTO}</div>
       </section>
       <section class="card" aria-labelledby="tUltima">
-        <div class="card-header"><div><h2 class="card-title" id="tUltima">Última auditoria finalizada</h2><div class="card-sub" id="sUltima"></div></div><span id="aUltima"></span></div>
-        <div class="card-body" id="dUltima"><span class="skel"></span><span class="skel" style="width:70%"></span></div>
+        <div class="card-header"><div><h2 class="card-title" id="tUltima">Última auditoria finalizada</h2><div class="card-sub" id="sUltima">&nbsp;</div></div><span id="aUltima"></span></div>
+        <div class="card-body" id="dUltima">${ESQUELETO_ULTIMA}</div>
       </section>
     </div>
     <div class="duas-colunas topo-alinhado" id="dTops"></div>`;
 
   const $ = s => el.querySelector(s);
+  $('[data-fechar-roteiro]')?.addEventListener('click', () => {
+    try { sessionStorage.setItem(CHAVE_ROTEIRO, 'fechado'); } catch (_) {}
+    $('.roteiro').remove();
+    document.getElementById('topbarTitle')?.focus();
+  });
   await Promise.all([
     _andamento($('#dAndamento')).catch(() => { $('#dAndamento').innerHTML = erroCargaHtml('dashboard'); }),
     _ultima(el).catch(() => { $('#dUltima').innerHTML = erroCargaHtml('dashboard'); }),
   ]);
+}
+
+// Só na demonstração: o caminho curto da contagem ao relatório, para quem
+// chega pelo link sem ter lido o README. Fechado, não volta nesta aba.
+const CHAVE_ROTEIRO = 'audistock-demo-roteiro';
+
+async function _dadosRoteiro() {
+  try { if (!demoAtivo() || sessionStorage.getItem(CHAVE_ROTEIRO)) return null; } catch (_) { return null; }
+  const { data, error } = await supabase.from('auditorias')
+    .select('id, numero_auditoria, status, data_inicio, data_fim, empresas(nome)').in('status', ['em_andamento', 'finalizada']);
+  if (error) throw new Error(error.message);
+  const andamento = data.filter(a => a.status === 'em_andamento')
+    .sort((a, b) => (b.empresas?.nome === 'Distribuidora Aurora') - (a.empresas?.nome === 'Distribuidora Aurora') || String(b.data_inicio).localeCompare(String(a.data_inicio)))[0];
+  const finalizada = data.filter(a => a.status === 'finalizada').sort((a, b) => String(b.data_fim).localeCompare(String(a.data_fim)))[0];
+  return andamento && finalizada ? { andamento, finalizada } : null;
+}
+
+function _roteiroHtml({ andamento, finalizada }) {
+  const empresa = andamento.empresas?.nome ?? 'auditoria em andamento';
+  const busca = empresa === 'Distribuidora Aurora' ? 'busque “arroz”' : 'busque um produto';
+  const id = a => encodeURIComponent(a.id);
+  return `<section class="comecar roteiro" aria-labelledby="tRoteiro">
+    <div class="roteiro-topo"><h2 id="tRoteiro">Experimente em 3 passos</h2><button type="button" class="btn btn-ghost btn-sm" data-fechar-roteiro>Fechar</button></div>
+    <p>O caminho de uma auditoria, da contagem no chão ao relatório.</p>
+    <ol class="passos">
+      <li><a href="contagem.html?id=${id(andamento)}"><strong>Registre uma contagem</strong><span>Na ${escapeHtml(empresa)}, ${busca}, informe a quantidade e confirme.</span></a></li>
+      <li><a href="estoque-sistema.html?id=${id(andamento)}"><strong>Compare com o saldo do ERP</strong><span>No fechamento, digite o saldo do sistema de um item e veja a diferença na hora.</span></a></li>
+      <li><a href="relatorios.html?id=${id(finalizada)}"><strong>Baixe o relatório</strong><span>Abra o da <span class="codigo">${escapeHtml(finalizada.numero_auditoria)}</span>, filtre as faltas e baixe o PDF ou a planilha.</span></a></li>
+    </ol>
+  </section>`;
 }
 
 async function _andamento(alvo) {
@@ -130,18 +174,10 @@ function _top(titulo, lista, vazio) {
       <thead><tr><th scope="col">Produto</th><th scope="col" class="num">Diferença</th></tr></thead>
       <tbody>${lista.map(r => `<tr>
         <td><span class="forte">${escapeHtml(r.nome_produto)}</span><span class="sub codigo">${escapeHtml(r.codigo_produto)}</span></td>
-        <td class="num">${difHtml(r.diferenca, r.unidade_medida)}<span class="sub">${_proporcao(r)}</span></td>
+        <td class="num">${difHtml(r.diferenca, r.unidade_medida)}<span class="sub">${proporcaoTexto(r)}</span></td>
       </tr>`).join('')}</tbody>
     </table></div>`;
   return `<section class="card"><div class="card-header"><div><h2 class="card-title">${titulo}</h2><div class="card-sub">Da última auditoria finalizada, em proporção ao saldo</div></div></div>${corpo}</section>`;
-}
-
-// A ordem é pela diferença em proporção ao saldo: a proporção aparece junto
-function _proporcao(r) {
-  const saldo = Math.abs(Number(r.estoque_sistema));
-  if (!saldo) return 'saldo zerado';
-  const v = Math.abs(Number(r.diferenca)) / saldo * 100;
-  return `${v < 10 ? v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : fmtInt(Math.round(v))}% do saldo`;
 }
 
 // Arredonda mantendo a soma em 100 (método do maior resto)

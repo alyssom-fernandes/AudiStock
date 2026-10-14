@@ -808,11 +808,13 @@ function _semear(cenario) {
     const e = { id: id(), nome, cnpj, cidade, estado, endereco, observacoes: null, ativo, criado_em: em(entre(180, 400), 10, 0).toISOString() };
     t.empresas.push(e); return e;
   };
-  const aurora    = empresa('Distribuidora Aurora',        '12.418.337/0001-00', 'Cuiabá',     'MT', 'Av. das Torres, 1820 — Distrito Industrial');
-  const serra     = empresa('Atacado Serra Azul',          '27.904.115/0001-67', 'Goiânia',    'GO', 'Rod. GO-060, km 4,5');
-  const horizonte = empresa('Ferragens Horizonte',         '08.553.761/0001-82', 'Campo Grande','MS', 'Rua Rui Barbosa, 2245 — Centro');
-  empresa('Distribuidora Aurora — Filial Norte', '12.418.337/0002-83', 'Sinop', 'MT', 'Av. dos Tarumãs, 640');  // nova, ainda sem produtos
-  const vale      = empresa('Empório Vale Verde',          '33.120.884/0001-77', 'Rondonópolis','MT', 'Rua Fernando Corrêa, 512', false);
+  // CNPJs com o último dígito verificador errado de propósito: nenhum é de
+  // uma empresa de verdade (testes/unidade/demo.test.mjs confere)
+  const aurora    = empresa('Distribuidora Aurora',        '12.418.337/0001-01', 'Cuiabá',     'MT', 'Av. das Torres, 1820 — Distrito Industrial');
+  const serra     = empresa('Atacado Serra Azul',          '27.904.115/0001-68', 'Goiânia',    'GO', 'Rod. GO-060, km 4,5');
+  const horizonte = empresa('Ferragens Horizonte',         '08.553.761/0001-83', 'Campo Grande','MS', 'Rua Rui Barbosa, 2245 — Centro');
+  empresa('Distribuidora Aurora — Filial Norte', '12.418.337/0002-84', 'Sinop', 'MT', 'Av. dos Tarumãs, 640');  // nova, ainda sem produtos
+  const vale      = empresa('Empório Vale Verde',          '33.120.884/0001-78', 'Rondonópolis','MT', 'Rua Fernando Corrêa, 512', false);
 
   const rafael = usuario('Rafael Antunes', 'rafael.antunes@audistock.example', 'administrador');
   const bianca = usuario('Bianca Moreira', 'bianca.moreira@audistock.example', 'auditor', aurora.id);
@@ -855,7 +857,9 @@ function _semear(cenario) {
     seq++;
     const inicio = em(dias, hora, entre(0, 50));
     const a = {
-      id: id(), numero_auditoria: `AUD-${hoje.getFullYear()}-${String(seq).padStart(4, '0')}`, empresa_id: emp.id, criado_por: criador.id,
+      // O ano é o da própria auditoria; a sequência segue a ordem em que foram
+      // criadas (fica estável para os testes mesmo na virada do ano)
+      id: id(), numero_auditoria: `AUD-${inicio.getFullYear()}-${String(seq).padStart(4, '0')}`, empresa_id: emp.id, criado_por: criador.id,
       auditoria_cega: cega, status, data_inicio: inicio.toISOString(), data_fim: null, observacoes: obs,
       cancelado_por: null, cancelado_em: null, motivo_cancelamento: null, criado_em: inicio.toISOString(),
     };
@@ -888,7 +892,7 @@ function _semear(cenario) {
   auditoria({ emp: serra, lista: pSerra, criador: rafael, contadores: [caio], dias: 88, hora: 9, status: 'cancelada', cobertura: 0.3, cancelamento: 'Inventário remarcado pela gerência' });
   auditoria({ emp: aurora, lista: pAurora, criador: eu, contadores: [bianca, joana], dias: 58, hora: 7, status: 'finalizada', cobertura: 0.98, obs: 'Auditoria mensal' });
   auditoria({ emp: horizonte, lista: pHorizonte, criador: rafael, contadores: [tiago], dias: 31, hora: 8, status: 'finalizada', cobertura: 1, obs: 'Conferência pós-reforma do depósito', cega: false });
-  auditoria({ emp: serra, lista: pSerra, criador: eu, contadores: [caio], dias: 3, hora: 7, status: 'finalizada', cobertura: 0.95, obs: 'Inventário mensal de bebidas' });
+  auditoria({ emp: serra, lista: pSerra, criador: eu, contadores: [caio], dias: 3, hora: 7, status: 'finalizada', cobertura: 0.95, obs: 'Inventário mensal' });
   const andamento = auditoria({ emp: aurora, lista: pAurora, criador: eu, contadores: [bianca, joana], dias: 1, hora: 8, status: 'em_andamento', cobertura: 0.58, obs: 'Auditoria mensal' });
   auditoria({ emp: horizonte, lista: pHorizonte, criador: rafael, contadores: [tiago], dias: 0, hora: 7, status: 'em_andamento', cobertura: 0.19, cega: false });
 

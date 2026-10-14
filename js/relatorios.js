@@ -43,6 +43,21 @@ export function ordenarItens(itens, ordem = 'diferenca') {
 // Diferença relativa ao saldo: 2 CX de 13 pesa mais que 1,288 KG de 14,442
 const _peso = i => Math.abs(Number(i.diferenca)) / Math.max(Math.abs(Number(i.estoque_sistema)) || 1, 1);
 
+// A proporção que decide a ordem "Maior divergência", para mostrar junto da
+// diferença: "12%", "8,9%" (abaixo de 10%, uma casa). Vazio quando não há
+// divergência; null quando não há saldo do sistema com que comparar.
+export function pctDoSaldo(i) {
+  if (i.diferenca == null || i.estoque_sistema == null || Number(i.estoque_sistema) === 0) return null;
+  if (Number(i.diferenca) === 0) return '';
+  const v = Math.abs(Number(i.diferenca)) / Math.abs(Number(i.estoque_sistema)) * 100;
+  return `${(v < 10 ? Math.round(v * 10) / 10 : Math.round(v)).toLocaleString('pt-BR')}%`;
+}
+export function proporcaoTexto(i) {
+  const pct = pctDoSaldo(i);
+  if (pct) return `${pct} do saldo`;
+  return pct === null && i.diferenca != null && Number(i.diferenca) !== 0 && Number(i.estoque_sistema) === 0 ? 'saldo zerado' : '';
+}
+
 // ─────────────────────────────────────────────────────────────
 //  produtosNaoAuditados(auditoriaId)
 //  Produtos ativos da empresa que não foram contados.
@@ -97,11 +112,14 @@ export async function exportarCSV(auditoriaId, filtro = 'todos', ordem = 'difere
   const texto = csvTexto;
   const num = n => n == null || n === '' ? '' : Number(n).toLocaleString('pt-BR', { useGrouping: false, maximumFractionDigits: 3 });
 
-  const cabecalho = ['Auditoria', 'Empresa', 'Código', 'Produto', 'Unidade', ...(comparado ? ['Sistema', 'Contado', 'Diferença', 'Situação'] : ['Contado'])].join(';');
+  const cabecalho = ['Auditoria', 'Empresa', 'Código', 'Produto', 'Unidade', ...(comparado ? ['Sistema', 'Contado', 'Diferença', 'Diferença %', 'Situação'] : ['Contado'])].join(';');
+  // Diferença em % do saldo do sistema, com sinal e uma casa, como na planilha
+  const pct = i => i.diferenca == null || !Number(i.estoque_sistema) ? ''
+    : (Number(i.diferenca) > 0 ? '+' : '') + num(Math.round(Number(i.diferenca) / Math.abs(Number(i.estoque_sistema)) * 1000) / 10);
   const linhas = itens.map(i => [
     texto(aud?.numero_auditoria), texto(aud?.empresas?.nome), texto(i.codigo_produto), texto(i.nome_produto), texto(i.unidade_medida),
     ...(comparado
-      ? [num(i.estoque_sistema), num(i.quantidade_contada), (Number(i.diferenca) > 0 ? '+' : '') + num(i.diferenca), situacaoTexto(i.diferenca)]
+      ? [num(i.estoque_sistema), num(i.quantidade_contada), (Number(i.diferenca) > 0 ? '+' : '') + num(i.diferenca), pct(i), situacaoTexto(i.diferenca)]
       : [num(i.quantidade_contada)]),
   ].join(';'));
   return [cabecalho, ...linhas].join('\r\n') + '\r\n';

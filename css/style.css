@@ -43,6 +43,9 @@
 html { -webkit-text-size-adjust: 100%; scroll-padding-top: calc(var(--topo) + 16px); }
 :root:has(body.com-demo) { --demo-h: 32px; }
 body.com-demo { --demo-h: 32px; --topo: calc(var(--topbar-h) + 32px); }
+/* Na demonstração, o lugar da faixa fica reservado desde o primeiro quadro
+   (classe posta pelo script do tema): ela entra sem empurrar a tela */
+html.demo-cedo body:not(.com-demo):has(.app-shell)::before { content: ''; display: block; height: 32px; }
 /* A barra fixa de baixo (fechamento) não cobre o campo em foco */
 html:has(.barra-acoes) { scroll-padding-bottom: 96px; }
 body { font: 400 14px/1.5 var(--font); background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
@@ -366,6 +369,8 @@ details[open] .detalhes-rotulo::after { content: 'Ocultar'; }
 .skel + .skel { margin-top: 12px; }
 @keyframes pulso { from { opacity: .55; } to { opacity: 1; } }
 .carregando-bloco { padding: 20px; }
+.esqueleto-linhas { display: grid; align-content: center; gap: 8px; min-height: 40px; }
+.esqueleto-linhas .skel + .skel { margin-top: 0; }
 .aviso { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r); border: 1px solid var(--border); background: var(--surface-2); margin-bottom: 16px; }
 .aviso svg { width: 18px; height: 18px; margin-top: 1px; }
 .aviso-perigo { background: var(--danger-soft); border-color: transparent; color: var(--danger); }
@@ -429,9 +434,16 @@ body:has(.barra-acoes) .toasts { bottom: 84px; }
 .comecar p { color: var(--text-muted); max-width: 560px; }
 .passos { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; counter-reset: passo; }
 .passos li { counter-increment: passo; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r); background: var(--surface-2); }
-.passos li::before { content: counter(passo); display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--surface-3); font-size: 12px; font-weight: 600; margin-bottom: 8px; }
 .passos strong { display: block; font-weight: 500; }
 .passos span { color: var(--text-muted); font-size: 13px; }
+/* Roteiro da demonstração: cada passo é um link */
+.roteiro-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.passos li::before, .roteiro .passos a::before { content: counter(passo); display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--surface-3); font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+.roteiro .passos li { padding: 0; }
+.roteiro .passos li::before { content: none; }
+.roteiro .passos a { display: block; height: 100%; padding: 14px 16px; color: inherit; text-decoration: none; border-radius: var(--r); }
+.roteiro .passos a:hover strong { color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; }
+.roteiro .passos .codigo { font-size: 12px; }
 
 /* ── CONTAGEM ───────────────────────────────────────────── */
 .count-layout { display: grid; grid-template-columns: minmax(320px, 380px) minmax(0, 1fr); gap: 20px; align-items: start; }

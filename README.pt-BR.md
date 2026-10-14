@@ -107,7 +107,8 @@ Capturadas do modo demonstração.
   que já é de outro produto). Só as colunas da planilha são gravadas, e
   uma célula vazia nunca apaga a unidade nem o código de barras. Os
   produtos também podem ser copiados do cadastro de outra empresa.
-- Quatro perfis: **supremo** (tudo, inclusive excluir auditorias),
+- Quatro perfis: **administrador geral** (`supremo` no banco: tudo,
+  inclusive excluir auditorias),
   **administrador** (cadastros, criar e cancelar auditorias),
   **auditor** (registra contagens e faz o fechamento) e **visualizador**
   (só consulta). Cada pessoa troca a própria senha em Configurações.
@@ -178,7 +179,7 @@ anterior deste repositório: ele cria o que falta, atualiza funções,
 gatilhos e permissões e não apaga dados.
 
 As permissões ficam no banco: cada perfil só vê a sua empresa, o auditor
-conta e finaliza mas não cancela, só o supremo exclui, e gatilhos impedem
+conta e finaliza mas não cancela, só o administrador geral exclui, e gatilhos impedem
 que alguém promova a si mesmo ou altere uma contagem já finalizada.
 [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql) entra
 como cada perfil e confere 54 dessas regras; dá para rodar no SQL Editor

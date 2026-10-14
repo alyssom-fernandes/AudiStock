@@ -9,7 +9,7 @@
 // ================================================================
 
 import { carregarScript, casasDaUnidade, fmtDateTime, fmtInt } from './ui.js';
-import { situacaoTexto, porcentagem } from './relatorios.js';
+import { situacaoTexto, porcentagem, pctDoSaldo } from './relatorios.js';
 
 const CDN = 'https://cdnjs.cloudflare.com/ajax/libs';
 const STATUS = { em_andamento: 'Em andamento (parcial)', finalizada: 'Finalizada', cancelada: 'Cancelada' };
@@ -170,10 +170,10 @@ function _montarPDF(jsPDF, { aud, resumo, itens, naoContados = [], filtroRotulo,
   const tabelas = [];
   if (comparado) {
     tabelas.push({
-      head: ['Código', 'Produto', 'Sistema', 'Contado', 'Diferença', 'Situação'],
-      linhas: itens.map(r => ({ dif: r.diferenca, cel: [r.codigo_produto, r.nome_produto, comUn(qtd(r.estoque_sistema, r.unidade_medida), r.unidade_medida), comUn(qtd(r.quantidade_contada, r.unidade_medida), r.unidade_medida), dif(r.diferenca, r.unidade_medida, MENOS), situacaoTexto(r.diferenca)] })),
-      colunas: { 0: { cellWidth: 22, textColor: CINZA }, 2: { halign: 'right', cellWidth: 24 }, 3: { halign: 'right', cellWidth: 24 }, 4: { halign: 'right', cellWidth: 24 }, 5: { cellWidth: 19 } },
-      direita: [2, 3, 4], colorir: [4, 5],
+      head: ['Código', 'Produto', 'Sistema', 'Contado', 'Diferença', '% do saldo', 'Situação'],
+      linhas: itens.map(r => ({ dif: r.diferenca, cel: [r.codigo_produto, r.nome_produto, comUn(qtd(r.estoque_sistema, r.unidade_medida), r.unidade_medida), comUn(qtd(r.quantidade_contada, r.unidade_medida), r.unidade_medida), dif(r.diferenca, r.unidade_medida, MENOS), pctDoSaldo(r) ?? '—', situacaoTexto(r.diferenca)] })),
+      colunas: { 0: { cellWidth: 20, textColor: CINZA }, 2: { halign: 'right', cellWidth: 22 }, 3: { halign: 'right', cellWidth: 22 }, 4: { halign: 'right', cellWidth: 22 }, 5: { halign: 'right', cellWidth: 17, textColor: CINZA }, 6: { cellWidth: 17 } },
+      direita: [2, 3, 4, 5], colorir: [4, 6],
     });
   } else {
     tabelas.push({

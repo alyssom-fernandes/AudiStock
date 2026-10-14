@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { default: supabase } = await import('../../js/supabaseClient.js');
-const { resumoAuditoria, ordenarItens, exportarCSV, situacaoTexto, gerarRelatorio, porcentagem } = await import('../../js/relatorios.js');
+const { resumoAuditoria, ordenarItens, exportarCSV, situacaoTexto, gerarRelatorio, porcentagem, pctDoSaldo, proporcaoTexto } = await import('../../js/relatorios.js');
 const { nomeArquivo, tituloRelatorio, temComparacao, semDivergenciaMotivo, fimRotulo } = await import('../../js/exportacao.js');
 
 const banco = () => JSON.parse(sessionStorage.getItem('audistock-demo-db')).tabelas;
@@ -55,7 +55,7 @@ test('o CSV abre certo no Excel brasileiro', async () => {
   const aud = auditoria('0005');   // Horizonte: nomes com aspas e unidades fracionadas
   const csv = await exportarCSV(aud.id, 'todos', 'nome', aud);
   const linhas = csv.split('\r\n');
-  assert.equal(linhas[0], 'Auditoria;Empresa;Código;Produto;Unidade;Sistema;Contado;Diferença;Situação');
+  assert.equal(linhas[0], 'Auditoria;Empresa;Código;Produto;Unidade;Sistema;Contado;Diferença;Diferença %;Situação');
   assert.ok(csv.endsWith('\r\n'));
   const comAspas = linhas.find(l => l.includes('Parafuso Sextavado'));
   assert.match(comAspas, /;"Parafuso Sextavado 1\/4"" x 2""";/, 'aspas dobradas e campo entre aspas');
@@ -63,6 +63,22 @@ test('o CSV abre certo no Excel brasileiro', async () => {
   assert.match(kg, /;\d+,\d+;/, 'decimal com vírgula');
   assert.ok(linhas.slice(1, -1).every(l => l.startsWith(`${aud.numero_auditoria};Ferragens Horizonte;`)));
   assert.ok(linhas.some(l => /;\+\d/.test(l)), 'sobra com sinal de +');
+  assert.ok(linhas.some(l => /;\+[\d,]+;\+\d+(,\d)?;Sobra$/.test(l)), 'diferença em % do saldo, com sinal');
+  assert.ok(linhas.some(l => /;0;0;OK$/.test(l)), 'sem divergência, diferença e % zeradas');
+});
+
+test('a % do saldo que aparece junto da diferença é a mesma da ordem', () => {
+  assert.equal(pctDoSaldo({ diferenca: 2, estoque_sistema: 13 }), '15%');
+  assert.equal(pctDoSaldo({ diferenca: -12, estoque_sistema: 99 }), '12%');
+  assert.equal(pctDoSaldo({ diferenca: 1.288, estoque_sistema: 14.442 }), '8,9%');
+  assert.equal(pctDoSaldo({ diferenca: 0, estoque_sistema: 10 }), '');
+  assert.equal(pctDoSaldo({ diferenca: 5, estoque_sistema: null }), null);
+  assert.equal(proporcaoTexto({ diferenca: -18, estoque_sistema: 209 }), '8,6% do saldo');
+  assert.equal(proporcaoTexto({ diferenca: 3, estoque_sistema: 0 }), 'saldo zerado');
+  assert.equal(proporcaoTexto({ diferenca: 0, estoque_sistema: 0 }), '');
+  // Na ordem, quem tem a maior % vem antes, mesmo com diferença menor
+  const itens = ordenarItens([{ nome_produto: 'Suco', diferenca: -18, estoque_sistema: 209 }, { nome_produto: 'Isqueiro', diferenca: 2, estoque_sistema: 13 }]);
+  assert.deepEqual(itens.map(i => i.nome_produto), ['Isqueiro', 'Suco']);
 });
 
 test('CSV de auditoria em andamento sai só com a contagem, mesmo com algum saldo gravado', async () => {

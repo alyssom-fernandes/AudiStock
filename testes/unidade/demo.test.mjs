@@ -60,3 +60,16 @@ test('relatório de auditoria encerrada guarda o nome do encerramento', async ()
 });
 
 test('nenhum erro registrado pelo app', () => assert.deepEqual(globalThis.errosDoApp, []));
+
+test('os CNPJs da demonstração não são válidos (não coincidem com empresas reais)', () => {
+  const dv = (base, pesos) => { const r = [...base].reduce((s, c, i) => s + Number(c) * pesos[i], 0) % 11; return r < 2 ? 0 : 11 - r; };
+  const p1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], p2 = [6, ...p1];
+  const valido = c => { const d = c.replace(/\D/g, ''); const d1 = dv(d.slice(0, 12), p1); return d.slice(12) === `${d1}${dv(d.slice(0, 12) + d1, p2)}`; };
+  const cnpjs = banco().empresas.map(e => e.cnpj).filter(Boolean);
+  assert.ok(cnpjs.length >= 5);
+  assert.deepEqual(cnpjs.filter(valido), []);
+});
+
+test('o número da auditoria leva o ano da própria auditoria', () => {
+  for (const a of banco().auditorias) assert.ok(a.numero_auditoria.startsWith(`AUD-${new Date(a.data_inicio).getFullYear()}-`), a.numero_auditoria);
+});

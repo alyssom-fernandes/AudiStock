@@ -537,7 +537,7 @@ begin
 
   if not public.tem_papel('supremo') and new.role in ('supremo', 'administrador')
      and (tg_op = 'INSERT' or new.role is distinct from old.role) then
-    raise exception 'Só o supremo cria ou promove administradores.' using errcode = '42501';
+    raise exception 'Só o administrador geral cria ou promove administradores.' using errcode = '42501';
   end if;
   return new;
 end $$;

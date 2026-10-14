@@ -24,9 +24,10 @@
     --bg: #f0f0ee; --surface: #ffffff; --surface-2: #f8f8f7; --surface-3: #e9e9e6;
     --border: #e1e0dc; --border-strong: #cbcac5; --border-input: #8f8d87;
     --text: #1c1b19; --text-muted: #5c5850; --text-faint: #6b675e;
-    /* Claro: o laranja vivo só em preenchimento com texto preto; linhas finas,
-       foco e texto usam o tom escuro, que passa de 4,5:1 sobre o fundo */
-    --accent: #ff7a1a; --accent-hover: #f06800; --accent-soft: #fff0e2; --accent-text: #a85000; --on-accent: #1a1206; --foco: #a85000; --accent-linha: #a85000;
+    /* Claro: o laranja vivo nos preenchimentos (com texto preto) e nas barras,
+       que sempre vêm com o número escrito ao lado; foco e texto em laranja
+       usam o tom escuro, que passa de 4,5:1 sobre o fundo */
+    --accent: #ff7a1a; --accent-hover: #f06800; --accent-soft: #fff0e2; --accent-text: #a85000; --on-accent: #1a1206; --foco: #a85000; --accent-linha: #ff7a1a;
     --success: #166534; --success-soft: #dcefe2; --success-solid: #22a05a;
     --danger: #b91c1c; --danger-soft: #f8e1e1; --danger-solid: #dc3c3c;
     --warning: #8a4a0b; --warning-soft: #f8ead0; --warning-solid: #b07214;

@@ -11,13 +11,15 @@ em planilha Excel, em CSV ou impresso.
 JavaScript puro, sem framework e sem etapa de build, com o Supabase
 (PostgreSQL e autenticação) por trás.
 
-**[Abrir o AudiStock](https://alyssom-fernandes.github.io/AudiStock/)** · **[Ver a demonstração](https://alyssom-fernandes.github.io/AudiStock/app.html?demo=1)**,
-com empresas, produtos e auditorias fictícias, em que nada é gravado.
+**[Ver a demonstração](https://alyssom-fernandes.github.io/AudiStock/app.html?demo=1)**, com empresas, produtos e auditorias
+fictícias, em que nada é gravado. A entrada publicada está pausada enquanto
+nenhuma empresa usa o AudiStock; o modo real está completo no código e roda
+no seu próprio projeto do Supabase ([Como usar a sua cópia](#como-usar-a-sua-cópia)).
 
 ![JavaScript](https://img.shields.io/badge/JavaScript-sem_framework-f7df1e?style=flat-square&logo=javascript&logoColor=black)
 ![Sem build](https://img.shields.io/badge/etapa_de_build-nenhuma-success?style=flat-square)
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL_e_Auth-3ecf8e?style=flat-square&logo=supabase&logoColor=white)
-![Tema](https://img.shields.io/badge/tema-claro_e_escuro-c2410c?style=flat-square)
+![Tema](https://img.shields.io/badge/tema-claro_e_escuro-ff7a1a?style=flat-square)
 ![Licença](https://img.shields.io/badge/licen%C3%A7a-MIT-blue?style=flat-square)
 [![Testes](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml/badge.svg)](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml)
 
@@ -31,6 +33,8 @@ Este README também está em [inglês](README.md).
    tecle Enter.
 3. Em **Relatórios**, abra o do Atacado Serra Azul, filtre as faltas e
    baixe a planilha ou o PDF.
+
+O Dashboard da demonstração abre com esses mesmos três passos, como links.
 
 ## Telas
 
@@ -85,17 +89,20 @@ Capturadas do modo demonstração.
   auditoria em andamento ou cancelada, ele mostra só a contagem: sem
   saldo do sistema, não há divergência para calcular.
 - Filtros por divergência, falta ou sobra, e ordem pela maior
-  divergência (pelo tamanho, seja falta ou sobra), por nome ou por código.
+  divergência em relação ao saldo do sistema, por nome ou por código. Cada
+  linha mostra essa porcentagem ao lado da diferença, com uma régua: o
+  zero no meio, a falta para a esquerda e a sobra para a direita.
 - Toda quantidade vem com a unidade. Unidades fracionadas (kg, L, m)
   sempre com três casas: "1,288 kg" nunca é lido como mil e duzentos.
 - **Excel** com números de verdade (não texto), diferença e situação por
   fórmula, filtro, cabeçalho fixo, datas no horário local e uma aba com
   os não contados.
 - **PDF** para arquivar e assinar: identificação da auditoria, resumo,
-  tabela com faltas e sobras destacadas, produtos não contados, "Página X
+  tabela com faltas e sobras destacadas e a % do saldo, produtos não contados, "Página X
   de Y" e linhas de assinatura, que nunca ficam sozinhas numa folha.
 - **CSV** pronto para o Excel brasileiro: ponto e vírgula, vírgula
-  decimal, acentos certos e, em cada linha, a auditoria e a empresa.
+  decimal, acentos certos, a diferença em % do saldo e, em cada linha, a
+  auditoria e a empresa.
 - **Impressão** com folha própria em A4, sempre no tema claro, com o mesmo
   desenho do PDF.
 
@@ -140,7 +147,9 @@ produtos, 8 auditorias em todas as situações e 8 usuários fictícios, sempre
 os mesmos. Os dados ficam só na aba aberta; **Configurações › Restaurar
 dados da demonstração** volta ao começo, e `?demo=vazio` abre uma base sem
 cadastros. Uma chamada que o banco de mentira não conhece vira registro em
-`errosRegistrados()`, em vez de falhar em silêncio.
+`errosRegistrados()`, em vez de falhar em silêncio. Os CNPJs das empresas
+fictícias têm o dígito verificador errado de propósito: nenhum é de uma
+empresa de verdade.
 
 ## Como é feito
 
@@ -151,11 +160,19 @@ cadastros. Uma chamada que o banco de mentira não conhece vira registro em
 | Contagem sem internet | IndexedDB |
 | PDF | jsPDF e jsPDF-AutoTable |
 | Excel | ExcelJS, para gerar os relatórios e ler a planilha de produtos |
-| Fontes | IBM Plex Sans e IBM Plex Mono (Google Fonts); IBM Plex Sans embutida no PDF |
+| Fontes | IBM Plex Sans, Sans Condensed (números) e Mono, servidas pelo próprio site; IBM Plex Sans embutida no PDF |
 | Testes | `node:test`, PGlite (Postgres em WebAssembly) e Playwright |
 
 As bibliotecas de PDF e de planilha só são baixadas quando alguém exporta
 ou importa, e o navegador confere cada uma pelo hash (SRI) antes de rodar.
+
+Toda página traz uma política de segurança (Content Security Policy, numa
+meta tag): só roda script do próprio site, do cdnjs e do jsDelivr, e os
+scripts embutidos liberados pelo hash. O `testes/unidade/csp.test.mjs`
+confere todas as páginas, e os testes de ponta a ponta falham se a
+política barrar alguma coisa. Não há analytics nem cookies, e as páginas
+da demonstração não pedem nada a outros sites até você exportar (as
+bibliotecas de PDF e de planilha vêm do cdnjs).
 
 ## Banco e permissões
 
@@ -189,8 +206,8 @@ de qualquer projeto, e ele apaga o que criou.
 
 ```bash
 npm install
-npm test            # unidade (Node) e banco (PGlite): 70 testes
-npm run test:e2e    # ponta a ponta no navegador (Playwright): 39 execuções
+npm test            # unidade (Node) e banco (PGlite): 77 testes
+npm run test:e2e    # ponta a ponta no navegador (Playwright): 43 execuções
 ```
 
 - **Unidade:** o código real de `js/` rodando no Node sobre o banco do
@@ -208,9 +225,10 @@ npm run test:e2e    # ponta a ponta no navegador (Playwright): 39 execuções
   por outra pessoa), exportações (o PDF
   precisa sair com a fonte embutida, e todo script de CDN, com o hash),
   importação de planilha, cadastros, foco depois de salvar, tabelas em
-  largura de tablet, teclado e celular: 34 execuções em tela de
-  computador (um teste só de celular é pulado nela) e 5 no celular. Cada
-  teste termina conferindo que `errosRegistrados()` está vazio.
+  largura de tablet, teclado e celular: 37 execuções em tela de
+  computador (um teste só de celular é pulado nela) e 6 no celular. Cada
+  teste termina conferindo que `errosRegistrados()` está vazio e que a
+  política de segurança não barrou nada.
 
 Os testes de ponta a ponta usam o Google Chrome instalado. Sem ele, rode
 uma vez `npx playwright install chromium` e depois, no PowerShell:
@@ -251,13 +269,21 @@ Supabase de verdade está em [`docs/teste-real.md`](docs/teste-real.md).
 - A lista de Relatórios mostra as 200 auditorias finalizadas mais
   recentes; para as anteriores, filtre por empresa.
 - A interface é só em português.
+- O servidor publicado (plano gratuito do Supabase) está pausado enquanto
+  nenhuma empresa usa o sistema; por isso a entrada com conta no site
+  publicado não conecta. A demonstração não depende dele.
+- O GitHub Pages não aceita cabeçalhos HTTP próprios, então a política de
+  segurança fica numa meta tag, que não impede outro site de exibir as
+  páginas dentro de um quadro (`frame-ancestors`).
 
 ## Como usar a sua cópia
 
 1. Crie um projeto no [Supabase](https://supabase.com) e rode
    `supabase/schema.sql` no SQL Editor.
 2. Em `js/supabaseClient.js`, troque a URL e a chave pública pelas do seu
-   projeto (Supabase › Project Settings › API).
+   projeto (Supabase › Project Settings › API), e o mesmo endereço no
+   `connect-src` da política de segurança no topo de cada página HTML (o
+   `npm test` aponta as que ficarem para trás).
 3. Crie o primeiro usuário em Authentication › Users e insira o perfil
    dele na tabela `usuarios` com o papel `supremo`.
 4. Publique a função de cadastro: `supabase functions deploy criar-usuario`.
@@ -281,8 +307,10 @@ estoque-sistema.html    fechamento: saldos do sistema (?id=)
 relatorios.html         relatório de divergências (?id=)
 404.html                página de endereço não encontrado
 css/style.css           todo o visual, nos dois temas, e a folha de impressão
+css/fontes.css          IBM Plex das telas, servida de fontes/
 js/
   app.js                roteador do app.html
+  login.js              tela de entrada
   telas/                uma tela por arquivo (dashboard, auditorias, contagem…)
   ui.js                 layout, modais, avisos, formatadores
   auth.js               login, sessão e perfis
@@ -298,9 +326,11 @@ supabase/
   schema.sql            tabelas, visões, funções e permissões (RLS)
   testes/permissoes.sql confere as permissões entrando como cada perfil
   functions/criar-usuario/  Edge Function de cadastro e as regras dela
-fontes/                 IBM Plex Sans para o PDF (licença OFL)
+fontes/                 IBM Plex (woff2 para as telas, TTF para o PDF; licença OFL)
 testes/                 unidade, banco e ponta a ponta
 docs/                   imagens deste README e o roteiro do teste real
+package.json            só os comandos dos testes: o app não tem build
+playwright.config.mjs   configuração dos testes de ponta a ponta
 ```
 
 ## Licença

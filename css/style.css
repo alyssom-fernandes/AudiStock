@@ -698,7 +698,7 @@ body:has(.barra-acoes) .toasts { bottom: 84px; }
     :root, [data-theme] {
         color-scheme: light;
         --bg: #fff; --surface: #fff; --surface-2: #f4f3f0; --surface-3: #ebe9e4; --border: #d6d2ca; --border-strong: #b8b3a9;
-        --text: #111; --text-muted: #444; --text-faint: #555; --accent: #9a3412; --accent-text: #9a3412;
+        --text: #111; --text-muted: #444; --text-faint: #555; --accent: #a85000; --accent-text: #a85000;
         --success: #15803d; --danger: #b91c1c; --warning: #8a4a0b; --success-soft: transparent; --danger-soft: transparent;
     }
     html, body { background: #fff; font-size: 10pt; }

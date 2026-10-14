@@ -83,7 +83,7 @@ function _montarPDF(jsPDF, { aud, resumo, itens, naoContados = [], filtroRotulo,
   fontes?.forEach(f => { doc.addFileToVFS(f.arquivo, f.base64); doc.addFont(f.arquivo, 'IBMPlexSans', f.estilo); });
   const FONTE = fontes ? 'IBMPlexSans' : 'helvetica', MENOS = fontes ? '−' : '-';
   const L = 14, R = 196, LARG = R - L, emitidoEm = fmtDateTime(new Date().toISOString());
-  const TINTA = [28, 27, 25], CINZA = [100, 96, 88], LINHA = [214, 210, 202], ACENTO = [154, 52, 18];
+  const TINTA = [28, 27, 25], CINZA = [100, 96, 88], LINHA = [214, 210, 202], ACENTO = [168, 80, 0];   // o laranja escuro da tela (#a85000), legível no papel
   const VERDE = [21, 128, 61], VERMELHO = [185, 28, 28];
   const titulo = tituloRelatorio(aud), comparado = temComparacao(resumo, aud);
   const empresa = aud.empresas?.nome ?? '—';

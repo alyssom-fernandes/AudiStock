@@ -11,13 +11,15 @@ workbook, a CSV file or a printed sheet.
 Plain JavaScript, no framework and no build step, backed by Supabase
 (PostgreSQL and authentication). The interface is in Brazilian Portuguese.
 
-**[Open AudiStock](https://alyssom-fernandes.github.io/AudiStock/)** · **[Try the demo](https://alyssom-fernandes.github.io/AudiStock/app.html?demo=1)**,
-with fictional companies, products and audits, where nothing is saved.
+**[Try the demo](https://alyssom-fernandes.github.io/AudiStock/app.html?demo=1)**, with fictional companies, products and
+audits, where nothing is saved. The hosted sign-in is paused while no
+company uses AudiStock; the real mode is complete in the code and runs on
+your own Supabase project ([Running your own copy](#running-your-own-copy)).
 
 ![JavaScript](https://img.shields.io/badge/JavaScript-no_framework-f7df1e?style=flat-square&logo=javascript&logoColor=black)
 ![No build](https://img.shields.io/badge/build_step-none-success?style=flat-square)
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL_and_Auth-3ecf8e?style=flat-square&logo=supabase&logoColor=white)
-![Theme](https://img.shields.io/badge/theme-light_and_dark-c2410c?style=flat-square)
+![Theme](https://img.shields.io/badge/theme-light_and_dark-ff7a1a?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 [![Tests](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml/badge.svg)](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml)
 
@@ -30,6 +32,8 @@ This README is also available in [Portuguese](README.pt-BR.md).
    "arroz", pick the product, enter the quantity and press Enter.
 3. In **Relatórios**, open Atacado Serra Azul's report, filter the
    shortages ("Faltas") and download the spreadsheet or the PDF.
+
+The demo's dashboard opens with the same three steps as links.
 
 ## Screens
 
@@ -83,17 +87,20 @@ Captured from the demo mode.
   counted. For an audit in progress or cancelled, it shows only the count:
   without system balances there is no discrepancy to compute.
 - Filters for discrepancies, shortages or overages, sorted by the largest
-  discrepancy (by size, shortage or overage), by name or by code.
+  discrepancy relative to the system balance, by name or by code. Each row
+  shows that percentage next to the difference, with a small bar: zero in
+  the middle, shortage to the left, overage to the right.
 - Every quantity carries its unit. Fractional units (kg, L, m) always use
   three decimals, so "1,288 kg" is never read as one thousand.
 - **Excel** with real numbers (not text), difference and status computed
   by formula, filters, a frozen header, dates in local time and a sheet
   with uncounted products.
 - **PDF** to file and sign: audit details, summary, a table with shortages
-  and overages highlighted, uncounted products, "Page X of Y" and
+  and overages highlighted and the percentage of the balance, uncounted products, "Page X of Y" and
   signature lines, which never end up alone on a page.
 - **CSV** that opens correctly in Brazilian Excel: semicolons, decimal
-  comma, proper accents and the audit and company on every row.
+  comma, proper accents, the difference as a percentage of the balance and
+  the audit and company on every row.
 - **Printing** with its own A4 layout, always in the light theme, matching
   the PDF.
 
@@ -138,7 +145,8 @@ every status and 8 fictional users, always the same. Data lives only in
 the open tab; **Configurações › Restaurar dados da demonstração** starts
 over, and `?demo=vazio` opens an empty database. A call the fake database
 does not know is logged to `errosRegistrados()` instead of failing
-silently.
+silently. The fictional companies' CNPJs have a deliberately wrong check
+digit, so none of them belongs to a real company.
 
 ## How it is built
 
@@ -149,11 +157,18 @@ silently.
 | Offline counting | IndexedDB |
 | PDF | jsPDF and jsPDF-AutoTable |
 | Excel | ExcelJS, to write the reports and to read the product sheet |
-| Fonts | IBM Plex Sans and IBM Plex Mono (Google Fonts); IBM Plex Sans embedded in the PDF |
+| Fonts | IBM Plex Sans, Sans Condensed (figures) and Mono, served by the site itself; IBM Plex Sans embedded in the PDF |
 | Tests | `node:test`, PGlite (Postgres in WebAssembly) and Playwright |
 
 The PDF and spreadsheet libraries are only downloaded when someone exports
 or imports, and the browser checks each one against its hash (SRI) first.
+
+Every page carries a Content Security Policy (in a meta tag): scripts only
+run from the site itself, from cdnjs and jsDelivr, and the inline scripts
+allowed by their hash. `testes/unidade/csp.test.mjs` checks every page, and
+the end-to-end tests fail if the policy blocks anything. There are no
+analytics or cookies, and the demo pages request nothing from other sites
+until you export (the PDF and spreadsheet libraries come from cdnjs).
 
 ## Database and permissions
 
@@ -187,8 +202,8 @@ project's SQL Editor and deletes what it creates.
 
 ```bash
 npm install
-npm test            # unit (Node) and database (PGlite): 70 tests
-npm run test:e2e    # end to end in the browser (Playwright): 39 runs
+npm test            # unit (Node) and database (PGlite): 77 tests
+npm run test:e2e    # end to end in the browser (Playwright): 43 runs
 ```
 
 - **Unit:** the real `js/` code running on Node against the demo
@@ -206,9 +221,9 @@ npm run test:e2e    # end to end in the browser (Playwright): 39 runs
   else), exports (the PDF must embed
   the font and every CDN script must carry its hash), spreadsheet import,
   records, focus after saving, tables at tablet widths, keyboard and
-  phone: 34 runs at desktop size (one phone-only test is skipped there)
-  and 5 on a phone. Every test ends by checking that `errosRegistrados()`
-  is empty.
+  phone: 37 runs at desktop size (one phone-only test is skipped there)
+  and 6 on a phone. Every test ends by checking that `errosRegistrados()`
+  is empty and that the security policy blocked nothing.
 
 The end-to-end tests use the installed Google Chrome. Without it, run
 `npx playwright install chromium` once and then, in PowerShell:
@@ -248,13 +263,21 @@ test against a real Supabase project is in
 - The Relatórios list shows the 200 most recent finished audits; filter by
   company to reach older ones.
 - The interface is Portuguese only.
+- The hosted backend (Supabase's free plan) is paused while no company
+  uses the app, so signing in on the published site does not connect. The
+  demo does not depend on it.
+- GitHub Pages does not allow custom HTTP headers, so the security policy
+  lives in a meta tag, which cannot stop other sites from framing the
+  pages (`frame-ancestors`).
 
 ## Running your own copy
 
 1. Create a [Supabase](https://supabase.com) project and run
    `supabase/schema.sql` in the SQL Editor.
 2. In `js/supabaseClient.js`, replace the URL and public key with your
-   project's (Supabase › Project Settings › API).
+   project's (Supabase › Project Settings › API), and the same address in
+   the `connect-src` of the security policy at the top of each HTML page
+   (`npm test` lists the pages left behind).
 3. Create the first user under Authentication › Users and insert their
    profile into the `usuarios` table with the `supremo` role.
 4. Deploy the user-creation function: `supabase functions deploy criar-usuario`.
@@ -277,8 +300,10 @@ estoque-sistema.html    closing: system balances (?id=)
 relatorios.html         discrepancy report (?id=)
 404.html                not-found page
 css/style.css           all styling, both themes and the print sheet
+css/fontes.css          IBM Plex for the screens, served from fontes/
 js/
   app.js                router for app.html
+  login.js              sign-in page
   telas/                one screen per file (dashboard, audits, counting…)
   ui.js                 layout, dialogs, toasts, formatters
   auth.js               login, session and roles
@@ -294,9 +319,11 @@ supabase/
   schema.sql            tables, views, functions and permissions (RLS)
   testes/permissoes.sql checks the permissions by signing in as each role
   functions/criar-usuario/  user-creation Edge Function and its rules
-fontes/                 IBM Plex Sans for the PDF (OFL license)
+fontes/                 IBM Plex (woff2 for the screens, TTF for the PDF; OFL license)
 testes/                 unit, database and end-to-end tests
 docs/                   README images and the real-world test checklist
+package.json            test scripts only: the app itself has no build
+playwright.config.mjs   end-to-end test setup
 ```
 
 ## License

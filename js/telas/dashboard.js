@@ -9,7 +9,7 @@ import { hasRole } from '../auth.js';
 import { demoAtivo } from '../demo.js';
 import { progresso } from '../auditorias.js';
 import { resumoAuditoria, proporcaoTexto } from '../relatorios.js';
-import { escapeHtml, fmtDate, fmtInt, difHtml, vazioHtml, erroCargaHtml, partesHtml } from '../ui.js';
+import { escapeHtml, fmtDate, fmtInt, difHtml, vazioHtml, erroCargaHtml, partesHtml, reguaHtml } from '../ui.js';
 
 // Esqueletos com a altura do conteúdo que vem depois: a tela não pula
 // quando os dados chegam (o celular lento é onde isso mais aparece)
@@ -85,11 +85,10 @@ function _roteiroHtml({ andamento, finalizada }) {
   const id = a => encodeURIComponent(a.id);
   return `<section class="comecar roteiro" aria-labelledby="tRoteiro">
     <div class="roteiro-topo"><h2 id="tRoteiro">Experimente em 3 passos</h2><button type="button" class="btn btn-ghost btn-sm" data-fechar-roteiro>Fechar</button></div>
-    <p>O caminho de uma auditoria, da contagem no chão ao relatório.</p>
     <ol class="passos">
       <li><a href="contagem.html?id=${id(andamento)}"><strong>Registre uma contagem</strong><span>Na ${escapeHtml(empresa)}, ${busca}, informe a quantidade e confirme.</span></a></li>
       <li><a href="estoque-sistema.html?id=${id(andamento)}"><strong>Compare com o saldo do ERP</strong><span>No fechamento, digite o saldo do sistema de um item e veja a diferença na hora.</span></a></li>
-      <li><a href="relatorios.html?id=${id(finalizada)}"><strong>Baixe o relatório</strong><span>Abra o da <span class="codigo">${escapeHtml(finalizada.numero_auditoria)}</span>, filtre as faltas e baixe o PDF ou a planilha.</span></a></li>
+      <li><a href="relatorios.html?id=${id(finalizada)}"><strong>Baixe o relatório</strong><span>Abra o da ${escapeHtml(finalizada.numero_auditoria)}, filtre as faltas e baixe o PDF ou a planilha.</span></a></li>
     </ol>
   </section>`;
 }
@@ -174,7 +173,7 @@ function _top(titulo, lista, vazio) {
       <thead><tr><th scope="col">Produto</th><th scope="col" class="num">Diferença</th></tr></thead>
       <tbody>${lista.map(r => `<tr>
         <td><span class="forte">${escapeHtml(r.nome_produto)}</span><span class="sub codigo">${escapeHtml(r.codigo_produto)}</span></td>
-        <td class="num">${difHtml(r.diferenca, r.unidade_medida)}<span class="sub">${proporcaoTexto(r)}</span></td>
+        <td class="num">${difHtml(r.diferenca, r.unidade_medida)}${reguaHtml(r, proporcaoTexto(r))}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
   return `<section class="card"><div class="card-header"><div><h2 class="card-title">${titulo}</h2><div class="card-sub">Da última auditoria finalizada, em proporção ao saldo</div></div></div>${corpo}</section>`;

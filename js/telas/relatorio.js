@@ -8,7 +8,7 @@
 
 import { requireAuth, getPerfil } from '../auth.js';
 import { initLayout, definirTitulo, escapeHtml, fmtDateTime, fmtInt, plural, qtdHtml, difHtml, badgeStatus, badgeSituacao,
-         vazioHtml, showToast, showLoading, hideLoading, ICONS, mensagemErro, partesHtml } from '../ui.js';
+         vazioHtml, showToast, showLoading, hideLoading, ICONS, mensagemErro, partesHtml, reguaHtml } from '../ui.js';
 import { buscarAuditoria } from '../auditorias.js';
 import { gerarRelatorio, ordenarItens, resumoAuditoria, produtosNaoAuditados, exportarCSV, baixarArquivo, porcentagem, proporcaoTexto } from '../relatorios.js';
 import { gerarPDF, gerarExcel, nomeArquivo, tituloRelatorio, temComparacao, semDivergenciaMotivo, fimRotulo } from '../exportacao.js';
@@ -159,7 +159,7 @@ async function iniciar() {
           <span class="sub so-medio-bloco"><span class="codigo">${escapeHtml(r.codigo_produto)}</span></span></td>
         <td class="num so-desktop">${qtdHtml(r.estoque_sistema, r.unidade_medida)}</td>
         <td class="num so-desktop">${qtdHtml(r.quantidade_contada, r.unidade_medida)}</td>
-        <td class="num">${difHtml(r.diferenca, r.unidade_medida)}${proporcaoTexto(r) ? `<span class="sub">${proporcaoTexto(r)}</span>` : ''}</td>
+        <td class="num">${difHtml(r.diferenca, r.unidade_medida)}${reguaHtml(r, proporcaoTexto(r))}</td>
         <td>${badgeSituacao(r.diferenca)}</td>
       </tr>`;
   const linhaSimples = r => `<tr>
@@ -182,7 +182,7 @@ async function iniciar() {
     const pagina = lista.slice(0, limite);
     $('#relCorpo').innerHTML = `<div class="tabela-wrap"><table class="tabela-lista ${comparado ? 'tabela-relatorio' : 'tabela-relatorio-simples'}">
       ${comparado
-        ? '<colgroup><col class="c-codigo"><col><col class="c-num"><col class="c-num"><col class="c-num"><col class="c-sit"></colgroup><thead><tr><th scope="col" class="so-desktop col-larga">Código</th><th scope="col">Produto</th><th scope="col" class="num">Sistema</th><th scope="col" class="num">Contado</th><th scope="col" class="num">Diferença</th><th scope="col">Situação</th></tr></thead>'
+        ? '<colgroup><col class="c-codigo"><col><col class="c-num"><col class="c-num"><col class="c-dif"><col class="c-sit"></colgroup><thead><tr><th scope="col" class="so-desktop col-larga">Código</th><th scope="col">Produto</th><th scope="col" class="num">Sistema</th><th scope="col" class="num">Contado</th><th scope="col" class="num">Diferença</th><th scope="col">Situação</th></tr></thead>'
         : '<colgroup><col class="c-codigo"><col><col class="c-num"></colgroup><thead><tr><th scope="col" class="so-desktop col-larga">Código</th><th scope="col">Produto</th><th scope="col" class="num">Contado</th></tr></thead>'}
       <tbody>${pagina.map(comparado ? linhaComparada : linhaSimples).join('')}</tbody>
     </table></div>

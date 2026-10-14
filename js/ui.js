@@ -639,6 +639,14 @@ export function difHtml(n, un) {
     if (d === 0) return '<span class="dif-zero">0</span>';
     return `<span class="nowrap"><span class="${d > 0 ? 'dif-sobra' : 'dif-falta'}">${fmtDif(d, un)}</span>${unHtml(un)}</span>`;
 }
+// Régua de divergência (css/style.css) com a % por escrito ao lado; a régua
+// é só desenho, o texto é o que o leitor de tela lê
+export function reguaHtml(r, texto) {
+    const d = Number(r.diferenca), saldo = Math.abs(Number(r.estoque_sistema));
+    if (r.diferenca == null || !d) return texto ? `<span class="sub">${texto}</span>` : '';
+    const p = saldo ? Math.max(Math.min(Math.abs(d) / saldo / 0.25, 1), 0.08) : 1;
+    return `<span class="sub regua-linha"><span class="regua" aria-hidden="true"><i class="${d < 0 ? 'regua-falta' : 'regua-sobra'}" style="width:${(p * 50).toFixed(1)}%"></i></span>${texto}</span>`;
+}
 export function plural(n, um, varios) { return `${fmtInt(n)} ${Number(n) === 1 ? um : varios}`; }
 
 // ─────────────────────────────────────────────────────────────

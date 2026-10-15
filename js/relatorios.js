@@ -32,7 +32,7 @@ export function ordenarItens(itens, ordem = 'diferenca') {
   const texto = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), 'pt-BR', { numeric: true, sensitivity: 'base' });
   const criterios = {
     diferenca: (a, b) => (a.diferenca == null) - (b.diferenca == null)
-      || _peso(b) - _peso(a)
+      || pesoDivergencia(b) - pesoDivergencia(a)
       || Number(a.diferenca) - Number(b.diferenca)          // no empate, falta antes de sobra
       || texto(a.nome_produto, b.nome_produto),
     codigo: (a, b) => texto(a.codigo_produto, b.codigo_produto),
@@ -40,22 +40,30 @@ export function ordenarItens(itens, ordem = 'diferenca') {
   };
   return itens.sort(criterios[ordem] ?? criterios.diferenca);
 }
-// Diferença relativa ao saldo: 2 CX de 13 pesa mais que 1,288 KG de 14,442
-const _peso = i => Math.abs(Number(i.diferenca)) / Math.max(Math.abs(Number(i.estoque_sistema)) || 1, 1);
+// Diferença relativa ao saldo: 2 CX de 13 pesa mais que 1,288 KG de 14,442.
+// É a mesma conta da % mostrada na tela; diferença sobre saldo zerado vem
+// antes de todas (dois infinitos empatam e caem no critério seguinte).
+export function pesoDivergencia(i) {
+  const d = Math.abs(Number(i.diferenca)), saldo = Math.abs(Number(i.estoque_sistema));
+  if (!d) return 0;
+  return saldo ? d / saldo : Infinity;
+}
 
 // A proporção que decide a ordem "Maior divergência", para mostrar junto da
 // diferença: "12%", "8,9%" (abaixo de 10%, uma casa). Vazio quando não há
 // divergência; null quando não há saldo do sistema com que comparar.
+const _semValor = v => v == null || v === '';
 export function pctDoSaldo(i) {
-  if (i.diferenca == null || i.estoque_sistema == null || Number(i.estoque_sistema) === 0) return null;
+  if (_semValor(i.diferenca) || _semValor(i.estoque_sistema) || Number(i.estoque_sistema) === 0) return null;
   if (Number(i.diferenca) === 0) return '';
-  const v = Math.abs(Number(i.diferenca)) / Math.abs(Number(i.estoque_sistema)) * 100;
+  const v = pesoDivergencia(i) * 100;
+  if (v < 0.1) return '<0,1%';   // uma divergência nunca aparece como "0%"
   return `${(v < 10 ? Math.round(v * 10) / 10 : Math.round(v)).toLocaleString('pt-BR')}%`;
 }
 export function proporcaoTexto(i) {
   const pct = pctDoSaldo(i);
   if (pct) return `${pct} do saldo`;
-  return pct === null && i.diferenca != null && Number(i.diferenca) !== 0 && Number(i.estoque_sistema) === 0 ? 'saldo zerado' : '';
+  return pct === null && !_semValor(i.diferenca) && Number(i.diferenca) !== 0 && !_semValor(i.estoque_sistema) ? 'saldo zerado' : '';
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -113,9 +121,11 @@ export async function exportarCSV(auditoriaId, filtro = 'todos', ordem = 'difere
   const num = n => n == null || n === '' ? '' : Number(n).toLocaleString('pt-BR', { useGrouping: false, maximumFractionDigits: 3 });
 
   const cabecalho = ['Auditoria', 'Empresa', 'Código', 'Produto', 'Unidade', ...(comparado ? ['Sistema', 'Contado', 'Diferença', 'Diferença %', 'Situação'] : ['Contado'])].join(';');
-  // Diferença em % do saldo do sistema, com sinal e uma casa, como na planilha
+  // Diferença em % do saldo do sistema, com sinal, como na planilha (que
+  // divide pelo saldo em módulo); até três casas, para uma divergência
+  // pequena não sair como 0 (e nunca como -0)
   const pct = i => i.diferenca == null || !Number(i.estoque_sistema) ? ''
-    : (Number(i.diferenca) > 0 ? '+' : '') + num(Math.round(Number(i.diferenca) / Math.abs(Number(i.estoque_sistema)) * 1000) / 10);
+    : (v => (v > 0 ? '+' : '') + num(v))(Math.round(Number(i.diferenca) / Math.abs(Number(i.estoque_sistema)) * 100000) / 1000 || 0);
   const linhas = itens.map(i => [
     texto(aud?.numero_auditoria), texto(aud?.empresas?.nome), texto(i.codigo_produto), texto(i.nome_produto), texto(i.unidade_medida),
     ...(comparado

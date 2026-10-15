@@ -110,14 +110,14 @@ export async function render(el) {
     const opcoes = total > lista.length ? emps : emps.filter(e => comRelatorio.has(e.id));
     filtrarNoServidor = total > lista.length;
     $('#relEmpresa').insertAdjacentHTML('beforeend', opcoes.map(e => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.nome)}</option>`).join(''));
-  } catch (err) { card.innerHTML = erroCargaHtml("irPara('relatorios')"); window.__registrarErro?.('tratado', `relatórios: ${err.message}`, err.stack ?? ''); return; }
+  } catch (err) { card.innerHTML = erroCargaHtml('relatorios'); window.__registrarErro?.('tratado', `relatórios: ${err.message}`, err.stack ?? ''); return; }
 
   $('#relBusca').addEventListener('input', debounce(e => { busca = e.target.value; desenhar(); }, 200));
   $('#relEmpresa').addEventListener('change', async e => {
     empresa = e.target.value;
     // Com mais relatórios que o limite, a empresa é filtrada no servidor
     if (filtrarNoServidor) {
-      try { await carregar(); } catch (err) { card.innerHTML = erroCargaHtml("irPara('relatorios')"); }
+      try { await carregar(); } catch (err) { card.innerHTML = erroCargaHtml('relatorios'); }
     } else desenhar();
   });
 }

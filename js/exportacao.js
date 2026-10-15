@@ -321,7 +321,7 @@ export async function gerarExcel({ aud, resumo, itens, naoContados, filtroRotulo
       ...(comparado ? {
         sis: temSaldo ? Number(r.estoque_sistema) : null,
         dif: temSaldo ? { formula: `E${n}-D${n}`, result: Number(r.diferenca) } : null,
-        pct: temSaldo && Number(r.estoque_sistema) ? { formula: `IF(D${n}=0,"",F${n}/D${n})`, result: Number(r.diferenca) / Number(r.estoque_sistema) } : null,
+        pct: temSaldo && Number(r.estoque_sistema) ? { formula: `IF(D${n}=0,"",F${n}/ABS(D${n}))`, result: Number(r.diferenca) / Math.abs(Number(r.estoque_sistema)) } : null,
         sit: temSaldo ? { formula: `IF(F${n}>0,"Sobra",IF(F${n}<0,"Falta","OK"))`, result: situacaoTexto(r.diferenca) } : 'Sem saldo',
       } : {}),
     });

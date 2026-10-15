@@ -92,7 +92,7 @@ export async function render(el, { perfil }) {
       if (error) throw new Error(error.message);
       lista = data; empresas = emps;
       desenhar();
-    } catch (err) { console.error(err); card.innerHTML = erroCargaHtml("irPara('usuarios')"); }
+    } catch (err) { console.error(err); card.innerHTML = erroCargaHtml('usuarios'); }
   };
 
   $('#usrBusca').addEventListener('input', debounce(e => { busca = e.target.value; desenhar(); }, 200));

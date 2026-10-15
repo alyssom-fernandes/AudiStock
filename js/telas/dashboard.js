@@ -8,7 +8,7 @@ import supabase from '../supabaseClient.js';
 import { hasRole } from '../auth.js';
 import { demoAtivo } from '../demo.js';
 import { progresso } from '../auditorias.js';
-import { resumoAuditoria, proporcaoTexto } from '../relatorios.js';
+import { resumoAuditoria, proporcaoTexto, pesoDivergencia } from '../relatorios.js';
 import { escapeHtml, fmtDate, fmtInt, difHtml, vazioHtml, erroCargaHtml, partesHtml, reguaHtml } from '../ui.js';
 
 // Esqueletos com a altura do conteúdo que vem depois: a tela não pula
@@ -161,8 +161,7 @@ async function _ultima(el) {
     ].filter(Boolean).join(' · ')}</p>` : ''}`;
 
   // Mesma régua do relatório: diferença em proporção ao saldo do sistema
-  const peso = i => Math.abs(Number(i.diferenca)) / Math.max(Math.abs(Number(i.estoque_sistema)) || 1, 1);
-  const porMagnitude = (a, b) => peso(b) - peso(a);
+  const porMagnitude = (a, b) => pesoDivergencia(b) - pesoDivergencia(a) || String(a.nome_produto).localeCompare(String(b.nome_produto), 'pt-BR');
   $('#dTops').innerHTML = _top('Maiores faltas', faltas.sort(porMagnitude).slice(0, 5), 'Nenhuma falta nesta auditoria.')
                         + _top('Maiores sobras', sobras.sort(porMagnitude).slice(0, 5), 'Nenhuma sobra nesta auditoria.');
 }

@@ -65,6 +65,7 @@ test('o CSV abre certo no Excel brasileiro', async () => {
   assert.ok(linhas.some(l => /;\+\d/.test(l)), 'sobra com sinal de +');
   assert.ok(linhas.some(l => /;\+[\d,]+;\+\d+(,\d)?;Sobra$/.test(l)), 'diferença em % do saldo, com sinal');
   assert.ok(linhas.some(l => /;0;0;OK$/.test(l)), 'sem divergência, diferença e % zeradas');
+  assert.ok(!linhas.some(l => /;[+-]0;(Falta|Sobra)$/.test(l)), 'divergência pequena não sai como +0 ou -0');
 });
 
 test('a % do saldo que aparece junto da diferença é a mesma da ordem', () => {
@@ -76,6 +77,11 @@ test('a % do saldo que aparece junto da diferença é a mesma da ordem', () => {
   assert.equal(proporcaoTexto({ diferenca: -18, estoque_sistema: 209 }), '8,6% do saldo');
   assert.equal(proporcaoTexto({ diferenca: 3, estoque_sistema: 0 }), 'saldo zerado');
   assert.equal(proporcaoTexto({ diferenca: 0, estoque_sistema: 0 }), '');
+  assert.equal(proporcaoTexto({ diferenca: 2, estoque_sistema: null }), '', 'sem saldo não é saldo zerado');
+  assert.equal(pctDoSaldo({ diferenca: -0.001, estoque_sistema: 5 }), '<0,1%', 'divergência pequena não vira 0%');
+  // Saldo abaixo de 1: a ordem segue a mesma % que a tela mostra
+  const fracionados = ordenarItens([{ nome_produto: 'B', diferenca: 5, estoque_sistema: 10 }, { nome_produto: 'A', diferenca: 0.4, estoque_sistema: 0.5 }]);
+  assert.deepEqual(fracionados.map(i => `${i.nome_produto} ${pctDoSaldo(i)}`), ['A 80%', 'B 50%']);
   // Na ordem, quem tem a maior % vem antes, mesmo com diferença menor
   const itens = ordenarItens([{ nome_produto: 'Suco', diferenca: -18, estoque_sistema: 209 }, { nome_produto: 'Isqueiro', diferenca: 2, estoque_sistema: 13 }]);
   assert.deepEqual(itens.map(i => i.nome_produto), ['Isqueiro', 'Suco']);

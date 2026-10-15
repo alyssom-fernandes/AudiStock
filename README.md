@@ -164,11 +164,12 @@ The PDF and spreadsheet libraries are only downloaded when someone exports
 or imports, and the browser checks each one against its hash (SRI) first.
 
 Every page carries a Content Security Policy (in a meta tag): scripts only
-run from the site itself, from cdnjs and jsDelivr, and the inline scripts
-allowed by their hash. `testes/unidade/csp.test.mjs` checks every page, and
+run from the site itself, from the exact library folders used on cdnjs and
+jsDelivr, and the inline scripts allowed by their hash. `testes/unidade/csp.test.mjs` checks every page, and
 the end-to-end tests fail if the policy blocks anything. There are no
 analytics or cookies, and the demo pages request nothing from other sites
-until you export (the PDF and spreadsheet libraries come from cdnjs).
+until you export a report or import a spreadsheet (the PDF and spreadsheet
+libraries come from cdnjs).
 
 ## Database and permissions
 
@@ -203,7 +204,7 @@ project's SQL Editor and deletes what it creates.
 ```bash
 npm install
 npm test            # unit (Node) and database (PGlite): 77 tests
-npm run test:e2e    # end to end in the browser (Playwright): 43 runs
+npm run test:e2e    # end to end in the browser (Playwright): 44 runs
 ```
 
 - **Unit:** the real `js/` code running on Node against the demo
@@ -221,7 +222,7 @@ npm run test:e2e    # end to end in the browser (Playwright): 43 runs
   else), exports (the PDF must embed
   the font and every CDN script must carry its hash), spreadsheet import,
   records, focus after saving, tables at tablet widths, keyboard and
-  phone: 37 runs at desktop size (one phone-only test is skipped there)
+  phone: 38 runs at desktop size (one phone-only test is skipped there)
   and 6 on a phone. Every test ends by checking that `errosRegistrados()`
   is empty and that the security policy blocked nothing.
 
@@ -310,8 +311,8 @@ js/
   supabaseClient.js     Supabase connection (or the demo)
   demo.js               fake database for the demo mode
   erros.js              unhandled-error log
-  auditorias.js, contagem.js, produtos.js, empresas.js, relatorios.js
-                        data access
+  auditorias.js, contagem.js, produtos.js, empresas.js, relatorios.js,
+  consulta.js           data access
   usuarios.js           user creation (Edge Function or a separate client)
   exportacao.js         PDF and Excel
   offline.js            offline counting queue

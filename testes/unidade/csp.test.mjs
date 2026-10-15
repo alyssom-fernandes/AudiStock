@@ -24,6 +24,10 @@ test('toda página tem a política antes de qualquer script', () => {
     assert.match(diretiva(csp, 'default-src'), /'self'/);
     assert.equal(diretiva(csp, 'object-src'), "object-src 'none'", p);
     assert.doesNotMatch(diretiva(csp, 'script-src'), /unsafe-inline|unsafe-eval/, p);
+    // Só as pastas das bibliotecas usadas, nunca o CDN inteiro
+    for (const fonte of diretiva(csp, 'script-src').split(/\s+/).filter(f => f.startsWith('https://'))) {
+      assert.match(fonte, /^https:\/\/[^/]+\/.+\/$/, `${p}: ${fonte} libera o CDN inteiro`);
+    }
   }
 });
 
@@ -53,5 +57,9 @@ test('nenhum código embutido em atributo (onclick e afins) nem fonte de fora', 
     assert.doesNotMatch(html, /fonts\.googleapis|fonts\.gstatic/, `${p}: fonte carregada de fora`);
   }
   const arquivos = ['js/', 'js/telas/'].flatMap(d => readdirSync(new URL(d, raiz)).filter(f => f.endsWith('.js')).map(f => d + f));
-  for (const f of arquivos) assert.doesNotMatch(ler(f), evento, `${f}: atributo de evento em HTML gerado`);
+  for (const f of arquivos) {
+    assert.doesNotMatch(ler(f), evento, `${f}: atributo de evento em HTML gerado`);
+    // "Tentar de novo" recebe o nome da tela, não código para rodar
+    assert.doesNotMatch(ler(f), /erroCargaHtml\(\s*["'`][^"'`]*\(/, `${f}: erroCargaHtml com código no lugar do nome da tela`);
+  }
 });

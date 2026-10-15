@@ -321,8 +321,10 @@ async function _excluirAuditoria(banco, { p_auditoria_id } = {}) {
 
 // Gatilho numerar_auditoria: o próximo AUD-AAAA-NNNN, ignorando o número
 // enviado. O contador só sobe: o número de uma auditoria excluída não volta.
+// O ano da numeração no fuso de Brasília, como o banco (semente e auditorias novas)
+const _anoSP = d => Number(new Intl.DateTimeFormat('en', { timeZone: 'America/Sao_Paulo', year: 'numeric' }).format(d));
 function _proximoNumero(banco) {
-  const ano = Number(new Intl.DateTimeFormat('en', { timeZone: 'America/Sao_Paulo', year: 'numeric' }).format(new Date()));
+  const ano = _anoSP(new Date());
   const prefixo = `AUD-${ano}-`;
   banco.numeracao ??= {};
   banco.numeracao[ano] ??= banco.tabelas.auditorias
@@ -859,7 +861,7 @@ function _semear(cenario) {
     const a = {
       // O ano é o da própria auditoria; a sequência segue a ordem em que foram
       // criadas (fica estável para os testes mesmo na virada do ano)
-      id: id(), numero_auditoria: `AUD-${inicio.getFullYear()}-${String(seq).padStart(4, '0')}`, empresa_id: emp.id, criado_por: criador.id,
+      id: id(), numero_auditoria: `AUD-${_anoSP(inicio)}-${String(seq).padStart(4, '0')}`, empresa_id: emp.id, criado_por: criador.id,
       auditoria_cega: cega, status, data_inicio: inicio.toISOString(), data_fim: null, observacoes: obs,
       cancelado_por: null, cancelado_em: null, motivo_cancelamento: null, criado_em: inicio.toISOString(),
     };

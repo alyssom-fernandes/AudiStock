@@ -43,6 +43,13 @@ test('tela que não existe avisa, com o título certo na aba', async ({ page }) 
   await expect(page).toHaveTitle('Dashboard · AudiStock');
 });
 
+test('a raiz com ?demo=1 entra direto na demonstração', async ({ page }) => {
+  await page.goto('./?demo=1');
+  await page.waitForURL(/app\.html/);
+  await esperarCarregar(page);
+  await expect(page.locator('.demo-bar')).toBeVisible();
+});
+
 test('com a demonstração aberta, o login avisa em vez de entrar nela', async ({ page }) => {
   await abrir(page);
   await page.goto('login.html');

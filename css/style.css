@@ -170,7 +170,7 @@ input[type="number"].form-input, input[type="number"].input-field { appearance: 
 input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 input[type="file"].form-input { padding: 6px; cursor: pointer; }
 input[type="file"]::file-selector-button { margin-right: 12px; padding: 5px 12px; border: 1px solid var(--border-strong); border-radius: var(--r); background: var(--surface-2); color: var(--text); font: inherit; font-weight: 500; cursor: pointer; }
-input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; accent-color: var(--accent-linha); cursor: pointer; flex-shrink: 0; }
+input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; accent-color: var(--foco); cursor: pointer; flex-shrink: 0; }
 fieldset { border: 0; min-width: 0; }
 legend { padding: 0; }
 .checagem { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; color: var(--text-muted); cursor: pointer; user-select: none; }

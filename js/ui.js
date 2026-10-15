@@ -146,7 +146,7 @@ document.addEventListener('click', e => {
     const b = e.target.closest('[data-layout], [data-recarregar]');
     if (!b) return;
     if (b.hasAttribute('data-recarregar')) {
-        if (b.dataset.recarregar && window.irPara) window.irPara(b.dataset.recarregar);
+        if (/^[a-z]+$/.test(b.dataset.recarregar) && window.irPara) window.irPara(b.dataset.recarregar);
         else location.reload();
         return;
     }

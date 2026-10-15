@@ -167,12 +167,14 @@ As bibliotecas de PDF e de planilha só são baixadas quando alguém exporta
 ou importa, e o navegador confere cada uma pelo hash (SRI) antes de rodar.
 
 Toda página traz uma política de segurança (Content Security Policy, numa
-meta tag): só roda script do próprio site, do cdnjs e do jsDelivr, e os
-scripts embutidos liberados pelo hash. O `testes/unidade/csp.test.mjs`
+meta tag): só roda script do próprio site, das pastas exatas das
+bibliotecas usadas no cdnjs e no jsDelivr, e dos scripts embutidos
+liberados pelo hash. O `testes/unidade/csp.test.mjs`
 confere todas as páginas, e os testes de ponta a ponta falham se a
 política barrar alguma coisa. Não há analytics nem cookies, e as páginas
-da demonstração não pedem nada a outros sites até você exportar (as
-bibliotecas de PDF e de planilha vêm do cdnjs).
+da demonstração não pedem nada a outros sites até você exportar um
+relatório ou importar uma planilha (as bibliotecas de PDF e de planilha
+vêm do cdnjs).
 
 ## Banco e permissões
 
@@ -207,7 +209,7 @@ de qualquer projeto, e ele apaga o que criou.
 ```bash
 npm install
 npm test            # unidade (Node) e banco (PGlite): 77 testes
-npm run test:e2e    # ponta a ponta no navegador (Playwright): 43 execuções
+npm run test:e2e    # ponta a ponta no navegador (Playwright): 44 execuções
 ```
 
 - **Unidade:** o código real de `js/` rodando no Node sobre o banco do
@@ -225,7 +227,7 @@ npm run test:e2e    # ponta a ponta no navegador (Playwright): 43 execuções
   por outra pessoa), exportações (o PDF
   precisa sair com a fonte embutida, e todo script de CDN, com o hash),
   importação de planilha, cadastros, foco depois de salvar, tabelas em
-  largura de tablet, teclado e celular: 37 execuções em tela de
+  largura de tablet, teclado e celular: 38 execuções em tela de
   computador (um teste só de celular é pulado nela) e 6 no celular. Cada
   teste termina conferindo que `errosRegistrados()` está vazio e que a
   política de segurança não barrou nada.
@@ -317,8 +319,8 @@ js/
   supabaseClient.js     conexão com o Supabase (ou com o demo)
   demo.js               banco de mentira do modo demonstração
   erros.js              registro de falhas não tratadas
-  auditorias.js, contagem.js, produtos.js, empresas.js, relatorios.js
-                        acesso aos dados
+  auditorias.js, contagem.js, produtos.js, empresas.js, relatorios.js,
+  consulta.js           acesso aos dados
   usuarios.js           cadastro de pessoas (Edge Function ou cliente à parte)
   exportacao.js         PDF e Excel
   offline.js            fila de contagens sem internet

@@ -3,7 +3,7 @@ import './ambiente.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { fmtQtd, fmtInt, plural, escapeHtml, normalizar, casasDaUnidade, mensagemErro, qtdHtml, lerQuantidade, fmtEntrada } = await import('../../js/ui.js');
+const { fmtPct, fmtQtd, fmtInt, plural, escapeHtml, normalizar, casasDaUnidade, mensagemErro, qtdHtml, lerQuantidade, fmtEntrada } = await import('../../js/ui.js');
 
 // mensagemErro escreve no console o que traduz; aqui isso só suja a saída
 const calado = fn => { const [w, e] = [console.warn, console.error]; console.warn = console.error = () => {}; try { return fn(); } finally { [console.warn, console.error] = [w, e]; } };
@@ -15,6 +15,20 @@ test('unidades fracionadas sempre com três casas; inteiras sem casas', () => {
   assert.equal(casasDaUnidade('L'), 3);
   assert.equal(casasDaUnidade('PCT'), 0);
   assert.equal(qtdHtml(null, 'UN'), '—');
+});
+
+test('percentual: uma casa em qualquer tela, com sinal só onde se pede', () => {
+  assert.equal(fmtPct(75.4), '75,4%');
+  assert.equal(fmtPct(75), '75,0%');
+  assert.equal(fmtPct(0), '0,0%');
+  assert.equal(fmtPct(384.615), '384,6%');
+  assert.equal(fmtPct(1110, { sinal: true }), '+1.110,0%');
+  assert.equal(fmtPct(-292.857, { sinal: true }), '-292,9%');
+  assert.equal(fmtPct(0, { sinal: true }), '0,0%');
+  assert.equal(fmtPct(12.5, { sinal: true, simbolo: false }), '+12,5');
+  assert.equal(fmtPct(0.04), '<0,1%', 'divergência real nunca vira 0');
+  assert.equal(fmtPct(-0.04, { sinal: true, simbolo: false }), '-<0,1');
+  assert.equal(fmtPct(null), '0,0%');
 });
 
 test('plural e números em pt-BR', () => {

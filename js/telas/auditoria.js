@@ -10,7 +10,7 @@ import { buscarAuditoria, progresso, cancelarAuditoria, excluirAuditoria } from 
 import { listarItensContados, historicoItem, aplicarRetrato } from '../contagem.js';
 import { porcentagem } from '../relatorios.js';
 import { escapeHtml, fmtDateTime, fmtInt, plural, badgeStatus, qtdHtml, difHtml, vazioHtml, abrirModal,
-         fmConfirm, showToast, showLoading, hideLoading, normalizar, debounce, delegarAcoes, ICONS, mensagemErro, partesHtml } from '../ui.js';
+         fmConfirm, showToast, showLoading, hideLoading, normalizar, debounce, delegarAcoes, ICONS, mensagemErro, partesHtml, fmtPct } from '../ui.js';
 
 const POR_PAGINA = 100;
 
@@ -31,7 +31,7 @@ export async function render(el, { perfil, params, irPara }) {
     const retrato = await aplicarRetrato(id, itens).catch(() => null);
     if (retrato?.total_produtos != null) {
       const total = retrato.total_produtos;
-      prog = { contados: itens.length, totalProdutos: total, pct: porcentagem(itens.length, total) };
+      prog = { contados: itens.length, totalProdutos: total, pct: porcentagem(itens.length, total, 1) };
     }
   }
 
@@ -65,7 +65,7 @@ export async function render(el, { perfil, params, irPara }) {
     ${aud.status === 'cancelada' ? `<div class="aviso">${ICONS.info}<p><strong>Cancelada</strong> em ${fmtDateTime(aud.cancelado_em)}${aud.cancelador?.nome ? ` por ${escapeHtml(aud.cancelador.nome)}` : ''}${aud.motivo_cancelamento ? `. Motivo: ${escapeHtml(aud.motivo_cancelamento)}` : ''}. As contagens ficam guardadas para consulta e exportação, sem comparação com o sistema.</p></div>` : ''}
     ${prog?.totalProdutos === 0 ? `<div class="aviso aviso-aviso">${ICONS.alerta}<p>${escapeHtml(aud.empresas?.nome ?? 'Esta empresa')} não tem produtos ativos, então não há o que contar. ${hasRole('administrador') ? `<a href="app.html?tela=produtos&empresa=${encodeURIComponent(aud.empresa_id)}">Cadastrar produtos</a>` : 'Fale com um administrador.'}</p></div>` : ''}
     <div class="kpis">
-      <div class="kpi"><div class="kpi-rotulo">Itens contados</div><div class="kpi-valor">${fmtInt(itens.length)}${prog ? `<small> de ${fmtInt(prog.totalProdutos)}</small>` : ''}</div>${prog?.totalProdutos ? `<div class="kpi-apoio">${prog.pct}% dos produtos ativos</div>` : ''}</div>
+      <div class="kpi"><div class="kpi-rotulo">Itens contados</div><div class="kpi-valor">${fmtInt(itens.length)}${prog ? `<small> de ${fmtInt(prog.totalProdutos)}</small>` : ''}</div>${prog?.totalProdutos ? `<div class="kpi-apoio">${fmtPct(prog.pct)} dos produtos ativos</div>` : ''}</div>
       <div class="kpi"><div class="kpi-rotulo">Correções</div><div class="kpi-valor">${fmtInt(corrigidos)}</div><div class="kpi-apoio">${corrigidos === 1 ? 'item recontado' : 'itens recontados'}</div></div>
       <div class="kpi"><div class="kpi-rotulo">Contado por</div><div class="kpi-valor" style="font-size:16px;font-weight:500;margin-top:8px">${contadores.length ? escapeHtml(contadores.join(', ')) : '—'}</div></div>
     </div>

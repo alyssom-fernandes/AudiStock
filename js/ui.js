@@ -583,6 +583,18 @@ const fmtH  = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-dig
 export function fmtDate(iso)     { return !iso ? '—' : fmtD.format(new Date(iso)); }
 export function fmtDateTime(iso) { return !iso ? '—' : `${fmtD.format(new Date(iso))} ${fmtH.format(new Date(iso))}`; }
 export function fmtInt(n) { return Number(n ?? 0).toLocaleString('pt-BR'); }
+// Percentual, sempre com uma casa ("75,4%", "12,0%"): é o único formato usado
+// no painel, no relatório, no PDF e no CSV. Recebe o valor já em % (12,5 = 12,5%).
+// Uma divergência real nunca aparece como 0: abaixo de 0,1 sai "<0,1%".
+// { sinal: true } acrescenta "+" ou "-" (colunas de diferença); { simbolo: false }
+// tira o "%" (coluna do CSV, cujo cabeçalho já diz "%").
+export function fmtPct(valor, { sinal = false, simbolo = true } = {}) {
+    const v = Number(valor ?? 0);
+    const arred = Math.round(Math.abs(v) * 10) / 10;
+    const corpo = arred === 0 && v !== 0 ? '<0,1' : arred.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const prefixo = !sinal || v === 0 ? '' : v > 0 ? '+' : '-';
+    return `${prefixo}${corpo}${simbolo ? '%' : ''}`;
+}
 
 // Unidades fracionadas sempre com 3 casas (15,730 kg), para a vírgula alinhar
 // e "1,288" nunca ser lido como mil duzentos e oitenta e oito.

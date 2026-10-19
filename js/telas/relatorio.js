@@ -8,7 +8,7 @@
 
 import { requireAuth, getPerfil } from '../auth.js';
 import { initLayout, definirTitulo, escapeHtml, fmtDateTime, fmtInt, plural, qtdHtml, difHtml, badgeStatus, badgeSituacao,
-         vazioHtml, showToast, showLoading, hideLoading, ICONS, mensagemErro, partesHtml, reguaHtml } from '../ui.js';
+         vazioHtml, showToast, showLoading, hideLoading, ICONS, mensagemErro, partesHtml, reguaHtml, fmtPct } from '../ui.js';
 import { buscarAuditoria } from '../auditorias.js';
 import { gerarRelatorio, ordenarItens, resumoAuditoria, produtosNaoAuditados, exportarCSV, baixarArquivo, porcentagem, proporcaoTexto } from '../relatorios.js';
 import { gerarPDF, gerarExcel, nomeArquivo, tituloRelatorio, temComparacao, semDivergenciaMotivo, fimRotulo } from '../exportacao.js';
@@ -56,7 +56,7 @@ async function iniciar() {
   const emissor = getPerfil()?.nome ?? '';
   const comSaldo = resumo.auditados - resumo.sem_saldo;
   const pctOk = porcentagem(resumo.ok, comSaldo, 1);
-  const pctContados = porcentagem(resumo.auditados, resumo.total_produtos);
+  const pctContados = porcentagem(resumo.auditados, resumo.total_produtos, 1);
   const empresa = aud.empresas?.nome ?? '—';
   const criador = aud.usuarios?.nome ?? '—';
 
@@ -107,9 +107,9 @@ async function iniciar() {
     ${aud.status === 'cancelada' ? `<div class="aviso aviso-perigo no-print">${ICONS.alerta}<p><strong>Auditoria cancelada.</strong> Abaixo estão só as contagens registradas até o cancelamento, sem comparação com o sistema.</p></div>` : ''}
 
     <div class="kpis">
-      <div class="kpi"><div class="kpi-rotulo">Itens contados</div><div class="kpi-valor">${fmtInt(resumo.auditados)}<small> de ${fmtInt(resumo.total_produtos)}</small></div><div class="kpi-apoio">${comparado ? naoContadosApoio : `${pctContados}% dos produtos ativos`}</div></div>
+      <div class="kpi"><div class="kpi-rotulo">Itens contados</div><div class="kpi-valor">${fmtInt(resumo.auditados)}<small> de ${fmtInt(resumo.total_produtos)}</small></div><div class="kpi-apoio">${comparado ? naoContadosApoio : `${fmtPct(pctContados)} dos produtos ativos`}</div></div>
       ${comparado ? `
-      <div class="kpi"><div class="kpi-rotulo">Sem divergência</div>${kpiNum(resumo.ok)}<div class="kpi-apoio">${pctOk.toLocaleString('pt-BR')}% dos itens com saldo</div></div>
+      <div class="kpi"><div class="kpi-rotulo">Sem divergência</div>${kpiNum(resumo.ok)}<div class="kpi-apoio">${fmtPct(pctOk)} dos itens com saldo</div></div>
       <div class="kpi kpi-falta"><div class="kpi-rotulo">Itens com falta</div>${kpiNum(resumo.faltas)}<div class="kpi-apoio">contado abaixo do sistema</div></div>
       <div class="kpi kpi-sobra"><div class="kpi-rotulo">Itens com sobra</div>${kpiNum(resumo.sobras)}<div class="kpi-apoio">contado acima do sistema</div></div>
       ${resumo.sem_saldo ? `<div class="kpi"><div class="kpi-rotulo">Sem saldo do sistema</div>${kpiNum(resumo.sem_saldo)}<div class="kpi-apoio">não informado no fechamento</div></div>` : ''}`

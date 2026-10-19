@@ -9,7 +9,7 @@ import { hasRole } from '../auth.js';
 import { demoAtivo } from '../demo.js';
 import { progresso } from '../auditorias.js';
 import { resumoAuditoria, proporcaoTexto, pesoDivergencia } from '../relatorios.js';
-import { escapeHtml, fmtDate, fmtInt, difHtml, vazioHtml, erroCargaHtml, partesHtml, reguaHtml } from '../ui.js';
+import { escapeHtml, fmtDate, fmtInt, fmtPct, difHtml, vazioHtml, erroCargaHtml, partesHtml, reguaHtml } from '../ui.js';
 
 // Esqueletos com a altura do conteúdo que vem depois: a tela não pula
 // quando os dados chegam (o celular lento é onde isso mais aparece)
@@ -113,7 +113,7 @@ async function _andamento(alvo) {
     return `<li><a class="andamento" href="contagem.html?id=${encodeURIComponent(a.id)}">
       <span><span class="forte">${escapeHtml(a.empresas?.nome ?? '—')}</span>
         <span class="sub">${partesHtml([`<span class="codigo">${escapeHtml(a.numero_auditoria)}</span>`, `desde ${fmtDate(a.data_inicio)}`, a.auditoria_cega ? 'cega' : 'visível'])}</span></span>
-      <span class="andamento-pct">${p ? `${fmtInt(p.contados)} de ${fmtInt(p.totalProdutos)} · <strong>${p.pct}%</strong>` : '<span class="muted">progresso indisponível</span>'}</span>
+      <span class="andamento-pct">${p ? `${fmtInt(p.contados)} de ${fmtInt(p.totalProdutos)} · <strong>${fmtPct(p.pct)}</strong>` : '<span class="muted">progresso indisponível</span>'}</span>
       ${p ? `<span class="barra" role="progressbar" aria-valuenow="${p.pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Progresso da contagem"><i style="width:${p.pct}%"></i></span>` : ''}
     </a></li>`;
   }).join('')}</ul>`;
@@ -151,9 +151,9 @@ async function _ultima(el) {
       ${faltas.length ? `<i class="seg-falta" style="width:${pF}%"></i>` : ''}${sobras.length ? `<i class="seg-sobra" style="width:${pS}%"></i>` : ''}${ok ? `<i class="seg-ok" style="width:${pO}%"></i>` : ''}
     </div>
     <div class="legenda">
-      <div class="legenda-item"><span class="ponto seg-falta"></span><span class="nome">Itens com falta</span><span class="valor">${fmtInt(faltas.length)}</span><span class="pct">${pF}%</span></div>
-      <div class="legenda-item"><span class="ponto seg-sobra"></span><span class="nome">Itens com sobra</span><span class="valor">${fmtInt(sobras.length)}</span><span class="pct">${pS}%</span></div>
-      <div class="legenda-item"><span class="ponto seg-ok"></span><span class="nome">Sem divergência</span><span class="valor">${fmtInt(ok)}</span><span class="pct">${pO}%</span></div>
+      <div class="legenda-item"><span class="ponto seg-falta"></span><span class="nome">Itens com falta</span><span class="valor">${fmtInt(faltas.length)}</span><span class="pct">${fmtPct(pF)}</span></div>
+      <div class="legenda-item"><span class="ponto seg-sobra"></span><span class="nome">Itens com sobra</span><span class="valor">${fmtInt(sobras.length)}</span><span class="pct">${fmtPct(pS)}</span></div>
+      <div class="legenda-item"><span class="ponto seg-ok"></span><span class="nome">Sem divergência</span><span class="valor">${fmtInt(ok)}</span><span class="pct">${fmtPct(pO)}</span></div>
     </div>
     ${resumo.sem_saldo || resumo.nao_auditados ? `<p class="muted" style="font-size:13px;margin-top:14px">${[
       resumo.sem_saldo ? `${fmtInt(resumo.sem_saldo)} sem saldo do sistema` : '',
@@ -178,14 +178,14 @@ function _top(titulo, lista, vazio) {
   return `<section class="card"><div class="card-header"><div><h2 class="card-title">${titulo}</h2><div class="card-sub">Da última auditoria finalizada, em proporção ao saldo</div></div></div>${corpo}</section>`;
 }
 
-// Arredonda mantendo a soma em 100 (método do maior resto)
+// Arredonda (em décimos) mantendo a soma em 100 (método do maior resto)
 function _porcentagens(valores) {
   const total = valores.reduce((s, v) => s + v, 0) || 1;
-  const brutos = valores.map(v => v * 100 / total);
+  const brutos = valores.map(v => v * 1000 / total);
   const base = brutos.map(Math.floor);
-  let falta = 100 - base.reduce((s, v) => s + v, 0);
+  let falta = 1000 - base.reduce((s, v) => s + v, 0);
   brutos.map((v, i) => [v - base[i], i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (falta-- > 0 && valores[i]) base[i]++; });
-  return valores.every(v => !v) ? [0, 0, 0] : base;
+  return valores.every(v => !v) ? [0, 0, 0] : base.map(v => v / 10);
 }
 
 function _primeirosPassos() {

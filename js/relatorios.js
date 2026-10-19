@@ -7,6 +7,7 @@
 
 import supabase from './supabaseClient.js';
 import { buscarTodos as _buscarTodos } from './consulta.js';
+import { fmtPct } from './ui.js';
 
 // ─────────────────────────────────────────────────────────────
 //  gerarRelatorio(auditoriaId, { filtro, ordem })
@@ -50,15 +51,13 @@ export function pesoDivergencia(i) {
 }
 
 // A proporção que decide a ordem "Maior divergência", para mostrar junto da
-// diferença: "12%", "8,9%" (abaixo de 10%, uma casa). Vazio quando não há
+// diferença: "12,0%", "8,9%" (fmtPct, uma casa). Vazio quando não há
 // divergência; null quando não há saldo do sistema com que comparar.
 const _semValor = v => v == null || v === '';
 export function pctDoSaldo(i) {
   if (_semValor(i.diferenca) || _semValor(i.estoque_sistema) || Number(i.estoque_sistema) === 0) return null;
   if (Number(i.diferenca) === 0) return '';
-  const v = pesoDivergencia(i) * 100;
-  if (v < 0.1) return '<0,1%';   // uma divergência nunca aparece como "0%"
-  return `${(v < 10 ? Math.round(v * 10) / 10 : Math.round(v)).toLocaleString('pt-BR')}%`;
+  return fmtPct(pesoDivergencia(i) * 100);
 }
 export function proporcaoTexto(i) {
   const pct = pctDoSaldo(i);
@@ -122,10 +121,10 @@ export async function exportarCSV(auditoriaId, filtro = 'todos', ordem = 'difere
 
   const cabecalho = ['Auditoria', 'Empresa', 'Código', 'Produto', 'Unidade', ...(comparado ? ['Sistema', 'Contado', 'Diferença', 'Diferença %', 'Situação'] : ['Contado'])].join(';');
   // Diferença em % do saldo do sistema, com sinal, como na planilha (que
-  // divide pelo saldo em módulo); até três casas, para uma divergência
-  // pequena não sair como 0 (e nunca como -0)
+  // divide pelo saldo em módulo); a mesma precisão das telas (fmtPct), sem o
+  // símbolo porque o cabeçalho já diz "%"
   const pct = i => i.diferenca == null || !Number(i.estoque_sistema) ? ''
-    : (v => (v > 0 ? '+' : '') + num(v))(Math.round(Number(i.diferenca) / Math.abs(Number(i.estoque_sistema)) * 100000) / 1000 || 0);
+    : fmtPct(Number(i.diferenca) / Math.abs(Number(i.estoque_sistema)) * 100, { sinal: true, simbolo: false });
   const linhas = itens.map(i => [
     texto(aud?.numero_auditoria), texto(aud?.empresas?.nome), texto(i.codigo_produto), texto(i.nome_produto), texto(i.unidade_medida),
     ...(comparado

@@ -2,6 +2,14 @@
 
 ![AudiStock: o relatório de divergências no computador e a contagem no celular](docs/telas/capa.png)
 
+## Destaques técnicos
+
+- **Permissões no banco:** 24 políticas de segurança por linha (RLS) em [`supabase/schema.sql`](supabase/schema.sql), conferidas por 54 regras em [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql), que entra como cada perfil.
+- **Regras onde estão os dados:** registrar contagem, corrigir, fechar e excluir uma auditoria são quatro funções do banco em [`supabase/schema.sql`](supabase/schema.sql); o fechamento aplica todos os saldos numa transação só.
+- **Fila sem internet:** as contagens esperam no IndexedDB e cada uma leva uma identificação que o banco aplica uma vez só ([`js/offline.js`](js/offline.js), 7 testes em [`testes/unidade/fila.test.mjs`](testes/unidade/fila.test.mjs)).
+- **Testes:** 84 testes de unidade e de banco (`npm test`, Postgres em WebAssembly) e 47 testes no navegador listados pelo Playwright, em [`testes/`](testes/).
+- **Sem build e sem framework:** 28 módulos JavaScript e 7.033 linhas em [`js/`](js/), mais uma política de segurança (CSP) por hash conferida por [`testes/unidade/csp.test.mjs`](testes/unidade/csp.test.mjs).
+
 O AudiStock organiza a auditoria de estoque. A equipe conta o que está na
 prateleira pelo celular, com leitor de código de barras ou digitando; no
 fechamento, informa o saldo que consta no sistema (ERP), e o AudiStock
@@ -23,7 +31,7 @@ no seu próprio projeto do Supabase ([Como usar a sua cópia](#como-usar-a-sua-c
 ![Licença](https://img.shields.io/badge/licen%C3%A7a-MIT-blue?style=flat-square)
 [![Testes](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml/badge.svg)](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml)
 
-Este README também está em [inglês](README.md).
+Este README também está em [inglês](README.md). Histórico: [CHANGELOG.pt-BR.md](CHANGELOG.pt-BR.md).
 
 ## Em 30 segundos
 
@@ -230,8 +238,8 @@ de qualquer projeto, e ele apaga o que criou.
 
 ```bash
 npm install
-npm test            # unidade (Node) e banco (PGlite): 77 testes
-npm run test:e2e    # ponta a ponta no navegador (Playwright): 44 execuções
+npm test            # unidade (Node) e banco (PGlite): 84 testes
+npm run test:e2e    # ponta a ponta no navegador (Playwright): 47 execuções
 ```
 
 - **Unidade:** o código real de `js/` rodando no Node sobre o banco do

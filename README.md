@@ -2,6 +2,14 @@
 
 ![AudiStock: the discrepancy report on desktop and the counting screen on a phone](docs/telas/capa.png)
 
+## Technical highlights
+
+- **Permissions in the database:** 24 row-level security policies in [`supabase/schema.sql`](supabase/schema.sql), checked by 54 rules in [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql), which signs in as each role.
+- **Rules where the data lives:** registering a count, correcting it, closing and deleting an audit are four database functions in [`supabase/schema.sql`](supabase/schema.sql); closing applies every balance in one transaction.
+- **Offline queue:** counts wait in IndexedDB and each carries an id the database applies once ([`js/offline.js`](js/offline.js), 7 tests in [`testes/unidade/fila.test.mjs`](testes/unidade/fila.test.mjs)).
+- **Tests:** 84 unit and database tests (`npm test`, Postgres in WebAssembly) and 47 browser tests listed by Playwright, in [`testes/`](testes/).
+- **No build, no framework:** 28 JavaScript modules and 7,033 lines in [`js/`](js/), plus a Content Security Policy by hash checked by [`testes/unidade/csp.test.mjs`](testes/unidade/csp.test.mjs).
+
 AudiStock runs physical inventory audits. The team counts what is on the
 shelf from a phone, with a barcode scanner or by typing; at closing, they
 enter the balance the ERP system shows, and AudiStock lists, item by item,
@@ -23,7 +31,7 @@ your own Supabase project ([Running your own copy](#running-your-own-copy)).
 ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 [![Tests](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml/badge.svg)](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml)
 
-This README is also available in [Portuguese](README.pt-BR.md).
+This README is also available in [Portuguese](README.pt-BR.md). History: [CHANGELOG.md](CHANGELOG.md).
 
 ## In 30 seconds
 
@@ -223,8 +231,8 @@ project's SQL Editor and deletes what it creates.
 
 ```bash
 npm install
-npm test            # unit (Node) and database (PGlite): 77 tests
-npm run test:e2e    # end to end in the browser (Playwright): 44 runs
+npm test            # unit (Node) and database (PGlite): 84 tests
+npm run test:e2e    # end to end in the browser (Playwright): 47 runs
 ```
 
 - **Unit:** the real `js/` code running on Node against the demo

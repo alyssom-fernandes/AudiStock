@@ -37,7 +37,9 @@ The demo's dashboard opens with the same three steps as links.
 
 ## Screens
 
-Captured from the demo mode.
+Captured from the demo mode. `python testes/capturas.py` regenerates all of
+them (Python with Playwright, Pillow and PyMuPDF); run it whenever
+`js/demo.js` or the look changes.
 
 | Dashboard, dark theme | Dashboard, light theme |
 |---|---|
@@ -66,6 +68,20 @@ Captured from the demo mode.
   product is often stored in more than one place.
 - Corrections are kept in the audit history with the previous value, who
   changed it, when and why.
+- Installable (PWA) and offline, in detail. After one visit, a service
+  worker (`sw.js`) keeps the site's own files (pages, styles, scripts,
+  fonts, icons) and the pinned Supabase library, so the pages open with
+  no connection. In the demo, the counting page reopens offline with its
+  data, because the demo data lives in the tab; an end-to-end test visits
+  it, goes offline, reloads and checks that the queued count survived and
+  is sent when the connection returns. With a real Supabase project, the
+  audit header and the product list are fetched from the server each time
+  the page opens, so a page *reloaded* offline shows the app but not the
+  audit: pending counts stay in IndexedDB and are sent the next time the
+  page opens online. Nothing from Supabase is cached by the service
+  worker, and PDF and Excel exports still need a connection (those
+  libraries come from cdnjs). A new version of the site shows up on the
+  visit after the one that downloads it.
 - Offline, counts are stored on the device (IndexedDB) and the product
   catalog stays on the counting page, so search and the scanner keep
   working. While the counting or closing page is open, counts are sent as
@@ -155,7 +171,7 @@ digit, so none of them belongs to a real company.
 |---|---|
 | Interface | HTML, CSS and JavaScript ES modules, no framework, no build |
 | Data and login | Supabase (PostgreSQL, Auth) |
-| Offline counting | IndexedDB |
+| Offline counting | IndexedDB, plus a service worker and web manifest (PWA) |
 | PDF | jsPDF and jsPDF-AutoTable |
 | Excel | ExcelJS, to write the reports and to read the product sheet |
 | Fonts | IBM Plex Sans, Sans Condensed (figures) and Mono, served by the site itself; IBM Plex Sans embedded in the PDF |
@@ -324,6 +340,9 @@ js/
   usuarios.js           user creation (Edge Function only)
   exportacao.js         PDF and Excel
   offline.js            offline counting queue
+  pwa.js                registers the service worker
+sw.js                   service worker: caches the site's files (versioned cache)
+manifest.webmanifest    install metadata; icons in icones/
 supabase/
   schema.sql            tables, views, functions and permissions (RLS)
   testes/permissoes.sql checks the permissions by signing in as each role

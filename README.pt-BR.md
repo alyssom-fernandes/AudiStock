@@ -38,7 +38,9 @@ O Dashboard da demonstração abre com esses mesmos três passos, como links.
 
 ## Telas
 
-Capturadas do modo demonstração.
+Capturadas do modo demonstração. `python testes/capturas.py` gera todas de
+novo (Python com Playwright, Pillow e PyMuPDF); rode sempre que o
+`js/demo.js` ou o visual mudar.
 
 | Dashboard, tema escuro | Dashboard, tema claro |
 |---|---|
@@ -68,6 +70,21 @@ Capturadas do modo demonstração.
   costuma estar em mais de um lugar.
 - Correções ficam no histórico da auditoria, com o valor anterior, quem
   corrigiu, quando e por quê.
+- Instalável (PWA) e sem internet, em detalhe. Depois de uma visita, um
+  service worker (`sw.js`) guarda os arquivos do próprio site (páginas,
+  estilos, scripts, fontes e ícones) e a biblioteca fixada do Supabase,
+  e as páginas abrem sem conexão. Na demonstração, a página de contagem
+  reabre sem internet com os dados dela, porque os dados da demo ficam na
+  aba; um teste de ponta a ponta visita a página, fica offline, recarrega
+  e confere que a contagem na fila sobreviveu e sobe quando a conexão
+  volta. Com um projeto Supabase de verdade, o cabeçalho da auditoria e a
+  lista de produtos vêm do servidor a cada abertura; por isso uma página
+  *recarregada* sem internet mostra o app, mas não a auditoria: as
+  contagens pendentes continuam no IndexedDB e sobem na próxima vez que a
+  página abrir com internet. O service worker não guarda nada do Supabase,
+  e as exportações em PDF e Excel continuam pedindo conexão (essas
+  bibliotecas vêm do cdnjs). Uma versão nova do site aparece na visita
+  seguinte à que a baixou.
 - Sem internet, as contagens ficam guardadas no aparelho (IndexedDB), e o
   cadastro de produtos fica na página da contagem: a busca e o leitor
   continuam funcionando. Com a contagem ou o fechamento abertos, elas são
@@ -159,7 +176,7 @@ empresa de verdade.
 |---|---|
 | Interface | HTML, CSS e JavaScript em módulos ES, sem framework e sem build |
 | Dados e login | Supabase (PostgreSQL, Auth) |
-| Contagem sem internet | IndexedDB |
+| Contagem sem internet | IndexedDB, mais service worker e manifest (PWA) |
 | PDF | jsPDF e jsPDF-AutoTable |
 | Excel | ExcelJS, para gerar os relatórios e ler a planilha de produtos |
 | Fontes | IBM Plex Sans, Sans Condensed (números) e Mono, servidas pelo próprio site; IBM Plex Sans embutida no PDF |
@@ -333,6 +350,9 @@ js/
   usuarios.js           cadastro de pessoas (só pela Edge Function)
   exportacao.js         PDF e Excel
   offline.js            fila de contagens sem internet
+  pwa.js                registra o service worker
+sw.js                   service worker: guarda os arquivos do site (cache versionado)
+manifest.webmanifest    dados de instalação; ícones em icones/
 supabase/
   schema.sql            tabelas, visões, funções e permissões (RLS)
   testes/permissoes.sql confere as permissões entrando como cada perfil

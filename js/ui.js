@@ -6,6 +6,7 @@
 
 import { logout, getPerfil } from './auth.js';
 import { demoAtivo, avisosDaDemo } from './demo.js';
+import './pwa.js';   // service worker: a contagem reabre sem internet
 
 // erros.js chama isto no primeiro erro não tratado da página
 window.__avisarErro = () => showToast('Algo falhou nesta tela. Os detalhes ficaram no registro de erros, em Configurações.', 'error', 9000,

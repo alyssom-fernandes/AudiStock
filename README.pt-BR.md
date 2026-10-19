@@ -171,7 +171,10 @@ ou importa, e o navegador confere cada uma pelo hash (SRI) antes de rodar.
 Toda página traz uma política de segurança (Content Security Policy, numa
 meta tag): só roda script do próprio site, das pastas exatas das
 bibliotecas usadas no cdnjs e no jsDelivr, e dos scripts embutidos
-liberados pelo hash. O `testes/unidade/csp.test.mjs`
+liberados pelo hash. No jsDelivr, o escopo `@supabase` vale só para o
+`supabase-js` 2.117.2 e as versões exatas das dependências dele (carregado
+com `import()`, ou seja, sem SRI no modo real; a demonstração não o baixa).
+O `testes/unidade/csp.test.mjs`
 confere todas as páginas, e os testes de ponta a ponta falham se a
 política barrar alguma coisa. Não há analytics nem cookies, e as páginas
 da demonstração não pedem nada a outros sites até você exportar um

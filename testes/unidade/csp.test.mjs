@@ -31,6 +31,16 @@ test('toda página tem a política antes de qualquer script', () => {
   }
 });
 
+test('o escopo @supabase do jsDelivr só vale para a versão fixa do supabase-js e para as dependências exatas', () => {
+  const versao = ler('js/supabaseClient.js').match(/@supabase\/supabase-js@(\d+\.\d+\.\d+)\/\+esm/)[1];
+  for (const p of PAGINAS) {
+    const fontes = diretiva(politica(ler(p)), 'script-src').split(/\s+/).filter(f => f.startsWith('https://cdn.jsdelivr.net/npm/@supabase/'));
+    assert.ok(fontes.length > 0, p);
+    for (const f of fontes) assert.match(f, /^https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/[a-z-]+@\d+\.\d+\.\d+\/$/, `${p}: ${f} sem versão exata`);
+    assert.ok(fontes.includes(`https://cdn.jsdelivr.net/npm/@supabase/supabase-js@${versao}/`), `${p}: a política não libera o supabase-js@${versao} que o app importa`);
+  }
+});
+
 test('cada script embutido está liberado pelo hash na própria página', () => {
   for (const p of PAGINAS) {
     const html = ler(p);

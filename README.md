@@ -166,7 +166,10 @@ or imports, and the browser checks each one against its hash (SRI) first.
 
 Every page carries a Content Security Policy (in a meta tag): scripts only
 run from the site itself, from the exact library folders used on cdnjs and
-jsDelivr, and the inline scripts allowed by their hash. `testes/unidade/csp.test.mjs` checks every page, and
+jsDelivr, and the inline scripts allowed by their hash. On jsDelivr, the
+`@supabase` scope is limited to `supabase-js` 2.117.2 and the exact versions of
+its dependencies (loaded with `import()`, so without SRI in the real mode;
+the demo does not download it). `testes/unidade/csp.test.mjs` checks every page, and
 the end-to-end tests fail if the policy blocks anything. There are no
 analytics or cookies, and the demo pages request nothing from other sites
 until you export a report or import a spreadsheet (the PDF and spreadsheet

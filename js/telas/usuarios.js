@@ -172,11 +172,10 @@ function abrirUsuario(u, { papeis, empresas, perfil, aoSalvar }) {
           const { error } = await supabase.from('usuarios').update({ nome: nome.value.trim(), role, empresa_id }).eq('id', u.id);
           if (error) throw new Error(error.message);
         }
-        const r = editando ? {} : await criarUsuario({ nome: nome.value, email: email.value, senha: senha.value, role, empresa_id });
+        if (!editando) await criarUsuario({ nome: nome.value, email: email.value, senha: senha.value, role, empresa_id });
         mm.fechar();
         const alcance = empresa_id ? '' : ', com acesso a todas as empresas';
-        if (r.confirmarEmail) showToast(`Cadastro de ${nome.value.trim()} criado${alcance}. O Supabase exige confirmar o e-mail: a pessoa precisa abrir o link enviado para ${email.value.trim().toLowerCase()} antes do primeiro login.`, 'warning', 12000);
-        else showToast(editando ? `Dados de ${nome.value.trim()} atualizados.` : `Cadastro de ${nome.value.trim()} criado (${NOMES_PAPEL[role].toLowerCase()}${alcance}).`, 'success');
+        showToast(editando ? `Dados de ${nome.value.trim()} atualizados.` : `Cadastro de ${nome.value.trim()} criado (${NOMES_PAPEL[role].toLowerCase()}${alcance}).`, 'success');
         await aoSalvar();
       } catch (err) {
         mm.ocupado(false);

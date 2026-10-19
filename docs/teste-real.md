@@ -64,10 +64,8 @@ Se aparecer `FALHOU`, a coluna `detalhe` diz o que aconteceu (por exemplo,
 
 2. Com a função publicada, desligue o cadastro aberto em
    **Authentication › Providers › Email › Allow new users to sign up**.
-   Sem a função, o app usa o cadastro pelo navegador num cliente à parte,
-   que não troca a sessão de quem cadastra, mas exige essa opção ligada.
-   Com **Confirm email** também ligado, a pessoa é cadastrada, mas só
-   entra depois de confirmar o e-mail, e o app avisa isso ao cadastrar.
+   O app nunca chama o `signUp` pelo navegador: sem a função publicada, a
+   tela Usuários recusa o cadastro e manda publicá-la.
 3. Se o projeto tiver regras de senha mais rígidas que 6 caracteres
    (**Authentication › Policies**), o app mostra a regra que faltou.
 

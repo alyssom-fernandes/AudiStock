@@ -121,8 +121,10 @@ Capturadas do modo demonstração.
   (só consulta). Cada pessoa troca a própria senha em Configurações.
 - As permissões valem no banco, não só na tela: políticas de RLS por
   perfil e por empresa, e ninguém altera o próprio perfil de acesso.
-- O cadastro de pessoas passa por uma Edge Function com a chave de
-  serviço, que nunca vai para o navegador.
+- O cadastro de pessoas passa só por uma Edge Function com a chave de
+  serviço, que nunca vai para o navegador. O navegador não tem caminho
+  próprio de cadastro, então o cadastro aberto fica desligado no Supabase
+  (veja Como rodar).
 
 ### Interface
 
@@ -289,6 +291,10 @@ Supabase de verdade está em [`docs/teste-real.md`](docs/teste-real.md).
 3. Crie o primeiro usuário em Authentication › Users e insira o perfil
    dele na tabela `usuarios` com o papel `supremo`.
 4. Publique a função de cadastro: `supabase functions deploy criar-usuario`.
+   Depois desligue Authentication › Providers › Email › *Allow new users to
+   sign up*: o app nunca chama `signUp` pelo navegador, então o cadastro
+   aberto só deixaria qualquer pessoa com a chave pública criar contas de
+   Auth órfãs. Sem a função, a tela Usuários se recusa a cadastrar.
 5. Sirva os arquivos por HTTP (módulos ES não abrem direto do disco):
 
 ```bash
@@ -321,7 +327,7 @@ js/
   erros.js              registro de falhas não tratadas
   auditorias.js, contagem.js, produtos.js, empresas.js, relatorios.js,
   consulta.js           acesso aos dados
-  usuarios.js           cadastro de pessoas (Edge Function ou cliente à parte)
+  usuarios.js           cadastro de pessoas (só pela Edge Function)
   exportacao.js         PDF e Excel
   offline.js            fila de contagens sem internet
 supabase/

@@ -120,8 +120,9 @@ Captured from the demo mode.
 - Permissions are enforced by the database, not just the screens: RLS
   policies per role and per company, and nobody can change their own
   access level.
-- New users are created through an Edge Function holding the service
-  key, which never reaches the browser.
+- New users are created only through an Edge Function holding the service
+  key, which never reaches the browser. The browser has no sign-up path of
+  its own, so open sign-ups stay off in Supabase (see Running it).
 
 ### Interface
 
@@ -282,6 +283,10 @@ test against a real Supabase project is in
 3. Create the first user under Authentication › Users and insert their
    profile into the `usuarios` table with the `supremo` role.
 4. Deploy the user-creation function: `supabase functions deploy criar-usuario`.
+   Then turn off Authentication › Providers › Email › *Allow new users to
+   sign up*: the app never calls `signUp` from the browser, so open
+   sign-ups would only let anyone with the public key create orphan Auth
+   accounts. Without the function, the Users screen refuses to create people.
 5. Serve the files over HTTP (ES modules do not load from `file://`):
 
 ```bash
@@ -313,7 +318,7 @@ js/
   erros.js              unhandled-error log
   auditorias.js, contagem.js, produtos.js, empresas.js, relatorios.js,
   consulta.js           data access
-  usuarios.js           user creation (Edge Function or a separate client)
+  usuarios.js           user creation (Edge Function only)
   exportacao.js         PDF and Excel
   offline.js            offline counting queue
 supabase/

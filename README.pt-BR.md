@@ -2,6 +2,14 @@
 
 ![AudiStock: o relatório de divergências no computador e a contagem no celular](docs/telas/capa.png)
 
+## Destaques técnicos
+
+- **Permissões no banco:** 24 políticas de segurança por linha (RLS) em [`supabase/schema.sql`](supabase/schema.sql), conferidas por 54 regras em [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql), que entra como cada perfil.
+- **Regras onde estão os dados:** registrar contagem, corrigir, fechar e excluir uma auditoria são quatro funções do banco em [`supabase/schema.sql`](supabase/schema.sql); o fechamento aplica todos os saldos numa transação só.
+- **Fila sem internet:** as contagens esperam no IndexedDB e cada uma leva uma identificação que o banco aplica uma vez só ([`js/offline.js`](js/offline.js), 7 testes em [`testes/unidade/fila.test.mjs`](testes/unidade/fila.test.mjs)).
+- **Testes:** 84 testes de unidade e de banco (`npm test`, Postgres em WebAssembly) e 47 testes no navegador listados pelo Playwright, em [`testes/`](testes/).
+- **Sem build e sem framework:** 28 módulos JavaScript e 7.033 linhas em [`js/`](js/), mais uma política de segurança (CSP) por hash conferida por [`testes/unidade/csp.test.mjs`](testes/unidade/csp.test.mjs).
+
 O AudiStock organiza a auditoria de estoque. A equipe conta o que está na
 prateleira pelo celular, com leitor de código de barras ou digitando; no
 fechamento, informa o saldo que consta no sistema (ERP), e o AudiStock
@@ -23,7 +31,7 @@ no seu próprio projeto do Supabase ([Como usar a sua cópia](#como-usar-a-sua-c
 ![Licença](https://img.shields.io/badge/licen%C3%A7a-MIT-blue?style=flat-square)
 [![Testes](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml/badge.svg)](https://github.com/alyssom-fernandes/AudiStock/actions/workflows/testes.yml)
 
-Este README também está em [inglês](README.md).
+Este README também está em [inglês](README.md). Histórico: [CHANGELOG.pt-BR.md](CHANGELOG.pt-BR.md).
 
 ## Em 30 segundos
 
@@ -38,7 +46,9 @@ O Dashboard da demonstração abre com esses mesmos três passos, como links.
 
 ## Telas
 
-Capturadas do modo demonstração.
+Capturadas do modo demonstração. `python testes/capturas.py` gera todas de
+novo (Python com Playwright, Pillow e PyMuPDF); rode sempre que o
+`js/demo.js` ou o visual mudar.
 
 | Dashboard, tema escuro | Dashboard, tema claro |
 |---|---|
@@ -68,6 +78,21 @@ Capturadas do modo demonstração.
   costuma estar em mais de um lugar.
 - Correções ficam no histórico da auditoria, com o valor anterior, quem
   corrigiu, quando e por quê.
+- Instalável (PWA) e sem internet, em detalhe. Depois de uma visita, um
+  service worker (`sw.js`) guarda os arquivos do próprio site (páginas,
+  estilos, scripts, fontes e ícones) e a biblioteca fixada do Supabase,
+  e as páginas abrem sem conexão. Na demonstração, a página de contagem
+  reabre sem internet com os dados dela, porque os dados da demo ficam na
+  aba; um teste de ponta a ponta visita a página, fica offline, recarrega
+  e confere que a contagem na fila sobreviveu e sobe quando a conexão
+  volta. Com um projeto Supabase de verdade, o cabeçalho da auditoria e a
+  lista de produtos vêm do servidor a cada abertura; por isso uma página
+  *recarregada* sem internet mostra o app, mas não a auditoria: as
+  contagens pendentes continuam no IndexedDB e sobem na próxima vez que a
+  página abrir com internet. O service worker não guarda nada do Supabase,
+  e as exportações em PDF e Excel continuam pedindo conexão (essas
+  bibliotecas vêm do cdnjs). Uma versão nova do site aparece na visita
+  seguinte à que a baixou.
 - Sem internet, as contagens ficam guardadas no aparelho (IndexedDB), e o
   cadastro de produtos fica na página da contagem: a busca e o leitor
   continuam funcionando. Com a contagem ou o fechamento abertos, elas são
@@ -121,8 +146,10 @@ Capturadas do modo demonstração.
   (só consulta). Cada pessoa troca a própria senha em Configurações.
 - As permissões valem no banco, não só na tela: políticas de RLS por
   perfil e por empresa, e ninguém altera o próprio perfil de acesso.
-- O cadastro de pessoas passa por uma Edge Function com a chave de
-  serviço, que nunca vai para o navegador.
+- O cadastro de pessoas passa só por uma Edge Function com a chave de
+  serviço, que nunca vai para o navegador. O navegador não tem caminho
+  próprio de cadastro, então o cadastro aberto fica desligado no Supabase
+  (veja Como rodar).
 
 ### Interface
 
@@ -157,7 +184,7 @@ empresa de verdade.
 |---|---|
 | Interface | HTML, CSS e JavaScript em módulos ES, sem framework e sem build |
 | Dados e login | Supabase (PostgreSQL, Auth) |
-| Contagem sem internet | IndexedDB |
+| Contagem sem internet | IndexedDB, mais service worker e manifest (PWA) |
 | PDF | jsPDF e jsPDF-AutoTable |
 | Excel | ExcelJS, para gerar os relatórios e ler a planilha de produtos |
 | Fontes | IBM Plex Sans, Sans Condensed (números) e Mono, servidas pelo próprio site; IBM Plex Sans embutida no PDF |
@@ -169,7 +196,10 @@ ou importa, e o navegador confere cada uma pelo hash (SRI) antes de rodar.
 Toda página traz uma política de segurança (Content Security Policy, numa
 meta tag): só roda script do próprio site, das pastas exatas das
 bibliotecas usadas no cdnjs e no jsDelivr, e dos scripts embutidos
-liberados pelo hash. O `testes/unidade/csp.test.mjs`
+liberados pelo hash. No jsDelivr, o escopo `@supabase` vale só para o
+`supabase-js` 2.117.2 e as versões exatas das dependências dele (carregado
+com `import()`, ou seja, sem SRI no modo real; a demonstração não o baixa).
+O `testes/unidade/csp.test.mjs`
 confere todas as páginas, e os testes de ponta a ponta falham se a
 política barrar alguma coisa. Não há analytics nem cookies, e as páginas
 da demonstração não pedem nada a outros sites até você exportar um
@@ -208,8 +238,8 @@ de qualquer projeto, e ele apaga o que criou.
 
 ```bash
 npm install
-npm test            # unidade (Node) e banco (PGlite): 77 testes
-npm run test:e2e    # ponta a ponta no navegador (Playwright): 44 execuções
+npm test            # unidade (Node) e banco (PGlite): 84 testes
+npm run test:e2e    # ponta a ponta no navegador (Playwright): 47 execuções
 ```
 
 - **Unidade:** o código real de `js/` rodando no Node sobre o banco do
@@ -289,6 +319,10 @@ Supabase de verdade está em [`docs/teste-real.md`](docs/teste-real.md).
 3. Crie o primeiro usuário em Authentication › Users e insira o perfil
    dele na tabela `usuarios` com o papel `supremo`.
 4. Publique a função de cadastro: `supabase functions deploy criar-usuario`.
+   Depois desligue Authentication › Providers › Email › *Allow new users to
+   sign up*: o app nunca chama `signUp` pelo navegador, então o cadastro
+   aberto só deixaria qualquer pessoa com a chave pública criar contas de
+   Auth órfãs. Sem a função, a tela Usuários se recusa a cadastrar.
 5. Sirva os arquivos por HTTP (módulos ES não abrem direto do disco):
 
 ```bash
@@ -321,9 +355,12 @@ js/
   erros.js              registro de falhas não tratadas
   auditorias.js, contagem.js, produtos.js, empresas.js, relatorios.js,
   consulta.js           acesso aos dados
-  usuarios.js           cadastro de pessoas (Edge Function ou cliente à parte)
+  usuarios.js           cadastro de pessoas (só pela Edge Function)
   exportacao.js         PDF e Excel
   offline.js            fila de contagens sem internet
+  pwa.js                registra o service worker
+sw.js                   service worker: guarda os arquivos do site (cache versionado)
+manifest.webmanifest    dados de instalação; ícones em icones/
 supabase/
   schema.sql            tabelas, visões, funções e permissões (RLS)
   testes/permissoes.sql confere as permissões entrando como cada perfil

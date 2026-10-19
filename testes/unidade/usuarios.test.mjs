@@ -2,6 +2,7 @@
 import './ambiente.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { validarPedido, normalizarPedido, traduzirErroAuth } from '../../supabase/functions/criar-usuario/regras.js';
 
 const { default: supabase } = await import('../../js/supabaseClient.js');
@@ -33,14 +34,23 @@ test('cadastra pela Edge Function e recusa e-mail repetido', async () => {
   await assert.rejects(criarUsuario({ nome: 'Outra', email: 'CARLA@exemplo.com', senha: 'segredo', role: 'auditor' }), /Já existe um usuário com este e-mail/);
 });
 
-test('sem a Edge Function publicada, cadastra por um cliente à parte', async () => {
-  const original = supabase.functions.invoke;
+test('sem a Edge Function publicada, recusa e não tenta o signUp do navegador', async () => {
+  const invoke = supabase.functions.invoke, signUp = supabase.auth.signUp;
+  let chamouSignUp = false;
+  supabase.auth.signUp = async () => { chamouSignUp = true; return { data: { user: null }, error: null }; };
   supabase.functions.invoke = async () => ({ data: null, error: Object.assign(new Error('Edge Function returned a non-2xx status code'),
     { name: 'FunctionsHttpError', context: new Response('{"message":"Requested function was not found"}', { status: 404 }) }) });
   try {
-    const { id } = await criarUsuario({ nome: 'Davi', email: 'davi@exemplo.com', senha: 'segredo', role: 'visualizador' });
-    assert.equal(banco().usuarios.find(x => x.id === id)?.email, 'davi@exemplo.com');
-  } finally { supabase.functions.invoke = original; }
+    await assert.rejects(criarUsuario({ nome: 'Davi', email: 'davi@exemplo.com', senha: 'segredo', role: 'visualizador' }), /criar-usuario não está publicada/);
+    assert.equal(chamouSignUp, false, 'o cadastro não pode cair no signUp do navegador');
+    assert.equal(banco().usuarios.some(x => x.email === 'davi@exemplo.com'), false);
+  } finally { supabase.functions.invoke = invoke; supabase.auth.signUp = signUp; }
+});
+
+test('o código do navegador não usa signUp', () => {
+  for (const f of ['js/usuarios.js', 'js/supabaseClient.js', 'js/telas/usuarios.js', 'js/auth.js']) {
+    assert.doesNotMatch(readFileSync(new URL(`../../${f}`, import.meta.url), 'utf8'), /\.signUp\(|criarClienteIsolado/, f);
+  }
 });
 
 test('erro da Edge Function chega com a mensagem dela', async () => {
@@ -50,37 +60,6 @@ test('erro da Edge Function chega com a mensagem dela', async () => {
   try {
     await assert.rejects(criarUsuario({ nome: 'Eva', email: 'eva@exemplo.com', senha: 'segredo', role: 'auditor' }), /Seu perfil não pode cadastrar usuários/);
   } finally { supabase.functions.invoke = original; }
-});
-
-// Sem a Edge Function: o cadastro pelo cliente à parte (no demo, o mesmo
-// cliente), com respostas do Supabase Auth simuladas
-async function semFuncao(signUp, fn, { perfilFalha = false } = {}) {
-  const invoke = supabase.functions.invoke, sign = supabase.auth.signUp, from = supabase.from;
-  supabase.functions.invoke = async () => ({ data: null, error: Object.assign(new Error('Edge Function returned a non-2xx status code'),
-    { name: 'FunctionsHttpError', context: new Response('{}', { status: 404 }) }) });
-  supabase.auth.signUp = signUp;
-  if (perfilFalha) supabase.from = t => t === 'usuarios' ? { insert: async () => ({ error: { message: 'insert or update on table "usuarios" violates foreign key constraint' } }) } : from.call(supabase, t);
-  const erro = console.error; console.error = () => {};
-  try { return await fn(); }
-  finally { Object.assign(supabase.functions, { invoke }); supabase.auth.signUp = sign; supabase.from = from; console.error = erro; }
-}
-
-test('sem a Edge Function: e-mail já cadastrado no Auth (usuário sem identidades) é recusado', async () => {
-  await semFuncao(async () => ({ data: { user: { id: crypto.randomUUID(), identities: [] }, session: null }, error: null }),
-    () => assert.rejects(criarUsuario({ nome: 'Fábio', email: 'fabio@exemplo.com', senha: 'segredo', role: 'auditor' }), /Já existe um usuário com este e-mail/));
-});
-
-test('sem a Edge Function: com "Confirm email" ligado, o perfil é criado e a tela é avisada', async () => {
-  const id = crypto.randomUUID();
-  const r = await semFuncao(async () => ({ data: { user: { id, identities: [{}], email_confirmed_at: null }, session: null }, error: null }),
-    () => criarUsuario({ nome: 'Gina', email: 'gina@exemplo.com', senha: 'segredo', role: 'auditor' }));
-  assert.deepEqual(r, { id, confirmarEmail: true });
-  assert.equal(banco().usuarios.find(u => u.id === id)?.email, 'gina@exemplo.com');
-});
-
-test('sem a Edge Function: perfil não gravado diz que o acesso ficou criado e como apagá-lo', async () => {
-  await semFuncao(async () => ({ data: { user: { id: crypto.randomUUID(), identities: [{}] }, session: { access_token: 'x' } }, error: null }),
-    () => assert.rejects(criarUsuario({ nome: 'Hugo', email: 'hugo@exemplo.com', senha: 'segredo', role: 'auditor' }), /Authentication > Users/), { perfilFalha: true });
 });
 
 test('falha passageira da Edge Function não cai no cadastro pelo navegador', async () => {

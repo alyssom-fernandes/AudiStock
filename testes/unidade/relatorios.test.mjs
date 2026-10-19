@@ -63,14 +63,14 @@ test('o CSV abre certo no Excel brasileiro', async () => {
   assert.match(kg, /;\d+,\d+;/, 'decimal com vírgula');
   assert.ok(linhas.slice(1, -1).every(l => l.startsWith(`${aud.numero_auditoria};Ferragens Horizonte;`)));
   assert.ok(linhas.some(l => /;\+\d/.test(l)), 'sobra com sinal de +');
-  assert.ok(linhas.some(l => /;\+[\d,]+;\+\d+(,\d)?;Sobra$/.test(l)), 'diferença em % do saldo, com sinal');
-  assert.ok(linhas.some(l => /;0;0;OK$/.test(l)), 'sem divergência, diferença e % zeradas');
+  assert.ok(linhas.some(l => /;\+[\d,]+;\+\d+,\d;Sobra$/.test(l)), 'diferença em % do saldo, com sinal');
+  assert.ok(linhas.some(l => /;0;0,0;OK$/.test(l)), 'sem divergência, diferença e % zeradas');
   assert.ok(!linhas.some(l => /;[+-]0;(Falta|Sobra)$/.test(l)), 'divergência pequena não sai como +0 ou -0');
 });
 
 test('a % do saldo que aparece junto da diferença é a mesma da ordem', () => {
-  assert.equal(pctDoSaldo({ diferenca: 2, estoque_sistema: 13 }), '15%');
-  assert.equal(pctDoSaldo({ diferenca: -12, estoque_sistema: 99 }), '12%');
+  assert.equal(pctDoSaldo({ diferenca: 2, estoque_sistema: 13 }), '15,4%');
+  assert.equal(pctDoSaldo({ diferenca: -12, estoque_sistema: 99 }), '12,1%');
   assert.equal(pctDoSaldo({ diferenca: 1.288, estoque_sistema: 14.442 }), '8,9%');
   assert.equal(pctDoSaldo({ diferenca: 0, estoque_sistema: 10 }), '');
   assert.equal(pctDoSaldo({ diferenca: 5, estoque_sistema: null }), null);
@@ -81,7 +81,7 @@ test('a % do saldo que aparece junto da diferença é a mesma da ordem', () => {
   assert.equal(pctDoSaldo({ diferenca: -0.001, estoque_sistema: 5 }), '<0,1%', 'divergência pequena não vira 0%');
   // Saldo abaixo de 1: a ordem segue a mesma % que a tela mostra
   const fracionados = ordenarItens([{ nome_produto: 'B', diferenca: 5, estoque_sistema: 10 }, { nome_produto: 'A', diferenca: 0.4, estoque_sistema: 0.5 }]);
-  assert.deepEqual(fracionados.map(i => `${i.nome_produto} ${pctDoSaldo(i)}`), ['A 80%', 'B 50%']);
+  assert.deepEqual(fracionados.map(i => `${i.nome_produto} ${pctDoSaldo(i)}`), ['A 80,0%', 'B 50,0%']);
   // Na ordem, quem tem a maior % vem antes, mesmo com diferença menor
   const itens = ordenarItens([{ nome_produto: 'Suco', diferenca: -18, estoque_sistema: 209 }, { nome_produto: 'Isqueiro', diferenca: 2, estoque_sistema: 13 }]);
   assert.deepEqual(itens.map(i => i.nome_produto), ['Isqueiro', 'Suco']);
@@ -116,3 +116,15 @@ test('nome dos arquivos exportados leva número, empresa e data', () => {
 });
 
 test('nenhum erro registrado pelo app', () => assert.deepEqual(globalThis.errosDoApp, []));
+
+test('a coluna "Diferença %" do CSV tem a mesma precisão da tela', async () => {
+  const { data: aud } = await supabase.from('auditorias').select('id, numero_auditoria, empresas(nome)').eq('status', 'finalizada').limit(1).single();
+  const { itens } = await gerarRelatorio(aud.id, { filtro: 'todos', ordem: 'diferenca' });
+  const csv = (await exportarCSV(aud.id, 'todos', 'diferenca', aud)).split('\r\n').slice(1).filter(Boolean).map(l => l.split(';'));
+  const comPct = itens.filter(i => pctDoSaldo(i));
+  assert.ok(comPct.length > 0);
+  for (const i of comPct) {
+    const linha = csv.find(c => c[2] === `${i.codigo_produto}`);
+    assert.equal(linha[8].replace(/^[+-]/, ''), pctDoSaldo(i).replace('%', ''), `${i.codigo_produto}: CSV e tela diferem`);
+  }
+});

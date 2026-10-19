@@ -16,7 +16,7 @@
 
 import { requireAuth, getPerfil, hasRole } from '../auth.js';
 import { initLayout, definirTitulo, escapeHtml, fmtInt, fmtDate, plural, fmtQtd, qtdHtml, unHtml, vazioHtml, lerQuantidade,
-         fmtEntrada, abrirModal, fmConfirm, showToast, debounce, normalizar, delegarAcoes, marcarInvalido, ICONS, mensagemErro, partesHtml } from '../ui.js';
+         fmtEntrada, abrirModal, fmConfirm, showToast, debounce, normalizar, delegarAcoes, marcarInvalido, ICONS, mensagemErro, partesHtml, fmtPct } from '../ui.js';
 import { listarCatalogo, buscarNoCatalogo, acharNoCatalogo, buscarProdutoUnificado, buscarProdutoPorCodigo, buscarProdutoPorBarras } from '../produtos.js';
 import { buscarAuditoria, progresso, listarAuditorias } from '../auditorias.js';
 import { registrarContagem, buscarItemContado, editarContagem, listarItensContados, JA_CONTADO } from '../contagem.js';
@@ -239,9 +239,9 @@ async function iniciar() {
     if (!p || !$('#progPct')) return;
     // Um produto contado e inativado depois não faz o texto passar do total
     const contados = Math.min(Math.max(p.contados, produtosContados()), p.totalProdutos || Infinity);
-    const pct = Math.min(100, porcentagem(contados, p.totalProdutos));
+    const pct = Math.min(100, porcentagem(contados, p.totalProdutos, 1));
     $('#progTexto').textContent = `${fmtInt(contados)} de ${plural(p.totalProdutos, 'produto', 'produtos')}`;
-    $('#progPct').textContent = `${pct}%`;
+    $('#progPct').textContent = fmtPct(pct);
     $('#progBarra').setAttribute('aria-valuenow', pct);
     $('#progBarra i').style.width = `${pct}%`;
   };
@@ -308,7 +308,7 @@ async function iniciar() {
     const contados = produtosContados(), total = estado.prog?.totalProdutos;
     const ok = await fmConfirm({
       titulo: 'Ir para o fechamento?',
-      msg: `${total ? `Foram contados ${fmtInt(contados)} de ${plural(total, 'produto', 'produtos')} (${Math.min(100, porcentagem(contados, total))}%). ` : ''}${recusadas ? `${plural(recusadas, 'contagem não enviada continua', 'contagens não enviadas continuam')} na lista e não entram no fechamento. ` : ''}Na próxima etapa você informa o saldo do sistema de cada item; a auditoria só é finalizada quando você confirmar.`,
+      msg: `${total ? `Foram contados ${fmtInt(contados)} de ${plural(total, 'produto', 'produtos')} (${fmtPct(Math.min(100, porcentagem(contados, total, 1)))}). ` : ''}${recusadas ? `${plural(recusadas, 'contagem não enviada continua', 'contagens não enviadas continuam')} na lista e não entram no fechamento. ` : ''}Na próxima etapa você informa o saldo do sistema de cada item; a auditoria só é finalizada quando você confirmar.`,
       confirmTxt: 'Ir para o fechamento',
     });
     if (ok) location.href = `estoque-sistema.html?id=${encodeURIComponent(auditoriaId)}`;

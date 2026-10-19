@@ -198,13 +198,6 @@ export function criarClienteDemo() {
       async getUser() { return { data: { user: usuarioAuth() }, error: null }; },
       async signInWithPassword() { await _espera(); return { data: { user: usuarioAuth(), session: { user: usuarioAuth() } }, error: null }; },
       async signOut() { sairDemo(); return { error: null }; },
-      async signUp({ email }) {
-        await _espera();
-        if (banco.tabelas.usuarios.some(u => u.email === String(email).toLowerCase())) {
-          return { data: { user: null }, error: { message: 'User already registered' } };
-        }
-        return { data: { user: { id: _uuidAleatorio(), email } }, error: null };
-      },
       async updateUser({ password } = {}) {
         await _espera();
         if (password != null && String(password).length < 6) return { data: { user: null }, error: { message: 'Password should be at least 6 characters.' } };

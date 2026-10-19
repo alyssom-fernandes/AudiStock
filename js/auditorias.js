@@ -188,7 +188,7 @@ export async function progresso(auditoriaId) {
     .eq('auditoria_id', auditoriaId);
   if (e2) throw new Error(e2.message);
 
-  const pct = porcentagem(contados, totalProdutos);   // como no relatório: 299 de 300 não vira 100%
+  const pct = porcentagem(contados, totalProdutos, 1);   // como no relatório: 299 de 300 não vira 100%
   return { contados: contados ?? 0, totalProdutos: totalProdutos ?? 0, pct };
 }
 

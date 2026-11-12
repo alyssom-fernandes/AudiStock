@@ -117,7 +117,7 @@ export async function render(el) {
     empresa = e.target.value;
     // Com mais relatórios que o limite, a empresa é filtrada no servidor
     if (filtrarNoServidor) {
-      try { await carregar(); } catch (err) { card.innerHTML = erroCargaHtml('relatorios'); }
+      try { await carregar(); } catch (_err) { card.innerHTML = erroCargaHtml('relatorios'); }
     } else desenhar();
   });
 }

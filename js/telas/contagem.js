@@ -42,7 +42,7 @@ async function iniciar() {
   el.innerHTML = `<div class="carregando-bloco"><span class="skel" style="width:30%;height:22px"></span><span class="skel" style="width:50%"></span></div>`;
   let aud;
   try { aud = await buscarAuditoria(auditoriaId); }
-  catch (err) {
+  catch (_err) {
     el.innerHTML = `<a class="voltar" href="app.html?tela=auditorias">${ICONS.voltar}Auditorias</a><div class="card">${vazioHtml({ titulo: 'Auditoria não encontrada', texto: 'Ela pode ter sido excluída, ou o link está incompleto.', acoes: '<a class="btn btn-secondary" href="app.html?tela=auditorias">Ver auditorias</a>' })}</div>`;
     return;
   }
@@ -612,7 +612,7 @@ async function iniciar() {
         } catch (err) { console.warn('[câmera]', err); }
       }, 300);
       return true;
-    } catch (err) {
+    } catch (_err) {
       zona.innerHTML = `<div class="camera-indisponivel"><strong>Sem acesso à câmera</strong>
         <p>Permita o uso da câmera nas configurações do navegador, ou use o teclado.</p>
         <button type="button" class="btn btn-secondary btn-sm" data-modo="manual">Usar o teclado</button></div>`;

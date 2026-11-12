@@ -6,11 +6,15 @@
   "scripts": {
     "test": "node --test \"testes/unidade/*.test.mjs\" \"testes/banco/*.test.mjs\"",
     "test:e2e": "playwright test",
-    "servir": "node testes/servidor.mjs"
+    "servir": "node testes/servidor.mjs",
+    "lint": "eslint ."
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
-    "@playwright/test": "^1.63.0"
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0"
   },
   "engines": {
     "node": ">=22"

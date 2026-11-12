@@ -43,7 +43,7 @@ export async function render(el, { perfil, params }) {
   $('#prodInativos').addEventListener('change', e => { inativos = e.target.checked; pagina = 1; if (empresas.length) carregar(); });
 
   try { empresas = await listarEmpresas({ apenasAtivas: true }); }
-  catch (err) { card.innerHTML = erroCargaHtml('produtos'); return; }
+  catch (_err) { card.innerHTML = erroCargaHtml('produtos'); return; }
 
   if (!empresas.length) {
     $('.toolbar').remove();
@@ -443,7 +443,7 @@ function abrirClonagem(empresas, empresaAtual, aoConcluir) {
       btn.disabled = nOrigem === 0;
       m.$('#clResumo').innerHTML = nOrigem === 0 ? `<strong>${escapeHtml(nome(origem))}</strong> não tem produtos ativos para copiar.`
         : `Serão copiados <strong>${plural(nOrigem, 'produto ativo', 'produtos ativos')}</strong> de ${escapeHtml(nome(origem))}${destino ? ` para <strong>${escapeHtml(nome(destino))}</strong>${nDestino ? `, que já tem ${plural(nDestino, 'produto', 'produtos')}` : ''}` : ''}.`;
-    } catch (err) {
+    } catch (_err) {
       if (minha !== seq) return;
       nOrigem = nDestino = null; btn.disabled = false;
       m.$('#clResumo').textContent = 'Não foi possível contar os produtos agora. Você pode clonar mesmo assim.';

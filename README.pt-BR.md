@@ -7,7 +7,7 @@
 - **Permissões no banco:** 24 políticas de segurança por linha (RLS) em [`supabase/schema.sql`](supabase/schema.sql), conferidas por 54 regras em [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql), que entra como cada perfil.
 - **Regras onde estão os dados:** registrar contagem, corrigir, fechar e excluir uma auditoria são quatro funções do banco em [`supabase/schema.sql`](supabase/schema.sql); o fechamento aplica todos os saldos numa transação só.
 - **Fila sem internet:** as contagens esperam no IndexedDB e cada uma leva uma identificação que o banco aplica uma vez só ([`js/offline.js`](js/offline.js), 7 testes em [`testes/unidade/fila.test.mjs`](testes/unidade/fila.test.mjs)).
-- **Testes:** 84 testes de unidade e de banco (`npm test`, Postgres em WebAssembly) e 47 testes no navegador listados pelo Playwright, em [`testes/`](testes/).
+- **Testes:** 84 testes de unidade e de banco (`npm test`, Postgres em WebAssembly) e 47 testes no navegador listados pelo Playwright (46 rodam a cada push; 1 é só de celular e fica de fora no computador), em [`testes/`](testes/).
 - **Sem build e sem framework:** 28 módulos JavaScript e 7.033 linhas em [`js/`](js/), mais uma política de segurança (CSP) por hash conferida por [`testes/unidade/csp.test.mjs`](testes/unidade/csp.test.mjs).
 
 O AudiStock organiza a auditoria de estoque. A equipe conta o que está na
@@ -239,7 +239,7 @@ de qualquer projeto, e ele apaga o que criou.
 ```bash
 npm install
 npm test            # unidade (Node) e banco (PGlite): 84 testes
-npm run test:e2e    # ponta a ponta no navegador (Playwright): 47 execuções
+npm run test:e2e    # ponta a ponta no navegador (Playwright): 47 listados, 1 só de celular pulado no computador
 ```
 
 - **Unidade:** o código real de `js/` rodando no Node sobre o banco do

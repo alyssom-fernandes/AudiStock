@@ -7,7 +7,7 @@
 - **Permissions in the database:** 24 row-level security policies in [`supabase/schema.sql`](supabase/schema.sql), checked by 54 rules in [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql), which signs in as each role.
 - **Rules where the data lives:** registering a count, correcting it, closing and deleting an audit are four database functions in [`supabase/schema.sql`](supabase/schema.sql); closing applies every balance in one transaction.
 - **Offline queue:** counts wait in IndexedDB and each carries an id the database applies once ([`js/offline.js`](js/offline.js), 7 tests in [`testes/unidade/fila.test.mjs`](testes/unidade/fila.test.mjs)).
-- **Tests:** 84 unit and database tests (`npm test`, Postgres in WebAssembly) and 47 browser tests listed by Playwright, in [`testes/`](testes/).
+- **Tests:** 84 unit and database tests (`npm test`, Postgres in WebAssembly) and 47 browser tests listed by Playwright (46 run on each push; 1 is phone-only and skipped on desktop), in [`testes/`](testes/).
 - **No build, no framework:** 28 JavaScript modules and 7,033 lines in [`js/`](js/), plus a Content Security Policy by hash checked by [`testes/unidade/csp.test.mjs`](testes/unidade/csp.test.mjs).
 
 AudiStock runs physical inventory audits. The team counts what is on the
@@ -232,7 +232,7 @@ project's SQL Editor and deletes what it creates.
 ```bash
 npm install
 npm test            # unit (Node) and database (PGlite): 84 tests
-npm run test:e2e    # end to end in the browser (Playwright): 47 runs
+npm run test:e2e    # end to end in the browser (Playwright): 47 listed, 1 phone-only skipped on desktop
 ```
 
 - **Unit:** the real `js/` code running on Node against the demo

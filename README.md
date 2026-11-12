@@ -2,6 +2,8 @@
 
 ![AudiStock: the discrepancy report on desktop and the counting screen on a phone](docs/telas/capa.png)
 
+**Case study:** [how it was built and why, with links to the code](https://alyssom-fernandes.github.io/portfolio/en/projetos/audistock/) on my portfolio.
+
 ## Technical highlights
 
 - **Permissions in the database:** 24 row-level security policies in [`supabase/schema.sql`](supabase/schema.sql), checked by 54 rules in [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql), which signs in as each role.

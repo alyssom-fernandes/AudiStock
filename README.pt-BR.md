@@ -2,6 +2,8 @@
 
 ![AudiStock: o relatório de divergências no computador e a contagem no celular](docs/telas/capa.png)
 
+**Estudo de caso:** [como foi construído e por quê, com links para o código](https://alyssom-fernandes.github.io/portfolio/projetos/audistock/) no meu portfólio.
+
 ## Destaques técnicos
 
 - **Permissões no banco:** 24 políticas de segurança por linha (RLS) em [`supabase/schema.sql`](supabase/schema.sql), conferidas por 54 regras em [`supabase/testes/permissoes.sql`](supabase/testes/permissoes.sql), que entra como cada perfil.
